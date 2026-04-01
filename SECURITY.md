@@ -8,15 +8,18 @@
 
 ## Reporting a Vulnerability
 
-**Do not open a public GitHub issue for security vulnerabilities.**
+Please report security vulnerabilities by opening a private GitHub Security Advisory
+(via the "Security" tab → "Report a vulnerability") rather than a public issue.
 
-To report a vulnerability, please email `security@presidio.dev` with:
-- A description of the vulnerability
-- Steps to reproduce (proof-of-concept if available)
-- Affected versions
-- Any suggested mitigations
+Include:
 
-You will receive an acknowledgement within 48 hours and a full response within 7 days.
+- Description of the vulnerability
+- Steps to reproduce
+- Potential impact
+- Suggested fix (if any)
+
+You will receive an acknowledgement within 5 business days. We aim to release a patch
+within 30 days of a confirmed vulnerability.
 
 ## Security Controls
 
