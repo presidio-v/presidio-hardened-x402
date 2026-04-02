@@ -104,10 +104,12 @@ class PIIFilter:
         mode: Literal["regex", "nlp"] = "regex",
         entities: list[str] | None = None,
         redaction_template: str = REDACTED_TEMPLATE,
+        min_score: float = 0.5,
     ) -> None:
         self.mode = mode
         self.entities = set(entities) if entities is not None else None
         self.redaction_template = redaction_template
+        self.min_score = min_score
         self._analyzer = None
         self._anonymizer = None
 
@@ -201,6 +203,8 @@ class PIIFilter:
             entities=entities_to_analyze,
             language="en",
         )
+        # Filter by minimum confidence score
+        analyzer_results = [r for r in analyzer_results if r.score >= self.min_score]
 
         entity_results = [
             EntityResult(

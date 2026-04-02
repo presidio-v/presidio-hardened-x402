@@ -1,0 +1,40 @@
+[
+  {
+    "mode": "regex",
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PERSON",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "IBAN_CODE"
+    ],
+    "n_warmup": 50,
+    "n_timed": 200,
+    "p50_ms": 0.007,
+    "p95_ms": 0.016,
+    "p99_ms": 0.018,
+    "mean_ms": 0.009,
+    "min_ms": 0.005,
+    "max_ms": 0.019
+  },
+  {
+    "mode": "nlp",
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PERSON",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "IBAN_CODE"
+    ],
+    "n_warmup": 50,
+    "n_timed": 200,
+    "p50_ms": 3.212,
+    "p95_ms": 4.979,
+    "p99_ms": 5.734,
+    "mean_ms": 3.759,
+    "min_ms": 2.85,
+    "max_ms": 8.882
+  }
+]
