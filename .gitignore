@@ -38,3 +38,9 @@ MANIFEST
 
 # Project-specific: never commit session config
 .claude/
+
+# Generated corpus data (large; tracked via corpus_meta.json instead)
+corpus/corpus.jsonl
+
+# Experiment results (generated; committed selectively)
+experiments/results/

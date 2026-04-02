@@ -1,0 +1,37 @@
+{
+  "n_total": 2000,
+  "n_pii_positive": 720,
+  "n_pii_negative": 1280,
+  "pii_rate": 0.36,
+  "total_pii_entities": 875,
+  "entity_type_counts": {
+    "PERSON": 321,
+    "US_SSN": 85,
+    "EMAIL_ADDRESS": 313,
+    "IBAN_CODE": 96,
+    "CREDIT_CARD": 28,
+    "PHONE_NUMBER": 32
+  },
+  "entity_type_rates": {
+    "PERSON": 0.3669,
+    "US_SSN": 0.0971,
+    "EMAIL_ADDRESS": 0.3577,
+    "IBAN_CODE": 0.1097,
+    "CREDIT_CARD": 0.032,
+    "PHONE_NUMBER": 0.0366
+  },
+  "field_counts": {
+    "resource_url": 396,
+    "description": 248,
+    "reason": 231
+  },
+  "category_counts": {
+    "media": 260,
+    "medical": 300,
+    "financial": 260,
+    "data_access": 360,
+    "generic": 200,
+    "compute": 260,
+    "ai_inference": 360
+  }
+}
