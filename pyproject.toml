@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "presidio-hardened-x402"
-version = "0.1.0"
+version = "0.2.0"
 description = "Security middleware for x402 agentic payments — PII redaction, spending policy, and replay detection before blockchain commit"
 readme = "README.md"
 license = "MIT"
@@ -40,6 +40,12 @@ nlp = [
 ]
 redis = [
     "redis>=5.0.0",
+]
+langchain = [
+    "langchain-core>=0.1.0",
+]
+crewai = [
+    "crewai>=0.28.0",
 ]
 dev = [
     "pytest>=8.0",

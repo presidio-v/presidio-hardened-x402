@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 
 from .audit_log import AuditLog, FileAuditWriter, NullAuditWriter, StreamAuditWriter
+from .compliance_report import ComplianceReport
 from .exceptions import (
     PIIBlockedError,
     PolicyViolationError,
@@ -39,11 +40,12 @@ from .pii_filter import PIIFilter
 from .policy_engine import PolicyConfig, PolicyEngine
 from .replay_guard import ReplayGuard, compute_fingerprint
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     # Primary public API
     "HardenedX402Client",
     "PolicyConfig",
+    "ComplianceReport",
     # Exceptions
     "X402Error",
     "X402PaymentError",
