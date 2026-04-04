@@ -173,8 +173,10 @@ All exceptions are importable from `presidio_x402`.
 
 | Version | Milestone |
 |---------|-----------|
-| **v0.1.0** | PII redaction + spending policy + replay detection (this release) |
-| v0.2.0 | Endpoint reputation scoring, LangChain/CrewAI adapters, compliance report generator, arXiv preprint |
+| v0.1.0 | PII redaction + spending policy + replay detection |
+| v0.2.0 | Synthetic corpus + precision/recall sweep, LangChain/CrewAI adapters, compliance report · [arXiv preprint (pending)](https://arxiv.org/abs/2504.xxxxx) |
+| **v0.2.1** | Live Base L2 data replication via Dune Analytics; conference paper (ACSAC 2027) — **current** |
+| v0.3.0 | Multi-party authorization, policy-as-code schema, Kubernetes sidecar, journal paper |
 | v0.3.0 | Multi-party authorization, policy-as-code schema, Kubernetes sidecar, journal paper |
 | v0.4.0 | Production hardening: security audit, OTel telemetry, policy hot-reload, operator runbook |
 | v0.5.0 | **SLO payment broker** — x402 micropayments as runtime infrastructure bids; `presidio-hardened-arch-translucency` integration |
