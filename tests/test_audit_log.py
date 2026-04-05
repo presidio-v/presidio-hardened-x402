@@ -95,9 +95,7 @@ class TestAuditLogChaining:
         buf = io.StringIO()
         log = AuditLog(writer=StreamAuditWriter(buf))
         for _ in range(3):
-            log.emit(
-                "PAYMENT_ALLOWED", resource_url="https://api.example.com", outcome="allowed"
-            )
+            log.emit("PAYMENT_ALLOWED", resource_url="https://api.example.com", outcome="allowed")
         buf.seek(0)
         lines = [ln for ln in buf.readlines() if ln.strip()]
         hmacs = [json.loads(ln)["prev_entry_hmac"] for ln in lines]

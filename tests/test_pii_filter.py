@@ -153,6 +153,7 @@ class TestPIIFilterRegexMode:
     def test_nlp_mode_import_error_without_spacy(self, monkeypatch):
         """NLP mode raises ImportError with helpful message if Presidio NLP is unavailable."""
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):

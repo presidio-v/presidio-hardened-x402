@@ -169,9 +169,8 @@ class PolicyEngine:
             )
 
         # 2. Global aggregate limit
-        if (
-            self.config.daily_limit_usd is not None
-            and self._global_ledger.would_exceed(amount_usd, self.config.daily_limit_usd)
+        if self.config.daily_limit_usd is not None and self._global_ledger.would_exceed(
+            amount_usd, self.config.daily_limit_usd
         ):
             current = self._global_ledger.total()
             logger.warning(

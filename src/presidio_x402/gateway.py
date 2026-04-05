@@ -297,10 +297,8 @@ class HardenedX402Client:
         # ------------------------------------------------------------------
         # 1. PII Filter
         # ------------------------------------------------------------------
-        clean_url, clean_desc, clean_reason, pii_entities = (
-            self._pii_filter.scan_payment_fields(
-                details.resource_url, details.description, details.reason
-            )
+        clean_url, clean_desc, clean_reason, pii_entities = self._pii_filter.scan_payment_fields(
+            details.resource_url, details.description, details.reason
         )
 
         if pii_entities:
@@ -341,9 +339,7 @@ class HardenedX402Client:
         # 2. Policy Engine
         # ------------------------------------------------------------------
         try:
-            self._policy.check_and_record(
-                resource_url=details.resource_url, amount_usd=amount_usd
-            )
+            self._policy.check_and_record(resource_url=details.resource_url, amount_usd=amount_usd)
         except PolicyViolationError as exc:
             self._audit.emit(
                 "POLICY_BLOCKED",

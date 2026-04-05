@@ -105,6 +105,7 @@ try:  # pragma: no cover
             if loop and loop.is_running():
                 # Running inside an event loop (e.g., Jupyter, async CrewAI runner)
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(asyncio.run, coro)
                     response = future.result()
@@ -113,10 +114,9 @@ try:  # pragma: no cover
             return response.text
 
 except ImportError:
+
     class HardenedX402CrewTool:  # type: ignore[no-redef]
         """Stub raised when crewai is not installed."""
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            raise ImportError(
-                "CrewAI adapter requires: pip install crewai>=0.28.0"
-            )
+            raise ImportError("CrewAI adapter requires: pip install crewai>=0.28.0")

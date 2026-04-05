@@ -37,6 +37,7 @@ from .audit_log import _CHAIN_KEY  # type: ignore[attr-defined]
 # Entry parsing
 # ---------------------------------------------------------------------------
 
+
 def _parse_event(raw: dict[str, Any]) -> AuditEvent:
     from datetime import datetime, timezone
 
@@ -67,6 +68,7 @@ def _parse_event(raw: dict[str, Any]) -> AuditEvent:
 # ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class AgentSummary:
@@ -192,10 +194,7 @@ class ComplianceReport:
 
     def blocked_count(self) -> int:
         """Total number of blocked payment attempts (any block reason)."""
-        return sum(
-            1 for ev in self.events
-            if ev.outcome == "blocked"
-        )
+        return sum(1 for ev in self.events if ev.outcome == "blocked")
 
     def allowed_count(self) -> int:
         """Total number of allowed payment attempts."""

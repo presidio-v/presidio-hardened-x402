@@ -81,6 +81,7 @@ class TestReplayGuardRedisUnavailable:
     def test_redis_import_error_raises_helpful_message(self):
         """Redis backend raises ImportError with helpful message if redis is not installed."""
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):

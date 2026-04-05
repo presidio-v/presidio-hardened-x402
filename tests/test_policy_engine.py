@@ -22,17 +22,13 @@ class TestPolicyEnginePerCallLimit:
 
     def test_blocks_payment_above_limit(self):
         with pytest.raises(PolicyViolationError) as exc_info:
-            self.engine.check_and_record(
-                resource_url="https://api.example.com", amount_usd=0.15
-            )
+            self.engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.15)
         assert exc_info.value.amount_usd == pytest.approx(0.15)
         assert exc_info.value.limit_usd == pytest.approx(0.10)
 
     def test_exception_message_is_informative(self):
         with pytest.raises(PolicyViolationError, match="per-call limit"):
-            self.engine.check_and_record(
-                resource_url="https://api.example.com", amount_usd=1.00
-            )
+            self.engine.check_and_record(resource_url="https://api.example.com", amount_usd=1.00)
 
 
 class TestPolicyEngineDailyLimit:
@@ -46,26 +42,18 @@ class TestPolicyEngineDailyLimit:
         self.engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.20)
         self.engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.05)
         with pytest.raises(PolicyViolationError, match="aggregate spend"):
-            self.engine.check_and_record(
-                resource_url="https://api.example.com", amount_usd=0.10
-            )
+            self.engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.10)
 
     def test_aggregate_accumulates_across_calls(self):
         for _ in range(3):
-            self.engine.check_and_record(
-                resource_url="https://api.example.com", amount_usd=0.09
-            )
+            self.engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.09)
         with pytest.raises(PolicyViolationError):
-            self.engine.check_and_record(
-                resource_url="https://api.example.com", amount_usd=0.09
-            )
+            self.engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.09)
 
 
 class TestPolicyEnginePerEndpointLimit:
     def setup_method(self):
-        self.engine = PolicyEngine(
-            PolicyConfig(per_endpoint={"https://premium-api.io": 0.20})
-        )
+        self.engine = PolicyEngine(PolicyConfig(per_endpoint={"https://premium-api.io": 0.20}))
 
     def test_allows_payment_within_endpoint_limit(self):
         self.engine.check_and_record(
@@ -83,21 +71,13 @@ class TestPolicyEnginePerEndpointLimit:
 
     def test_does_not_limit_unmatched_endpoint(self):
         # A different endpoint is not subject to the per_endpoint limit
-        self.engine.check_and_record(
-            resource_url="https://other-api.io/data", amount_usd=0.50
-        )
+        self.engine.check_and_record(resource_url="https://other-api.io/data", amount_usd=0.50)
 
     def test_endpoint_prefix_matching_base_url(self):
-        engine = PolicyEngine(
-            PolicyConfig(per_endpoint={"https://premium-api.io": 0.05})
-        )
-        engine.check_and_record(
-            resource_url="https://premium-api.io/any/path", amount_usd=0.04
-        )
+        engine = PolicyEngine(PolicyConfig(per_endpoint={"https://premium-api.io": 0.05}))
+        engine.check_and_record(resource_url="https://premium-api.io/any/path", amount_usd=0.04)
         with pytest.raises(PolicyViolationError):
-            engine.check_and_record(
-                resource_url="https://premium-api.io/another", amount_usd=0.04
-            )
+            engine.check_and_record(resource_url="https://premium-api.io/another", amount_usd=0.04)
 
 
 class TestPolicyEngineFromDict:

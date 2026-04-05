@@ -33,20 +33,24 @@ PAYMENT_DETAILS = PaymentDetails(
     reason="research",
 )
 
-PAYMENT_HEADER_VALUE = json.dumps({
-    "accepts": [{
-        "scheme": "exact",
-        "network": "base-sepolia",
-        "maxAmountRequired": "0.01",
-        "resource": "https://api.example.com/v1/data",
-        "description": "API data access",
-        "reason": "research",
-        "mimeType": "application/json",
-        "payTo": "0xabcdef1234567890abcdef1234567890abcdef12",
-        "requiredDeadlineSeconds": 300,
-        "extra": {},
-    }]
-})
+PAYMENT_HEADER_VALUE = json.dumps(
+    {
+        "accepts": [
+            {
+                "scheme": "exact",
+                "network": "base-sepolia",
+                "maxAmountRequired": "0.01",
+                "resource": "https://api.example.com/v1/data",
+                "description": "API data access",
+                "reason": "research",
+                "mimeType": "application/json",
+                "payTo": "0xabcdef1234567890abcdef1234567890abcdef12",
+                "requiredDeadlineSeconds": 300,
+                "extra": {},
+            }
+        ]
+    }
+)
 
 
 async def _mock_signer(details: PaymentDetails) -> PaymentResponse:
@@ -126,9 +130,7 @@ async def test_payment_token_sent_in_retry_header():
 async def test_402_without_payment_header_returned_as_is():
     """A 402 with no X-PAYMENT header is returned without raising."""
     with respx.mock:
-        respx.get("https://api.example.com/v1/data").mock(
-            return_value=httpx.Response(402)
-        )
+        respx.get("https://api.example.com/v1/data").mock(return_value=httpx.Response(402))
         async with _make_client() as client:
             resp = await client.get("https://api.example.com/v1/data")
         assert resp.status_code == 402
@@ -138,9 +140,7 @@ async def test_402_without_payment_header_returned_as_is():
 async def test_malformed_x_payment_header_raises_x402_error():
     with respx.mock:
         respx.get("https://api.example.com/v1/data").mock(
-            return_value=httpx.Response(
-                402, headers={"X-PAYMENT": "not-valid-json"}
-            )
+            return_value=httpx.Response(402, headers={"X-PAYMENT": "not-valid-json"})
         )
         async with _make_client() as client:
             with pytest.raises(X402PaymentError, match="Invalid X-PAYMENT header JSON"):
@@ -149,9 +149,7 @@ async def test_malformed_x_payment_header_raises_x402_error():
 
 @pytest.mark.asyncio
 async def test_unsupported_scheme_raises_x402_error():
-    header = json.dumps({
-        "accepts": [{"scheme": "unknown-scheme", "network": "base-sepolia"}]
-    })
+    header = json.dumps({"accepts": [{"scheme": "unknown-scheme", "network": "base-sepolia"}]})
     with respx.mock:
         respx.get("https://api.example.com/v1/data").mock(
             return_value=httpx.Response(402, headers={"X-PAYMENT": header})
@@ -169,17 +167,21 @@ async def test_unsupported_scheme_raises_x402_error():
 @pytest.mark.asyncio
 async def test_pii_action_block_raises_pii_blocked_error():
     """pii_action='block' raises PIIBlockedError when PII found in metadata."""
-    pii_header = json.dumps({
-        "accepts": [{
-            "scheme": "exact",
-            "network": "base-sepolia",
-            "maxAmountRequired": "0.01",
-            "resource": "https://api.example.com/user/alice@example.com",
-            "description": "Data for alice@example.com",
-            "payTo": "0xabc",
-            "requiredDeadlineSeconds": 300,
-        }]
-    })
+    pii_header = json.dumps(
+        {
+            "accepts": [
+                {
+                    "scheme": "exact",
+                    "network": "base-sepolia",
+                    "maxAmountRequired": "0.01",
+                    "resource": "https://api.example.com/user/alice@example.com",
+                    "description": "Data for alice@example.com",
+                    "payTo": "0xabc",
+                    "requiredDeadlineSeconds": 300,
+                }
+            ]
+        }
+    )
     with respx.mock:
         respx.get("https://api.example.com/user/alice@example.com").mock(
             return_value=httpx.Response(402, headers={"X-PAYMENT": pii_header})
@@ -193,17 +195,21 @@ async def test_pii_action_block_raises_pii_blocked_error():
 @pytest.mark.asyncio
 async def test_pii_action_redact_does_not_raise():
     """pii_action='redact' redacts PII and proceeds with payment."""
-    pii_header = json.dumps({
-        "accepts": [{
-            "scheme": "exact",
-            "network": "base-sepolia",
-            "maxAmountRequired": "0.01",
-            "resource": "https://api.example.com/user/alice@example.com",
-            "description": "user alice@example.com",
-            "payTo": "0xabc",
-            "requiredDeadlineSeconds": 300,
-        }]
-    })
+    pii_header = json.dumps(
+        {
+            "accepts": [
+                {
+                    "scheme": "exact",
+                    "network": "base-sepolia",
+                    "maxAmountRequired": "0.01",
+                    "resource": "https://api.example.com/user/alice@example.com",
+                    "description": "user alice@example.com",
+                    "payTo": "0xabc",
+                    "requiredDeadlineSeconds": 300,
+                }
+            ]
+        }
+    )
     with respx.mock:
         route = respx.get("https://api.example.com/user/alice@example.com")
         route.side_effect = [

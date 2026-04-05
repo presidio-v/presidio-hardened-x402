@@ -40,6 +40,7 @@ def _make_event(**overrides) -> dict:
 # from_events (no file I/O)
 # ---------------------------------------------------------------------------
 
+
 class TestFromEvents:
     def test_empty(self):
         report = ComplianceReport.from_events([])
@@ -49,6 +50,7 @@ class TestFromEvents:
 
     def test_allowed_spend(self):
         from presidio_x402.compliance_report import _parse_event
+
         ev1 = _parse_event(_make_event(amount_usd=0.05))
         ev2 = _parse_event(_make_event(amount_usd=0.10))
         report = ComplianceReport.from_events([ev1, ev2])
@@ -57,18 +59,28 @@ class TestFromEvents:
 
     def test_blocked_events(self):
         from presidio_x402.compliance_report import _parse_event
-        pii_blocked = _parse_event(_make_event(
-            event_type="PII_BLOCKED", outcome="blocked", amount_usd=0.0,
-        ))
-        policy_blocked = _parse_event(_make_event(
-            event_type="POLICY_BLOCKED", outcome="blocked", amount_usd=0.0,
-        ))
+
+        pii_blocked = _parse_event(
+            _make_event(
+                event_type="PII_BLOCKED",
+                outcome="blocked",
+                amount_usd=0.0,
+            )
+        )
+        policy_blocked = _parse_event(
+            _make_event(
+                event_type="POLICY_BLOCKED",
+                outcome="blocked",
+                amount_usd=0.0,
+            )
+        )
         report = ComplianceReport.from_events([pii_blocked, policy_blocked])
         assert report.blocked_count() == 2
         assert report.allowed_count() == 0
 
     def test_pii_entity_counts(self):
         from presidio_x402.compliance_report import _parse_event
+
         ev1 = _parse_event(_make_event(pii_entities_found=["EMAIL_ADDRESS", "US_SSN"]))
         ev2 = _parse_event(_make_event(pii_entities_found=["EMAIL_ADDRESS"]))
         report = ComplianceReport.from_events([ev1, ev2])
@@ -78,6 +90,7 @@ class TestFromEvents:
 
     def test_entries_for_agent(self):
         from presidio_x402.compliance_report import _parse_event
+
         a1 = _parse_event(_make_event(agent_id="alice"))
         a2 = _parse_event(_make_event(agent_id="alice"))
         b1 = _parse_event(_make_event(agent_id="bob"))
@@ -88,13 +101,24 @@ class TestFromEvents:
 
     def test_agent_summaries(self):
         from presidio_x402.compliance_report import _parse_event
+
         payment = _parse_event(_make_event(agent_id="alice", amount_usd=0.05))
-        redacted = _parse_event(_make_event(
-            agent_id="alice", event_type="PII_REDACTED", outcome="allowed", amount_usd=0.0,
-        ))
-        blocked = _parse_event(_make_event(
-            agent_id="alice", event_type="POLICY_BLOCKED", outcome="blocked", amount_usd=0.0,
-        ))
+        redacted = _parse_event(
+            _make_event(
+                agent_id="alice",
+                event_type="PII_REDACTED",
+                outcome="allowed",
+                amount_usd=0.0,
+            )
+        )
+        blocked = _parse_event(
+            _make_event(
+                agent_id="alice",
+                event_type="POLICY_BLOCKED",
+                outcome="blocked",
+                amount_usd=0.0,
+            )
+        )
         report = ComplianceReport.from_events([payment, redacted, blocked])
         sums = report.agent_summaries()
         alice = sums["alice"]
@@ -114,15 +138,25 @@ class TestFromEvents:
 # from_jsonl (file I/O)
 # ---------------------------------------------------------------------------
 
+
 class TestFromJsonl:
     def test_round_trip_via_audit_log(self):
         """Write events via AuditLog, read via ComplianceReport."""
         buf = io.StringIO()
         log = AuditLog(writer=StreamAuditWriter(buf), agent_id="test-agent")
-        log.emit("PAYMENT_ALLOWED", resource_url="https://api.example.com/v1", outcome="allowed",
-                 amount_usd=0.03, network="base-mainnet")
-        log.emit("PII_BLOCKED", resource_url="https://api.example.com/v1", outcome="blocked",
-                 pii_entities_found=["EMAIL_ADDRESS"])
+        log.emit(
+            "PAYMENT_ALLOWED",
+            resource_url="https://api.example.com/v1",
+            outcome="allowed",
+            amount_usd=0.03,
+            network="base-mainnet",
+        )
+        log.emit(
+            "PII_BLOCKED",
+            resource_url="https://api.example.com/v1",
+            outcome="blocked",
+            pii_entities_found=["EMAIL_ADDRESS"],
+        )
 
         jsonl = buf.getvalue()
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
@@ -166,30 +200,51 @@ class TestFromJsonl:
     def test_to_dict_structure(self):
         report = ComplianceReport.from_events([])
         d = report.to_dict()
-        for key in ("total_events", "allowed", "blocked", "total_spend_usd",
-                    "chain_ok", "chain_warnings", "pii_entity_counts", "agent_summaries"):
+        for key in (
+            "total_events",
+            "allowed",
+            "blocked",
+            "total_spend_usd",
+            "chain_ok",
+            "chain_warnings",
+            "pii_entity_counts",
+            "agent_summaries",
+        ):
             assert key in d
 
     def test_parse_event_invalid_timestamp(self):
         """_parse_event should fall back to now() for unparseable timestamps."""
         from presidio_x402.compliance_report import _parse_event
+
         ev = _parse_event(_make_event(timestamp="not-a-date"))
         assert ev.timestamp is not None
 
     def test_parse_event_naive_timestamp(self):
         """_parse_event should make naive timestamps timezone-aware."""
         from presidio_x402.compliance_report import _parse_event
+
         ev = _parse_event(_make_event(timestamp="2026-04-01T12:00:00"))
         assert ev.timestamp.tzinfo is not None
 
     def test_replay_and_error_agent_summary(self):
         from presidio_x402.compliance_report import _parse_event
-        replay = _parse_event(_make_event(
-            agent_id="agent-1", event_type="REPLAY_BLOCKED", outcome="blocked", amount_usd=0.0,
-        ))
-        error = _parse_event(_make_event(
-            agent_id="agent-1", event_type="PAYMENT_ERROR", outcome="blocked", amount_usd=0.0,
-        ))
+
+        replay = _parse_event(
+            _make_event(
+                agent_id="agent-1",
+                event_type="REPLAY_BLOCKED",
+                outcome="blocked",
+                amount_usd=0.0,
+            )
+        )
+        error = _parse_event(
+            _make_event(
+                agent_id="agent-1",
+                event_type="PAYMENT_ERROR",
+                outcome="blocked",
+                amount_usd=0.0,
+            )
+        )
         report = ComplianceReport.from_events([replay, error])
         sums = report.agent_summaries()
         s = sums["agent-1"]
@@ -198,6 +253,7 @@ class TestFromJsonl:
 
     def test_summary_with_pii_events(self):
         from presidio_x402.compliance_report import _parse_event
+
         ev = _parse_event(_make_event(pii_entities_found=["PERSON", "EMAIL_ADDRESS"]))
         report = ComplianceReport.from_events([ev])
         s = report.summary()
@@ -205,6 +261,7 @@ class TestFromJsonl:
 
     def test_entries_for_agent_none(self):
         from presidio_x402.compliance_report import _parse_event
+
         ev = _parse_event(_make_event(agent_id=None))
         report = ComplianceReport.from_events([ev])
         assert len(report.entries_for_agent("nobody")) == 0

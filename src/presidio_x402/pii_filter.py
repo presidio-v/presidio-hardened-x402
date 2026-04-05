@@ -51,9 +51,7 @@ _REGEX_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # Structural: US phone numbers
     (
         "PHONE_NUMBER",
-        re.compile(
-            r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b"
-        ),
+        re.compile(r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b"),
     ),
     # Structural: IBAN (EU bank accounts)
     (

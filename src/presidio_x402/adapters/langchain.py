@@ -108,10 +108,9 @@ try:  # pragma: no cover
             await self._client._http.aclose()
 
 except ImportError:
+
     class HardenedX402Tool:  # type: ignore[no-redef]
         """Stub raised when langchain-core is not installed."""
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            raise ImportError(
-                "LangChain adapter requires: pip install langchain-core>=0.1.0"
-            )
+            raise ImportError("LangChain adapter requires: pip install langchain-core>=0.1.0")
