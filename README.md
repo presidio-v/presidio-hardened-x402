@@ -2,9 +2,9 @@
 
 Security middleware for the [x402 payment protocol](https://www.x402.org/).
 
-Intercepts x402 payment requests **before blockchain commit** to enforce:
+Intercepts x402 payment requests **before transmission to servers and facilitators** to enforce:
 
-- **PII redaction** — Presidio-based detection and redaction of personal data (emails, names, SSNs, credit cards, etc.) from payment metadata fields before they hit the chain
+- **PII redaction** — Presidio-based detection and redaction of personal data (emails, names, SSNs, credit cards, etc.) from payment metadata fields before they are sent to the payment server or facilitator API
 - **Spending policy** — per-agent, per-endpoint, and per-time-window budget limits that block or throttle payments before execution
 - **Replay detection** — HMAC-SHA256 fingerprinting of canonical payment fields to prevent duplicate and replayed payments
 - **Audit logging** — HMAC-chained JSON-L audit trail for every payment attempt (including blocked ones)
@@ -169,15 +169,24 @@ All exceptions are importable from `presidio_x402`.
 
 ---
 
+## Research Artifacts
+
+| Artifact | Location | Description |
+|---|---|---|
+| Synthetic corpus | `corpus/` | 2,000 labelled x402 metadata triples; generator (`generate.py`, `seed=42`) + metadata (`corpus_meta.json`); raw JSONL reproducible from seed |
+| Precision/recall sweep | `experiments/` | 42-configuration grid search (`run_sweep.py`); latency benchmark (`run_latency.py`) |
+| Dune Analytics queries | `dune/` | 6 Trino SQL queries used to characterise the live x402 ecosystem (20 projects, 96 wallets, 11 chains, ≥79M transactions); see `dune/README.md` |
+
+---
+
 ## Roadmap
 
 | Version | Milestone |
 |---------|-----------|
 | v0.1.0 | PII redaction + spending policy + replay detection |
-| v0.2.0 | Synthetic corpus + precision/recall sweep, LangChain/CrewAI adapters, compliance report · [arXiv preprint (pending)](https://arxiv.org/abs/2504.xxxxx) |
-| **v0.2.1** | Live Base L2 data replication via Dune Analytics; conference paper (ACSAC 2027) — **current** |
-| v0.3.0 | Multi-party authorization, policy-as-code schema, Kubernetes sidecar, journal paper |
-| v0.3.0 | Multi-party authorization, policy-as-code schema, Kubernetes sidecar, journal paper |
+| v0.2.0 | Synthetic corpus + 42-configuration precision/recall sweep, LangChain/CrewAI adapters, compliance report · [arXiv preprint (pending)](https://arxiv.org/abs/2504.xxxxx) |
+| **v0.2.1** | Live ecosystem characterisation via Dune Analytics (20 projects, 96 wallets, 11 chains, ≥79M transactions); Dune query set in `dune/`; IEEE S&P magazine article (submitted 2026-04-04); IEEE TIFS paper (under review) — **current** |
+| v0.3.0 | Multi-party authorization, policy-as-code schema, Kubernetes sidecar |
 | v0.4.0 | Production hardening: security audit, OTel telemetry, policy hot-reload, operator runbook |
 | v0.5.0 | **SLO payment broker** — x402 micropayments as runtime infrastructure bids; `presidio-hardened-arch-translucency` integration |
 

@@ -66,13 +66,91 @@ Requirements, feature deliberation, and versioning rationale for the x402 securi
 
 ## v0.2.0 Requirements (Extended Validation)
 
-- Endpoint reputation scorer with VirusTotal/SafeBrowsing feed adapters
-- Heuristic reputation signals: price drift, metadata entropy, domain age
-- LangChain adapter (`adapters/langchain.py`)
-- CrewAI adapter (`adapters/crewai.py`)
+### Corpus and experimental infrastructure
+
+- **Synthetic corpus** (`tools/corpus/`): 2,000 labeled x402 metadata samples spanning
+  7 use-case categories (AI inference, data access, medical/health, compute-as-a-service,
+  media, financial, generic API). ~40% PII-positive. Ground-truth entity labels in JSONL.
+  See `explore/feasibility.md` for full corpus design.
+
+- **Precision/recall sweep** (`tools/experiments/run_sweep.py`): Grid search over
+  `pii_mode` × `pii_entities` × `min_score` × `metadata_field`. Outputs CSV + Markdown
+  results table. Primary metrics: Precision, Recall, F1.
+
+- **Latency benchmark** (`tools/experiments/run_latency.py`): 1,000-call loopback
+  benchmark. Reports p50/p95/p99 per mode. Validates 50ms p99 target for regex mode.
+
+### Scoping decision: synthetic corpus first, live data for conference paper
+
+The preprint is based exclusively on the synthetic corpus. This is intentional:
+- Ground truth is known by construction → enables precision/recall measurement
+- Fully reproducible and deterministic (fixed seed)
+- No external data access required
+- Live Base L2 data (Dune Analytics) deferred to v0.2.1 / conference paper
+
+*Rationale: A synthetic-corpus-first approach is standard practice in security systems
+papers when (a) ground truth is required for precision/recall measurement and (b) the
+live data source requires non-trivial access setup. The claim we are making — "the
+middleware correctly detects PII in x402-like metadata" — is testable on synthetic data.
+The claim "PII is present in production x402 metadata" requires live data and is
+explicitly deferred.*
+
+### New code features
+
+- Endpoint reputation scorer (`reputation.py`) with VirusTotal/SafeBrowsing adapters
+  and heuristic signals (price drift, metadata entropy, domain age)
+- LangChain adapter (`adapters/langchain.py`): `HardenedX402Tool` as a LangChain `BaseTool`
+- CrewAI adapter (`adapters/crewai.py`): same pattern for CrewAI
 - Compliance report generator (`compliance_report.py`): SOC2-friendly, HMAC-chained
   JSON-L with GDPR data-subject reference support
-- Empirical PII measurement corpus and arXiv preprint
+
+### Publication
+
+- arXiv cs.CR preprint by 2026-11-01
+- Conference paper submission (USENIX Security 2027 or IEEE S&P 2027) after live
+  data replication in v0.2.1
+
+---
+
+## v0.2.1 Requirements (Live Data Replication) — Delivered
+
+### Dune Analytics query set (`dune/`)
+
+Six Trino SQL queries characterising the deployed x402 ecosystem:
+
+- `query0_facilitator_list.sql` — enumerate facilitator wallets by project and chain
+- `query2_volume_by_chain_project.sql` — cross-chain transaction volume and date ranges
+- `query2a_volume_base.sql` — Base L2 volume (chain-specific table; fast)
+- `query2b_volume_polygon.sql` — Polygon volume (chain-specific table; fast)
+- `query2c_volume_other_chains.sql` — remaining 9 chains via `evms.transactions`
+- `query3_resolve_unknowns.sql` — resolve unrecognised wallet addresses to project names
+
+### Ecosystem findings (as of Q1 2026)
+
+- 20 projects, 96 facilitator wallets, 11 chains, ≥79 million transactions
+- Three structural PII-embedding patterns identified in live endpoints (P1–P3)
+- Controlled demonstration confirms recommended configuration intercepts all observed
+  entity types with no configuration change
+
+### Scoping decision: synthetic corpus for precision/recall; live data for structural validation
+
+The precision/recall sweep (v0.2.0) uses only the synthetic corpus — ground truth is
+required for F1 measurement and live data cannot provide it without multi-week labelling
+effort. The live data study confirms that the entity types and structural patterns
+modelled synthetically appear in deployed endpoints. The two datasets are not
+independent; the live data result is confirmatory rather than a blind validation.
+
+*Rationale: This is the standard design for security systems papers — validate the tool
+on controlled data with known ground truth, then confirm the threat model on live data.*
+
+### Publications
+
+- **IEEE Security & Privacy magazine** — practitioner article (~5 pages) centred on the
+  live ecosystem findings; submitted 2026-04-04 (SPSI Nov/Dec 2026 special issue:
+  Autonomous AI Agents in Computer Security)
+- **IEEE Transactions on Information Forensics and Security (TIFS)** — full transactions
+  paper (~14 pages IEEEtran) including system design, corpus, 42-configuration sweep,
+  and live data study; under review
 
 ---
 
