@@ -121,21 +121,27 @@ def _parse_402_header(header_value: str) -> PaymentDetails:
         raise X402PaymentError(f"Missing required field in X-PAYMENT entry: {exc}") from exc
 
 
+_USD_PEGGED = frozenset({"USDC", "USDT", "DAI", "USDCE", "USDBC"})
+
+
 def _amount_to_usd(amount: str, currency: str) -> float:
     """Convert a payment amount string to USD.
 
-    For v0.1.0 this assumes 1:1 parity for USD-pegged stablecoins (USDC, USDT, DAI).
-    For non-stablecoin payments, returns a conservative estimate of 1.0 per unit
-    to ensure policy limits are enforced rather than bypassed.
+    Supports USD-pegged stablecoins only (USDC, USDT, DAI, USDCE, USDBC).
+    Non-stablecoin currencies raise :class:`X402PaymentError` because without a
+    price oracle the USD value cannot be determined, and silently understating it
+    would allow policy limits to be bypassed.
     """
     try:
         value = float(amount)
-    except ValueError:
-        return 0.0
-    usd_pegged = {"USDC", "USDT", "DAI", "USDCE", "USDBC"}
-    if currency.upper() in usd_pegged:
-        return value
-    # Conservative estimate for non-stablecoins — callers can override
+    except ValueError as exc:
+        raise X402PaymentError(f"Invalid payment amount {amount!r}: not a numeric value") from exc
+    if currency.upper() not in _USD_PEGGED:
+        raise X402PaymentError(
+            f"Unsupported currency {currency!r} for policy enforcement. "
+            f"Supported stablecoins: {sorted(_USD_PEGGED)}. "
+            "For non-stablecoin payments configure a custom price oracle."
+        )
     return value
 
 
@@ -244,9 +250,10 @@ class HardenedX402Client:
         try:
             details = _parse_402_header(payment_header)
         except X402PaymentError as exc:
+            safe_url, _ = self._pii_filter.scan_and_redact(url)
             self._audit.emit(
                 "PAYMENT_ERROR",
-                resource_url=url,
+                resource_url=safe_url,
                 outcome="blocked",
                 error_message=str(exc),
             )

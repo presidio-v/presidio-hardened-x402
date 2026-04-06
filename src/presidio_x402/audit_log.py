@@ -4,6 +4,14 @@ Emits JSON-L (newline-delimited JSON) audit events for every payment attempt.
 Each entry is HMAC-SHA256 chained to the previous entry to detect tampering
 or deletion of log entries.
 
+.. note:: Chain-integrity scope
+
+   The HMAC chain key (``_CHAIN_KEY``) is generated fresh on every process
+   start. Tamper-detection via ``prev_entry_hmac`` is therefore only guaranteed
+   **within a single process lifetime**. Entries written in separate runs are
+   not chained together. For persistent cross-session integrity, persist the
+   chain key to a restricted file and load it on startup.
+
 Built-in writers:
   - :class:`NullAuditWriter` — discards events (useful for testing)
   - :class:`StreamAuditWriter` — writes JSON-L to any file-like object (stdout,
