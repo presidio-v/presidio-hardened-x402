@@ -13,15 +13,21 @@ jobs:
     name: Analyze (Python)
     runs-on: ubuntu-latest
     permissions:
-      actions: read
       contents: read
-      security-events: write
     steps:
       - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+
+      - uses: actions/setup-python@v5
         with:
-          languages: python
-      - uses: github/codeql-action/autobuild@v3
-      - uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:python"
+          python-version: "3.12"
+
+      - name: Install Bandit
+        run: pip install bandit[toml]
+
+      - name: Run Bandit SAST scan
+        run: |
+          bandit -r src/ \
+            --severity-level medium \
+            --confidence-level medium \
+            -f txt \
+            --exit-zero
