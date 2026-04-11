@@ -29,6 +29,8 @@ import logging
 from .audit_log import AuditLog, FileAuditWriter, NullAuditWriter, StreamAuditWriter
 from .compliance_report import ComplianceReport
 from .exceptions import (
+    MPADeniedError,
+    MPATimeoutError,
     PIIBlockedError,
     PolicyViolationError,
     ReplayDetectedError,
@@ -36,22 +38,32 @@ from .exceptions import (
     X402PaymentError,
 )
 from .gateway import HardenedX402Client
+from .metrics import MetricsCollector
+from .mpa import MPAApproverConfig, MPAConfig, MPAEngine
 from .pii_filter import PIIFilter
 from .policy_engine import PolicyConfig, PolicyEngine
 from .replay_guard import ReplayGuard, compute_fingerprint
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     # Primary public API
     "HardenedX402Client",
     "PolicyConfig",
     "ComplianceReport",
+    # Multi-party authorization
+    "MPAConfig",
+    "MPAApproverConfig",
+    "MPAEngine",
+    # Prometheus metrics
+    "MetricsCollector",
     # Exceptions
     "X402Error",
     "X402PaymentError",
     "PIIBlockedError",
     "PolicyViolationError",
     "ReplayDetectedError",
+    "MPADeniedError",
+    "MPATimeoutError",
     # Components (for custom composition)
     "PIIFilter",
     "PolicyEngine",

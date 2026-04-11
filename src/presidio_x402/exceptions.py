@@ -34,3 +34,37 @@ class ReplayDetectedError(X402Error):
     def __init__(self, message: str, *, fingerprint: str) -> None:
         super().__init__(message)
         self.fingerprint = fingerprint
+
+
+class MPADeniedError(X402Error):
+    """Raised when multi-party authorization is required but not approved.
+
+    Attributes
+    ----------
+    approvals_received:
+        Number of approvals collected before denial.
+    threshold:
+        Number of approvals required.
+    """
+
+    def __init__(self, message: str, *, approvals_received: int, threshold: int) -> None:
+        super().__init__(message)
+        self.approvals_received = approvals_received
+        self.threshold = threshold
+
+
+class MPATimeoutError(X402Error):
+    """Raised when multi-party authorization approval collection timed out.
+
+    Attributes
+    ----------
+    approvals_received:
+        Number of approvals collected before timeout.
+    threshold:
+        Number of approvals required.
+    """
+
+    def __init__(self, message: str, *, approvals_received: int, threshold: int) -> None:
+        super().__init__(message)
+        self.approvals_received = approvals_received
+        self.threshold = threshold

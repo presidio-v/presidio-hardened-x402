@@ -8,6 +8,8 @@ Intercepts x402 payment requests **before transmission to servers and facilitato
 - **Spending policy** — per-agent, per-endpoint, and per-time-window budget limits that block or throttle payments before execution
 - **Replay detection** — HMAC-SHA256 fingerprinting of canonical payment fields to prevent duplicate and replayed payments
 - **Audit logging** — HMAC-chained JSON-L audit trail for every payment attempt (including blocked ones)
+- **Multi-party authorization** — n-of-m approval requirement for high-value payments, via webhook or HMAC-SHA256 cryptographic countersignature modes *(v0.3.0)*
+- **Prometheus metrics** — structured telemetry for every security control activation *(v0.3.0)*
 
 Part of the [presidio-hardened-*](https://github.com/presidio-v) toolkit family.
 
@@ -30,6 +32,18 @@ For production replay guard with cross-process deduplication:
 
 ```bash
 pip install "presidio-hardened-x402[redis]"
+```
+
+For Prometheus metrics export:
+
+```bash
+pip install "presidio-hardened-x402[prometheus]"
+```
+
+For policy-as-code schema validation:
+
+```bash
+pip install "presidio-hardened-x402[schema]"
 ```
 
 ---
@@ -156,6 +170,111 @@ client = HardenedX402Client(
 
 ---
 
+## Multi-Party Authorization (v0.3.0)
+
+For high-value payments that require human or system oversight before execution:
+
+```python
+from presidio_x402 import HardenedX402Client
+from presidio_x402.mpa import MPAConfig, MPAApproverConfig, MPAEngine
+
+mpa = MPAEngine(MPAConfig(
+    threshold=2,               # require 2 of 3 approvals
+    min_amount_usd=1.00,       # only for payments ≥ $1.00
+    timeout_seconds=30,
+    approvers=[
+        MPAApproverConfig("alice", mode="webhook",
+                          webhook_url="https://approvals.internal/alice"),
+        MPAApproverConfig("bob",   mode="webhook",
+                          webhook_url="https://approvals.internal/bob"),
+        MPAApproverConfig("charlie", mode="webhook",
+                          webhook_url="https://approvals.internal/charlie"),
+    ],
+))
+
+client = HardenedX402Client(payment_signer=signer, mpa_engine=mpa)
+```
+
+Approval endpoints receive a POST with payment details and must return `{"approved": true}`.
+For machine-to-machine approvals, use `mode="crypto"` with HMAC-SHA256 countersignatures
+and pass them via `mpa_signatures={"approver_id": "hex_sig", ...}` in the request kwargs.
+
+---
+
+## Prometheus Metrics (v0.3.0)
+
+```python
+from presidio_x402 import HardenedX402Client
+from presidio_x402.metrics import MetricsCollector
+
+collector = MetricsCollector()
+client = HardenedX402Client(payment_signer=signer, metrics_collector=collector)
+
+# Expose /metrics endpoint (e.g., FastAPI)
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+```
+
+Available metrics: `x402_payments_total`, `x402_payment_amount_usd` (histogram),
+`x402_pii_detections_total`, `x402_policy_violations_total`,
+`x402_replay_detections_total`, `x402_mpa_events_total`.
+
+---
+
+## Policy-as-Code (v0.3.0)
+
+Define spending policy in a TOML or JSON file and validate it against the
+[x402 policy JSON Schema](src/presidio_x402/x402-policy-schema.json):
+
+```toml
+# policy.toml
+max_per_call_usd = 0.10
+daily_limit_usd  = 5.00
+agent_id         = "my-agent"
+
+[per_endpoint]
+"https://premium-api.io" = 0.50
+
+[mpa]
+threshold       = 2
+min_amount_usd  = 1.00
+timeout_seconds = 30
+
+[[mpa.approvers]]
+approver_id = "alice"
+mode        = "webhook"
+webhook_url = "https://approvals.internal/alice"
+```
+
+```python
+from presidio_x402.x402_policy_schema import load_policy_file
+
+policy = load_policy_file("policy.toml")
+client = HardenedX402Client(payment_signer=signer, policy=policy)
+```
+
+---
+
+## Kubernetes Deployment (v0.3.0)
+
+Deploy as a sidecar using the bundled Helm chart:
+
+```bash
+helm install x402 ./helm \
+  --set x402.agentId=my-agent \
+  --set x402.maxPerCallUsd=0.10 \
+  --set x402.dailyLimitUsd=5.00 \
+  --set serviceMonitor.enabled=true
+```
+
+See [`docs/soc2-reference-architecture.md`](docs/soc2-reference-architecture.md) for
+SOC 2 TSC mapping, GDPR obligations, and deployment patterns.
+
+---
+
 ## Exceptions
 
 | Exception | Raised when |
@@ -164,6 +283,8 @@ client = HardenedX402Client(
 | `PolicyViolationError` | Payment amount or aggregate spend exceeds configured limit |
 | `ReplayDetectedError` | Payment fingerprint matches a recent transaction |
 | `X402PaymentError` | Upstream payment signing or network error |
+| `MPADeniedError` | Multi-party authorization required but not enough approvals received |
+| `MPATimeoutError` | Multi-party authorization webhook approval timed out |
 
 All exceptions are importable from `presidio_x402`.
 
@@ -185,9 +306,9 @@ All exceptions are importable from `presidio_x402`.
 |---------|-----------|
 | v0.1.0 | PII redaction + spending policy + replay detection |
 | v0.2.0 | Synthetic corpus + 42-configuration precision/recall sweep, LangChain/CrewAI adapters, compliance report · [arXiv preprint (pending)](https://arxiv.org/abs/2504.xxxxx) |
-| **v0.2.1** | Live ecosystem characterisation via Dune Analytics (20 projects, 96 wallets, 11 chains, ≥79M transactions); Dune query set in `dune/`; IEEE S&P magazine article (submitted 2026-04-04); IEEE TIFS paper (under review) — **current** |
-| v0.3.0 | Multi-party authorization, policy-as-code schema, Kubernetes sidecar |
-| v0.4.0 | Production hardening: security audit, OTel telemetry, policy hot-reload, operator runbook |
+| v0.2.1 | Live ecosystem characterisation via Dune Analytics (20 projects, 96 wallets, 11 chains, ≥79M transactions); IEEE S&P magazine article submitted; IEEE TIFS paper under review |
+| **v0.3.0** | **Multi-party authorization** (`mpa.py`: n-of-m, webhook + crypto modes) · **Policy-as-code** JSON Schema (IETF draft candidate) · **Prometheus metrics** exporter · Kubernetes Helm chart + Docker image · SOC2 reference architecture — **current** |
+| v0.4.0 | Production hardening: security audit, OpenTelemetry spans, policy hot-reload, operator runbook |
 | v0.5.0 | **SLO payment broker** — x402 micropayments as runtime infrastructure bids; `presidio-hardened-arch-translucency` integration |
 
 See [PRESIDIO-REQ.md](PRESIDIO-REQ.md) for full deliberation and rationale.

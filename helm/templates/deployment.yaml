@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "presidio-hardened-x402.fullname" . }}
+  labels:
+    {{- include "presidio-hardened-x402.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "presidio-hardened-x402.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "presidio-hardened-x402.selectorLabels" . | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: x402-sidecar
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: X402_AGENT_ID
+              value: {{ .Values.x402.agentId | quote }}
+            - name: X402_MAX_PER_CALL_USD
+              value: {{ .Values.x402.maxPerCallUsd | quote }}
+            - name: X402_DAILY_LIMIT_USD
+              value: {{ .Values.x402.dailyLimitUsd | quote }}
+            - name: X402_WINDOW_SECONDS
+              value: {{ .Values.x402.windowSeconds | quote }}
+            - name: X402_PII_MODE
+              value: {{ .Values.x402.piiMode | quote }}
+            - name: X402_PII_ACTION
+              value: {{ .Values.x402.piiAction | quote }}
+            - name: X402_REPLAY_TTL
+              value: {{ .Values.x402.replayTtl | quote }}
+            {{- if .Values.x402.redisUrl }}
+            - name: X402_REDIS_URL
+              value: {{ .Values.x402.redisUrl | quote }}
+            {{- end }}
+            {{- if .Values.mpa.enabled }}
+            - name: X402_MPA_ENABLED
+              value: "true"
+            - name: X402_MPA_THRESHOLD
+              value: {{ .Values.mpa.threshold | quote }}
+            - name: X402_MPA_MIN_AMOUNT_USD
+              value: {{ .Values.mpa.minAmountUsd | quote }}
+            - name: X402_MPA_TIMEOUT_SECONDS
+              value: {{ .Values.mpa.timeoutSeconds | quote }}
+            {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

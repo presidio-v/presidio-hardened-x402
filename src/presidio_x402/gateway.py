@@ -38,18 +38,24 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import replace
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 
 from ._types import AuditWriter, PaymentDetails, PaymentResponse, PaymentSigner
 from .audit_log import AuditLog, NullAuditWriter
 from .exceptions import (
+    MPADeniedError,
+    MPATimeoutError,
     PIIBlockedError,
     PolicyViolationError,
     ReplayDetectedError,
     X402PaymentError,
 )
+
+if TYPE_CHECKING:
+    from .metrics import MetricsCollector
+    from .mpa import MPAEngine
 from .pii_filter import PIIFilter
 from .policy_engine import PolicyConfig, PolicyEngine
 from .replay_guard import ReplayGuard, compute_fingerprint
@@ -183,6 +189,15 @@ class HardenedX402Client:
     httpx_client:
         An existing ``httpx.AsyncClient`` to reuse. If ``None``, a new client
         is created with sensible defaults.
+    mpa_engine:
+        Optional :class:`~presidio_x402.mpa.MPAEngine` for multi-party
+        authorization of high-value payments. When set, payments above
+        ``mpa_engine.config.min_amount_usd`` require n-of-m approvals before
+        signing. For crypto-mode approvers, pass countersignatures as
+        ``mpa_signatures`` in the request kwargs.
+    metrics_collector:
+        Optional :class:`~presidio_x402.metrics.MetricsCollector` for Prometheus
+        metrics export. Requires ``pip install presidio-hardened-x402[prometheus]``.
     """
 
     def __init__(
@@ -198,6 +213,8 @@ class HardenedX402Client:
         audit_writer: AuditWriter | None = None,
         agent_id: str | None = None,
         httpx_client: httpx.AsyncClient | None = None,
+        mpa_engine: MPAEngine | None = None,
+        metrics_collector: MetricsCollector | None = None,
     ) -> None:
         self._signer = payment_signer
         self._pii_filter = PIIFilter(mode=pii_mode, entities=pii_entities)
@@ -207,6 +224,8 @@ class HardenedX402Client:
         self._audit = AuditLog(audit_writer or NullAuditWriter(), agent_id=agent_id)
         self._agent_id = agent_id
         self._httpx = httpx_client or httpx.AsyncClient(timeout=30.0)
+        self._mpa = mpa_engine
+        self._metrics = metrics_collector
         logger.info("Presidio hardening applied — HardenedX402Client initialized")
 
     # ------------------------------------------------------------------
@@ -237,6 +256,9 @@ class HardenedX402Client:
 
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         """Send *method* request to *url*; handle 402 with security controls."""
+        # Extract MPA crypto-mode countersignatures if provided (not passed to httpx)
+        mpa_signatures: dict[str, str] | None = kwargs.pop("mpa_signatures", None)
+
         resp = await self._httpx.request(method, url, **kwargs)
 
         if resp.status_code != 402:
@@ -260,7 +282,9 @@ class HardenedX402Client:
             raise
 
         # Apply security controls; get (possibly modified) details back
-        secure_details = await self._apply_security_controls(details)
+        secure_details = await self._apply_security_controls(
+            details, mpa_signatures=mpa_signatures
+        )
 
         # Sign and retry
         try:
@@ -282,22 +306,30 @@ class HardenedX402Client:
         kwargs["headers"] = headers
         resp = await self._httpx.request(method, url, **kwargs)
 
+        paid_usd = _amount_to_usd(secure_details.amount, secure_details.currency)
         self._audit.emit(
             "PAYMENT_ALLOWED",
             resource_url=secure_details.resource_url,
-            amount_usd=_amount_to_usd(secure_details.amount, secure_details.currency),
+            amount_usd=paid_usd,
             network=secure_details.network,
             outcome="allowed",
         )
+        if self._metrics:
+            self._metrics.record_payment_allowed(paid_usd)
         return resp
 
-    async def _apply_security_controls(self, details: PaymentDetails) -> PaymentDetails:
-        """Apply PIIFilter → PolicyEngine → ReplayGuard → AuditLog.
+    async def _apply_security_controls(
+        self,
+        details: PaymentDetails,
+        *,
+        mpa_signatures: dict[str, str] | None = None,
+    ) -> PaymentDetails:
+        """Apply PIIFilter → PolicyEngine → ReplayGuard → MPAEngine → AuditLog.
 
         Returns (possibly modified) :class:`~presidio_x402._types.PaymentDetails`
         with PII redacted from metadata fields if ``pii_action="redact"``.
 
-        Raises on policy violation, replay, or PII block.
+        Raises on policy violation, replay, PII block, or MPA denial/timeout.
         """
         amount_usd = _amount_to_usd(details.amount, details.currency)
 
@@ -319,6 +351,9 @@ class HardenedX402Client:
                     outcome="blocked",
                     pii_entities_found=entity_types,
                 )
+                if self._metrics:
+                    self._metrics.record_pii_detection(entity_types, "block")
+                    self._metrics.record_payment_blocked("pii", amount_usd)
                 raise PIIBlockedError(
                     f"PII detected in payment metadata: {', '.join(sorted(set(entity_types)))}",
                     entities=entity_types,
@@ -332,6 +367,8 @@ class HardenedX402Client:
                     outcome="allowed",
                     pii_entities_found=entity_types,
                 )
+                if self._metrics:
+                    self._metrics.record_pii_detection(entity_types, "redact")
                 # Replace metadata fields with redacted versions
                 details = replace(
                     details,
@@ -340,7 +377,9 @@ class HardenedX402Client:
                     # Note: resource_url is used for fingerprinting with ORIGINAL value
                     # but we pass clean_url to the signer to avoid PII in the chain
                 )
-            # else pii_action == "warn": log already happened in PIIFilter, continue
+            elif self._metrics:
+                # pii_action == "warn": log already happened in PIIFilter
+                self._metrics.record_pii_detection(entity_types, "warn")
 
         # ------------------------------------------------------------------
         # 2. Policy Engine
@@ -356,6 +395,9 @@ class HardenedX402Client:
                 outcome="blocked",
                 policy_limit_usd=exc.limit_usd,
             )
+            if self._metrics:
+                self._metrics.record_policy_violation("limit_exceeded")
+                self._metrics.record_payment_blocked("policy", amount_usd)
             raise
 
         # ------------------------------------------------------------------
@@ -379,7 +421,35 @@ class HardenedX402Client:
                 outcome="blocked",
                 replay_fingerprint=fingerprint[:16],
             )
+            if self._metrics:
+                self._metrics.record_replay_detection()
+                self._metrics.record_payment_blocked("replay", amount_usd)
             raise
+
+        # ------------------------------------------------------------------
+        # 4. Multi-Party Authorization (if configured)
+        # ------------------------------------------------------------------
+        if self._mpa is not None:
+            try:
+                await self._mpa.request_approval(
+                    details, amount_usd, provided_signatures=mpa_signatures
+                )
+                if self._metrics:
+                    self._metrics.record_mpa_event("approved")
+            except (MPADeniedError, MPATimeoutError) as exc:
+                outcome = "timeout" if isinstance(exc, MPATimeoutError) else "denied"
+                self._audit.emit(
+                    "MPA_BLOCKED",
+                    resource_url=clean_url,
+                    amount_usd=amount_usd,
+                    network=details.network,
+                    outcome="blocked",
+                    error_message=str(exc),
+                )
+                if self._metrics:
+                    self._metrics.record_mpa_event(outcome)
+                    self._metrics.record_payment_blocked(f"mpa_{outcome}", amount_usd)
+                raise
 
         return details
 

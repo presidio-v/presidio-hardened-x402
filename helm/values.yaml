@@ -1,0 +1,85 @@
+# Default values for presidio-hardened-x402 sidecar.
+# Override with: helm install ... --set key=value
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/presidio-v/presidio-hardened-x402
+  tag: "0.3.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# x402 security middleware configuration
+x402:
+  agentId: ""
+  maxPerCallUsd: "0.10"
+  dailyLimitUsd: "5.00"
+  windowSeconds: "86400"
+  # Redis URL for cross-process replay guard (optional)
+  # redisUrl: "redis://redis:6379/0"
+  piiMode: "regex"       # regex | nlp
+  piiAction: "redact"    # redact | block | warn
+  replayTtl: "300"
+
+# Multi-party authorization (MPA) configuration
+# Set mpa.enabled=true and configure approvers to enable n-of-m approvals
+# for high-value payments.
+mpa:
+  enabled: false
+  threshold: 2
+  minAmountUsd: "1.00"
+  timeoutSeconds: "30"
+  # approvers:
+  #   - approverId: alice
+  #     mode: webhook
+  #     webhookUrl: https://approvals.internal/alice
+  #   - approverId: bob
+  #     mode: webhook
+  #     webhookUrl: https://approvals.internal/bob
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  fsGroup: 1001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 30
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+# Prometheus ServiceMonitor (requires prometheus-operator CRDs)
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  path: /metrics
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

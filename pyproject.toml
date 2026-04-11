@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "presidio-hardened-x402"
-version = "0.2.1"
+version = "0.3.0"
 description = "Security middleware for x402 agentic payments — PII redaction, spending policy, and replay detection before blockchain commit"
 readme = "README.md"
 license = "MIT"
@@ -47,6 +47,12 @@ langchain = [
 crewai = [
     "crewai>=0.28.0",
 ]
+prometheus = [
+    "prometheus-client>=0.20.0",
+]
+schema = [
+    "jsonschema>=4.21.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
@@ -54,6 +60,8 @@ dev = [
     "ruff>=0.4.0",
     "respx>=0.21.0",
     "fakeredis>=2.23",
+    "prometheus-client>=0.20.0",
+    "jsonschema>=4.21.0",
 ]
 
 [project.urls]

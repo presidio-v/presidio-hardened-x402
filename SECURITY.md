@@ -4,8 +4,9 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.2.x   | ✓ (current) |
-| 0.1.x   | ✓ |
+| 0.3.x   | ✓ (current) |
+| 0.2.x   | ✓ |
+| 0.1.x   | security fixes only |
 
 ## Reporting a Vulnerability
 
@@ -33,10 +34,24 @@ presidio-hardened-x402 provides the following security controls for x402 payment
 3. **Replay detection** — HMAC-SHA256 fingerprinting of canonical payment fields with TTL
    deduplication to prevent duplicate payments
 4. **Audit logging** — HMAC-chained JSON-L audit trail for every payment attempt
+5. **Multi-party authorization (MPA)** — n-of-m approval requirement for high-value payments,
+   via webhook or HMAC-SHA256 cryptographic countersignature modes (v0.3.0+)
+6. **Prometheus metrics** — Structured telemetry for all security control activations,
+   enabling real-time alerting on policy violations, PII detections, and replay attempts (v0.3.0+)
 
 ## Threat Model
 
 See `PRESIDIO-REQ.md` for the full threat model and security design rationale.
+
+### v0.3.0 additions
+
+| Threat | Mitigation |
+|--------|-----------|
+| Large-value payment without human oversight | MPA engine requires n-of-m approvals above configurable USD threshold |
+| Compromised single approver in MPA | Threshold design: n-of-m means one compromised approver does not unilaterally approve |
+| MPA denial-of-service (timeout) | `MPATimeoutError` blocks payment on timeout; no implicit approval |
+| Forged MPA webhook response | Crypto mode verifies HMAC-SHA256 countersignatures against shared secrets |
+| Unobservable security control activations | Prometheus metrics expose every PII detection, policy block, replay, and MPA event |
 
 ## Dependency Security
 

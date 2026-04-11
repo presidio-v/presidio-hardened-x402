@@ -154,14 +154,57 @@ on controlled data with known ground truth, then confirm the threat model on liv
 
 ---
 
-## v0.3.0 Requirements (Mature Enterprise)
+## v0.3.0 Requirements (Mature Enterprise) — Delivered
 
-- Multi-party authorization engine (`mpa.py`): n-of-m approval, webhook + cryptographic
-  countersignature modes
-- Policy-as-code JSON Schema (`x402-policy-schema.json`): shareable policy format,
-  IETF draft candidate
-- Kubernetes sidecar: Helm chart, Docker image (GHCR), Prometheus metrics exporter
-- SOC2 compliance reference architecture guide
+### Multi-party authorization (`mpa.py`)
+
+- **`MPAConfig`**: threshold (n-of-m), per-approver configs, min_amount_usd, timeout
+- **`MPAApproverConfig`**: approver_id, mode (`webhook` | `crypto`), webhook_url, shared_secret
+- **`MPAEngine.request_approval(details, amount_usd, provided_signatures)`**:
+  - Crypto mode: verifies HMAC-SHA256 countersignatures against configured shared secrets
+  - Webhook mode: parallel HTTP POSTs to approver endpoints; collects JSON `{"approved": bool}` responses
+  - Payments below `min_amount_usd` are exempt from MPA (performance critical path)
+  - Raises `MPADeniedError` (< threshold approvals) or `MPATimeoutError` (webhook timeout)
+- **Gateway integration**: `HardenedX402Client(mpa_engine=...)` — MPA runs after replay guard,
+  before signing. Crypto signatures passed via `mpa_signatures` kwarg.
+
+### Policy-as-code JSON Schema (`x402-policy-schema.json`)
+
+- JSON Schema Draft 2020-12 covering all `PolicyConfig` fields plus `mpa` section
+- `x402_policy_schema.py`: `validate_policy(dict)` + `load_policy_file(path)` (TOML + JSON)
+- `PolicyValidationError` with per-field error list for clear developer feedback
+- Marked as IETF draft candidate in schema `$id`
+
+### Prometheus metrics exporter (`metrics.py`)
+
+- `MetricsCollector` with counters: `payments_total`, `pii_detections_total`,
+  `policy_violations_total`, `replay_detections_total`, `mpa_events_total`
+- Histogram: `payment_amount_usd` (10 buckets, $0.001–$50)
+- Graceful no-op stub when `prometheus-client` not installed
+- `HardenedX402Client(metrics_collector=...)` integration
+- New optional extra: `pip install presidio-hardened-x402[prometheus]`
+
+### Kubernetes sidecar
+
+- `docker/Dockerfile`: multi-stage, non-root user (UID 1001), health check
+- `docker/sidecar_app.py`: FastAPI app with `/health`, `/metrics`, `/version`
+- Helm chart (`helm/`): `Chart.yaml`, `values.yaml`, deployment + service + ServiceMonitor
+- Image tag: `ghcr.io/presidio-v/presidio-hardened-x402:0.3.0`
+
+### SOC2 compliance reference architecture
+
+- `docs/soc2-reference-architecture.md`: SOC 2 TSC mapping, three deployment patterns,
+  audit log retention, GDPR obligations, secret management guidance, evidence collection table
+
+### New exceptions
+
+- `MPADeniedError(approvals_received, threshold)` — n-of-m requirement not met
+- `MPATimeoutError(approvals_received, threshold)` — webhook timeout
+
+### New optional extras
+
+- `[prometheus]`: `prometheus-client>=0.20.0`
+- `[schema]`: `jsonschema>=4.21.0`
 
 ---
 

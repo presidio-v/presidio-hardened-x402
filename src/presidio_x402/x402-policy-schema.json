@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/presidio-v/presidio-hardened-x402/x402-policy-schema.json",
+  "title": "X402PolicyConfig",
+  "description": "Declarative spending policy for presidio-hardened-x402. Defines per-call, aggregate, per-endpoint, and multi-party authorization limits for autonomous agent x402 payments. IETF draft candidate.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "max_per_call_usd": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Block any single payment exceeding this USD amount."
+    },
+    "daily_limit_usd": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Block a payment that would push aggregate spend over this USD amount within the time window."
+    },
+    "per_endpoint": {
+      "type": "object",
+      "description": "Per-endpoint-prefix aggregate limits. Keys are URL prefixes; values are USD limits.",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0
+      }
+    },
+    "window_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 86400,
+      "description": "Time window in seconds for aggregate limits (default: 86400 = 24 hours)."
+    },
+    "agent_id": {
+      "type": "string",
+      "description": "Optional agent identifier embedded in audit log events."
+    },
+    "mpa": {
+      "type": "object",
+      "description": "Multi-party authorization (MPA) configuration. When set, payments exceeding min_amount_usd require n-of-m approvals before execution.",
+      "required": ["threshold", "approvers"],
+      "additionalProperties": false,
+      "properties": {
+        "threshold": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of approvals required (n in n-of-m). Must be <= number of configured approvers."
+        },
+        "min_amount_usd": {
+          "type": "number",
+          "minimum": 0,
+          "default": 0,
+          "description": "Minimum payment amount in USD that triggers MPA. Payments below this are exempt."
+        },
+        "timeout_seconds": {
+          "type": "number",
+          "minimum": 1,
+          "default": 30,
+          "description": "Maximum seconds to wait for webhook approvals."
+        },
+        "approvers": {
+          "type": "array",
+          "minItems": 1,
+          "description": "List of configured approvers (m in n-of-m).",
+          "items": {
+            "type": "object",
+            "required": ["approver_id", "mode"],
+            "additionalProperties": false,
+            "properties": {
+              "approver_id": {
+                "type": "string",
+                "description": "Unique identifier for this approver."
+              },
+              "mode": {
+                "type": "string",
+                "enum": ["webhook", "crypto"],
+                "description": "'webhook': HTTP POST approval request. 'crypto': HMAC-SHA256 countersignature verification."
+              },
+              "webhook_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Webhook endpoint URL (required when mode='webhook')."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

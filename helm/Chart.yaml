@@ -1,0 +1,22 @@
+apiVersion: v2
+name: presidio-hardened-x402
+description: |
+  Kubernetes sidecar for presidio-hardened-x402 — security middleware for x402
+  agentic payments. Enforces PII redaction, spending policy, replay detection, and
+  multi-party authorization before payment execution.
+type: application
+version: 0.3.0
+appVersion: "0.3.0"
+keywords:
+  - x402
+  - payments
+  - security
+  - pii
+  - ai-agents
+  - micropayments
+home: https://github.com/presidio-v/presidio-hardened-x402
+sources:
+  - https://github.com/presidio-v/presidio-hardened-x402
+maintainers:
+  - name: Presidio Security
+    url: https://github.com/presidio-v
