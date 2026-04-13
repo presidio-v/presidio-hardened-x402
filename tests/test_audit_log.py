@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import importlib
 import io
 import json
+import os
 from datetime import timezone
 
 import pytest
 
 from presidio_x402._types import AuditEvent
-from presidio_x402.audit_log import AuditLog, NullAuditWriter, StreamAuditWriter
+from presidio_x402.audit_log import AuditLog, FileAuditWriter, NullAuditWriter, StreamAuditWriter
 
 
 class TestNullAuditWriter:
@@ -154,3 +156,86 @@ class TestAuditLogFields:
         buf.seek(0)
         entry = json.loads(buf.readline())
         assert entry["agent_id"] == "override-agent"
+
+
+class TestFileAuditWriter:
+    def test_appends_json_line_to_file(self, tmp_path):
+        path = str(tmp_path / "audit.jsonl")
+        writer = FileAuditWriter(path)
+        from datetime import datetime
+
+        event = AuditEvent(
+            timestamp=datetime.now(tz=timezone.utc),
+            event_type="PAYMENT_ALLOWED",
+            resource_url="https://api.example.com",
+            amount_usd=0.03,
+            network="base-mainnet",
+            agent_id="agent-file",
+            outcome="allowed",
+        )
+        writer.write(event)
+        with open(path, encoding="utf-8") as fh:
+            line = fh.readline()
+        parsed = json.loads(line)
+        assert parsed["event_type"] == "PAYMENT_ALLOWED"
+        assert parsed["amount_usd"] == pytest.approx(0.03)
+
+    def test_multiple_writes_append(self, tmp_path):
+        path = str(tmp_path / "audit.jsonl")
+        log = AuditLog(writer=FileAuditWriter(path))
+        log.emit("PAYMENT_ALLOWED", resource_url="https://a.example.com", outcome="allowed")
+        log.emit("POLICY_BLOCKED", resource_url="https://b.example.com", outcome="blocked")
+        with open(path, encoding="utf-8") as fh:
+            lines = [ln for ln in fh.readlines() if ln.strip()]
+        assert len(lines) == 2
+        assert json.loads(lines[1])["event_type"] == "POLICY_BLOCKED"
+
+
+class TestAuditLogWriterFailure:
+    def test_writer_exception_is_caught_and_chain_advances(self):
+        """A failing writer must not break the HMAC chain."""
+
+        class _FailingWriter:
+            def write(self, event: AuditEvent) -> None:
+                raise RuntimeError("disk full")
+
+        log = AuditLog(writer=_FailingWriter())
+        # Should not raise despite writer failure
+        log.emit("PAYMENT_ALLOWED", resource_url="https://api.example.com", outcome="allowed")
+        # Chain advances — second emit also runs without error
+        log.emit("PAYMENT_ALLOWED", resource_url="https://api.example.com", outcome="allowed")
+        assert log._prev_hmac is not None
+
+
+class TestChainKeyFromEnv:
+    def test_valid_env_key_is_loaded(self, monkeypatch):
+        import secrets
+
+        key_hex = secrets.token_bytes(32).hex()
+        monkeypatch.setenv("PRESIDIO_X402_CHAIN_KEY", key_hex)
+        import presidio_x402.audit_log as al_mod
+
+        importlib.reload(al_mod)
+        assert bytes.fromhex(key_hex) == al_mod._CHAIN_KEY
+
+    def test_invalid_hex_env_key_raises(self, monkeypatch):
+        monkeypatch.setenv("PRESIDIO_X402_CHAIN_KEY", "not-valid-hex!!")
+        import presidio_x402.audit_log as al_mod
+
+        with pytest.raises(ValueError, match="64-character hex string"):
+            importlib.reload(al_mod)
+
+    def test_wrong_length_env_key_raises(self, monkeypatch):
+        # Valid hex but only 16 bytes (32 hex chars) — too short
+        monkeypatch.setenv("PRESIDIO_X402_CHAIN_KEY", "aa" * 16)
+        import presidio_x402.audit_log as al_mod
+
+        with pytest.raises(ValueError, match="exactly 32 bytes"):
+            importlib.reload(al_mod)
+
+    def teardown_method(self, method):
+        # Reload without env var so other tests get a fresh ephemeral key
+        os.environ.pop("PRESIDIO_X402_CHAIN_KEY", None)
+        import presidio_x402.audit_log as al_mod
+
+        importlib.reload(al_mod)

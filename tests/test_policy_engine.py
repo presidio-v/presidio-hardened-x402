@@ -106,6 +106,18 @@ class TestPolicyEngineReset:
         # After reset, should allow another payment
         engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.08)
 
+    def test_reset_clears_endpoint_ledgers(self):
+        engine = PolicyEngine(
+            PolicyConfig(
+                per_endpoint={"https://api.example.com": 0.10},
+            )
+        )
+        engine.check_and_record(resource_url="https://api.example.com/data", amount_usd=0.08)
+        # Endpoint ledger now has 0.08 recorded; another 0.08 would exceed 0.10
+        engine.reset()
+        # After reset, endpoint ledger is cleared — same payment is allowed again
+        engine.check_and_record(resource_url="https://api.example.com/data", amount_usd=0.08)
+
 
 class TestPolicyEngineWindowExpiry:
     def test_old_entries_expire_from_window(self):
