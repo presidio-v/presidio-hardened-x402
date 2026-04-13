@@ -115,6 +115,10 @@ class PolicyEngine:
         self._global_ledger = _SpendLedger(config.window_seconds)
         self._endpoint_ledgers: dict[str, _SpendLedger] = {}
         self._ledger_lock = threading.Lock()
+        # Serialises the check+record phase to prevent TOCTOU races where two
+        # concurrent callers both pass would_exceed() then both record, pushing
+        # aggregate spend over the configured limit.
+        self._check_lock = threading.Lock()
 
     def _get_endpoint_ledger(self, prefix: str) -> _SpendLedger:
         with self._ledger_lock:
@@ -153,7 +157,7 @@ class PolicyEngine:
         amount_usd:
             The payment amount in USD.
         """
-        # 1. Per-call limit
+        # 1. Per-call limit — stateless, safe to check outside the serialisation lock
         if self.config.max_per_call_usd is not None and amount_usd > self.config.max_per_call_usd:
             logger.warning(
                 "Policy violation: per-call limit %.4f USD, requested %.4f USD for %s",
@@ -168,49 +172,53 @@ class PolicyEngine:
                 limit_usd=self.config.max_per_call_usd,
             )
 
-        # 2. Global aggregate limit
-        if self.config.daily_limit_usd is not None and self._global_ledger.would_exceed(
-            amount_usd, self.config.daily_limit_usd
-        ):
-            current = self._global_ledger.total()
-            logger.warning(
-                "Policy violation: global limit %.2f USD, current %.4f + %.4f",
-                self.config.daily_limit_usd,
-                current,
-                amount_usd,
-            )
-            raise PolicyViolationError(
-                f"Payment would push aggregate spend (${current:.4f} + ${amount_usd:.4f}) "
-                f"over global limit of ${self.config.daily_limit_usd:.2f}",
-                amount_usd=amount_usd,
-                limit_usd=self.config.daily_limit_usd,
-            )
-
-        # 3. Per-endpoint limit
-        prefix = self._matching_endpoint_prefix(resource_url)
-        if prefix is not None:
-            ep_limit = self.config.per_endpoint[prefix]
-            ep_ledger = self._get_endpoint_ledger(prefix)
-            if ep_ledger.would_exceed(amount_usd, ep_limit):
-                current = ep_ledger.total()
+        # 2 & 3. Aggregate and per-endpoint checks + recording are performed under
+        # a single lock to prevent TOCTOU races where two concurrent callers both
+        # pass would_exceed() and then both record, pushing spend over the limit.
+        with self._check_lock:
+            # 2. Global aggregate limit
+            if self.config.daily_limit_usd is not None and self._global_ledger.would_exceed(
+                amount_usd, self.config.daily_limit_usd
+            ):
+                current = self._global_ledger.total()
                 logger.warning(
-                    "Policy violation: endpoint limit %.2f USD for %s, current %.4f + %.4f",
-                    ep_limit,
-                    prefix,
+                    "Policy violation: global limit %.2f USD, current %.4f + %.4f",
+                    self.config.daily_limit_usd,
                     current,
                     amount_usd,
                 )
                 raise PolicyViolationError(
-                    f"Payment would push endpoint spend for {prefix!r} "
-                    f"(${current:.4f} + ${amount_usd:.4f}) over limit of ${ep_limit:.2f}",
+                    f"Payment would push aggregate spend (${current:.4f} + ${amount_usd:.4f}) "
+                    f"over global limit of ${self.config.daily_limit_usd:.2f}",
                     amount_usd=amount_usd,
-                    limit_usd=ep_limit,
+                    limit_usd=self.config.daily_limit_usd,
                 )
 
-        # All checks passed — record the spend
-        self._global_ledger.record(amount_usd)
-        if prefix is not None:
-            self._get_endpoint_ledger(prefix).record(amount_usd)
+            # 3. Per-endpoint limit
+            prefix = self._matching_endpoint_prefix(resource_url)
+            if prefix is not None:
+                ep_limit = self.config.per_endpoint[prefix]
+                ep_ledger = self._get_endpoint_ledger(prefix)
+                if ep_ledger.would_exceed(amount_usd, ep_limit):
+                    current = ep_ledger.total()
+                    logger.warning(
+                        "Policy violation: endpoint limit %.2f USD for %s, current %.4f + %.4f",
+                        ep_limit,
+                        prefix,
+                        current,
+                        amount_usd,
+                    )
+                    raise PolicyViolationError(
+                        f"Payment would push endpoint spend for {prefix!r} "
+                        f"(${current:.4f} + ${amount_usd:.4f}) over limit of ${ep_limit:.2f}",
+                        amount_usd=amount_usd,
+                        limit_usd=ep_limit,
+                    )
+
+            # All checks passed — record atomically within the same lock acquisition
+            self._global_ledger.record(amount_usd)
+            if prefix is not None:
+                self._get_endpoint_ledger(prefix).record(amount_usd)
 
         logger.debug("Policy check passed: %.4f USD for %s", amount_usd, resource_url)
 

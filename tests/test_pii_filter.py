@@ -25,7 +25,7 @@ class TestPIIFilterRegexMode:
             "https://api.example.com/user/alice@example.com/data"
         )
         assert "alice@example.com" not in redacted
-        assert "<EMAIL_ADDRESS>" in redacted
+        assert "<REDACTED>" in redacted
         assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
 
     def test_email_original_text_preserved_in_entity_result(self):

@@ -7,10 +7,20 @@ or deletion of log entries.
 .. note:: Chain-integrity scope
 
    The HMAC chain key (``_CHAIN_KEY``) is generated fresh on every process
-   start. Tamper-detection via ``prev_entry_hmac`` is therefore only guaranteed
-   **within a single process lifetime**. Entries written in separate runs are
-   not chained together. For persistent cross-session integrity, persist the
-   chain key to a restricted file and load it on startup.
+   start by default. Tamper-detection via ``prev_entry_hmac`` is therefore only
+   guaranteed **within a single process lifetime** unless a persistent key is
+   configured.
+
+   For cross-session audit chain integrity, set the environment variable
+   ``PRESIDIO_X402_CHAIN_KEY`` to a 64-character hex string (32 bytes) before
+   starting the process. Generate once and store in a secrets manager or
+   restricted file::
+
+       python -c "import secrets; print(secrets.token_bytes(32).hex())"
+
+   When the env var is present, all process restarts will continue the same
+   HMAC chain, allowing offline verification that no entries were deleted or
+   tampered with across sessions.
 
 Built-in writers:
   - :class:`NullAuditWriter` — discards events (useful for testing)
@@ -33,6 +43,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import secrets
 import sys
 import threading
@@ -43,7 +54,22 @@ from ._types import AuditEvent, AuditWriter
 
 logger = logging.getLogger("presidio_x402.audit_log")
 
-_CHAIN_KEY = secrets.token_bytes(32)
+_chain_key_hex = os.environ.get("PRESIDIO_X402_CHAIN_KEY")
+if _chain_key_hex:
+    try:
+        _CHAIN_KEY = bytes.fromhex(_chain_key_hex)
+    except ValueError as _exc:
+        raise ValueError(
+            "PRESIDIO_X402_CHAIN_KEY must be a 64-character hex string (32 bytes); "
+            f"got {len(_chain_key_hex)} characters"
+        ) from _exc
+    if len(_CHAIN_KEY) != 32:
+        raise ValueError(
+            f"PRESIDIO_X402_CHAIN_KEY must decode to exactly 32 bytes; got {len(_CHAIN_KEY)}"
+        )
+    logger.debug("AuditLog: loaded persistent chain key from PRESIDIO_X402_CHAIN_KEY")
+else:
+    _CHAIN_KEY = secrets.token_bytes(32)
 
 
 def _hmac_entry(content: str) -> str:

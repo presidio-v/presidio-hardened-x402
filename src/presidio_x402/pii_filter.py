@@ -10,7 +10,10 @@ Usage::
 
     filt = PIIFilter(mode="regex", entities=["EMAIL_ADDRESS", "US_SSN"])
     redacted_url, entities = filt.scan_and_redact("https://api.example.com/user/alice@example.com")
-    # redacted_url: "https://api.example.com/user/<EMAIL_ADDRESS>"
+    # redacted_url: "https://api.example.com/user/<REDACTED>"
+
+    # To include entity type in the placeholder (for audit-only pipelines):
+    filt = PIIFilter(mode="regex", redaction_template="<{entity_type}>")
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from typing import Literal
 
 logger = logging.getLogger("presidio_x402.pii_filter")
 
-REDACTED_TEMPLATE = "<{entity_type}>"
+REDACTED_TEMPLATE = "<REDACTED>"
 
 # ---------------------------------------------------------------------------
 # Regex-mode PII patterns
