@@ -330,6 +330,137 @@ class TestMPAWebhookMode:
 
 
 # ---------------------------------------------------------------------------
+# Webhook mode — HMAC response verification
+# ---------------------------------------------------------------------------
+
+WEBHOOK_SECRET = b"webhook-hmac-secret"
+
+
+def _make_hmac_header(secret: bytes, body: bytes) -> str:
+    """Compute the X-MPA-HMAC header value for a given response body."""
+    return hmac.new(secret, body, hashlib.sha256).hexdigest()
+
+
+class TestMPAWebhookHMAC:
+    """Tests for X-MPA-HMAC response authentication (CWE-295 fix)."""
+
+    def setup_method(self):
+        self.details = _make_details(amount="2.00")
+        self.amount_usd = 2.00
+
+    @pytest.mark.asyncio
+    async def test_valid_hmac_header_counts_as_approval(self):
+        """Webhook approver with shared_secret + correct X-MPA-HMAC → approved."""
+        engine = MPAEngine(
+            MPAConfig(
+                threshold=1,
+                approvers=[
+                    MPAApproverConfig(
+                        "alice",
+                        mode="webhook",
+                        webhook_url="https://approvals.internal/alice",
+                        shared_secret=WEBHOOK_SECRET,
+                    ),
+                ],
+            )
+        )
+        body = json.dumps({"approved": True, "approver_id": "alice"}).encode()
+        header = _make_hmac_header(WEBHOOK_SECRET, body)
+        with respx.mock:
+            respx.post("https://approvals.internal/alice").mock(
+                return_value=httpx.Response(
+                    200,
+                    content=body,
+                    headers={"Content-Type": "application/json", "X-MPA-HMAC": header},
+                )
+            )
+            # Should not raise — one approval meets threshold 1
+            await engine.request_approval(self.details, self.amount_usd)
+
+    @pytest.mark.asyncio
+    async def test_missing_hmac_header_treated_as_denied(self):
+        """Webhook approver with shared_secret but no X-MPA-HMAC header → denied."""
+        engine = MPAEngine(
+            MPAConfig(
+                threshold=1,
+                approvers=[
+                    MPAApproverConfig(
+                        "alice",
+                        mode="webhook",
+                        webhook_url="https://approvals.internal/alice",
+                        shared_secret=WEBHOOK_SECRET,
+                    ),
+                ],
+            )
+        )
+        with respx.mock:
+            respx.post("https://approvals.internal/alice").mock(
+                return_value=httpx.Response(
+                    200,
+                    json={"approved": True, "approver_id": "alice"},
+                    # No X-MPA-HMAC header
+                )
+            )
+            with pytest.raises(MPADeniedError, match="0 of 1 required approvals"):
+                await engine.request_approval(self.details, self.amount_usd)
+
+    @pytest.mark.asyncio
+    async def test_wrong_hmac_header_treated_as_denied(self):
+        """Webhook approver with shared_secret + tampered X-MPA-HMAC header → denied."""
+        engine = MPAEngine(
+            MPAConfig(
+                threshold=1,
+                approvers=[
+                    MPAApproverConfig(
+                        "alice",
+                        mode="webhook",
+                        webhook_url="https://approvals.internal/alice",
+                        shared_secret=WEBHOOK_SECRET,
+                    ),
+                ],
+            )
+        )
+        body = json.dumps({"approved": True, "approver_id": "alice"}).encode()
+        wrong_header = "deadbeef" * 8  # 64 hex chars, wrong value
+        with respx.mock:
+            respx.post("https://approvals.internal/alice").mock(
+                return_value=httpx.Response(
+                    200,
+                    content=body,
+                    headers={"Content-Type": "application/json", "X-MPA-HMAC": wrong_header},
+                )
+            )
+            with pytest.raises(MPADeniedError, match="0 of 1 required approvals"):
+                await engine.request_approval(self.details, self.amount_usd)
+
+    @pytest.mark.asyncio
+    async def test_no_shared_secret_skips_hmac_check(self):
+        """Webhook approver without shared_secret accepts response without X-MPA-HMAC."""
+        engine = MPAEngine(
+            MPAConfig(
+                threshold=1,
+                approvers=[
+                    MPAApproverConfig(
+                        "alice",
+                        mode="webhook",
+                        webhook_url="https://approvals.internal/alice",
+                        # No shared_secret — backwards-compatible path
+                    ),
+                ],
+            )
+        )
+        with respx.mock:
+            respx.post("https://approvals.internal/alice").mock(
+                return_value=httpx.Response(
+                    200,
+                    json={"approved": True, "approver_id": "alice"},
+                    # No X-MPA-HMAC header — should still pass
+                )
+            )
+            await engine.request_approval(self.details, self.amount_usd)
+
+
+# ---------------------------------------------------------------------------
 # Mixed mode (crypto + webhook)
 # ---------------------------------------------------------------------------
 

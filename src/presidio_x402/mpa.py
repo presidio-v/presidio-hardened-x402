@@ -90,7 +90,17 @@ class MPAApproverConfig:
     webhook_url:
         Approval webhook endpoint (required for ``mode="webhook"``).
     shared_secret:
-        HMAC-SHA256 shared secret in bytes (required for ``mode="crypto"``).
+        HMAC-SHA256 shared secret in bytes.
+
+        - For ``mode="crypto"``: required — used to verify pre-collected
+          countersignatures.
+        - For ``mode="webhook"``: optional but strongly recommended for
+          production deployments. When set, the approver's HTTP response
+          **must** include an ``X-MPA-HMAC`` header containing the
+          HMAC-SHA256 hex digest of the raw response body, keyed with this
+          secret. Responses that omit or fail the header check are treated
+          as denied. Without a secret, responses are accepted on structural
+          validity alone (suitable for internal trusted networks only).
     """
 
     approver_id: str
@@ -373,6 +383,28 @@ class MPAEngine:
                 json=payload,
             )
             resp.raise_for_status()
+
+            # Verify response HMAC if the approver has a shared secret configured.
+            # The approver must include X-MPA-HMAC: <hex(HMAC-SHA256(secret, body))>.
+            if approver.shared_secret is not None:
+                header_hmac = resp.headers.get("X-MPA-HMAC", "")
+                expected_hmac = hmac.new(
+                    approver.shared_secret, resp.content, hashlib.sha256
+                ).hexdigest()
+                if not header_hmac or not hmac.compare_digest(expected_hmac, header_hmac.lower()):
+                    logger.warning(
+                        "MPA webhook response HMAC invalid for approver %s "
+                        "(header %s, expected %s…); treating as denied",
+                        approver.approver_id,
+                        repr(header_hmac[:8] + "…") if header_hmac else "missing",
+                        expected_hmac[:8],
+                    )
+                    return ApprovalResponse(
+                        approver_id=approver.approver_id,
+                        approved=False,
+                        reason="response HMAC verification failed",
+                    )
+
             data: dict[str, Any] = resp.json()
             return ApprovalResponse(
                 approver_id=approver.approver_id,
