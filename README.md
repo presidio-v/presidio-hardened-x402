@@ -294,7 +294,7 @@ All exceptions are importable from `presidio_x402`.
 
 | Artifact | Location | Description |
 |---|---|---|
-| Synthetic corpus | `corpus/` | 2,000 labelled x402 metadata triples; generator (`generate.py`, `seed=42`) + metadata (`corpus_meta.json`); raw JSONL reproducible from seed |
+| Synthetic corpus | [`vstantch/x402-pii-corpus`](https://huggingface.co/datasets/vstantch/x402-pii-corpus) on Hugging Face · `corpus/` | 2,000 labelled x402 metadata triples; generator (`generate.py`, `seed=42`) + metadata (`corpus_meta.json`); raw JSONL reproducible from seed |
 | Precision/recall sweep | `experiments/` | 42-configuration grid search (`run_sweep.py`); latency benchmark (`run_latency.py`) |
 | Dune Analytics queries | `dune/` | 6 Trino SQL queries used to characterise the live x402 ecosystem (20 projects, 96 wallets, 11 chains, ≥79M transactions); see `dune/README.md` |
 
