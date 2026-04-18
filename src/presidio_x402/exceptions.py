@@ -76,3 +76,33 @@ class MPAWebhookURLError(X402Error):
     Applies at config time (scheme + IP-literal checks) and at request time
     (DNS-resolution check against blocked networks).
     """
+
+
+class ScreeningError(X402Error):
+    """Base class for remote screening-API failures."""
+
+
+class ScreeningAuthError(ScreeningError):
+    """Raised when the screening API rejects the API key (HTTP 401).
+
+    Not retried — caller must obtain a new key or fall back to local screening.
+    """
+
+
+class ScreeningRateLimitError(ScreeningError):
+    """Raised when the screening API daily quota is exhausted (HTTP 429).
+
+    Attributes
+    ----------
+    retry_after:
+        Seconds until the quota resets, parsed from the ``Retry-After`` header.
+        ``None`` when the server did not supply the header.
+    """
+
+    def __init__(self, message: str, *, retry_after: int | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class ScreeningUnavailableError(ScreeningError):
+    """Raised when the screening API is unreachable or returned a 5xx after retry."""
