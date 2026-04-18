@@ -1,5 +1,13 @@
 # presidio-hardened-x402
 
+[![PyPI version](https://img.shields.io/pypi/v/presidio-hardened-x402.svg)](https://pypi.org/project/presidio-hardened-x402/)
+[![Python](https://img.shields.io/pypi/pyversions/presidio-hardened-x402.svg)](https://pypi.org/project/presidio-hardened-x402/)
+[![GitHub release](https://img.shields.io/github/v/release/presidio-v/presidio-hardened-x402.svg)](https://github.com/presidio-v/presidio-hardened-x402/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml/badge.svg)](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml)
+
+> v0.3.0 — PII redaction, spending policy, replay detection, audit logging, multi-party authorization, and Prometheus metrics for x402 payments
+
 Security middleware for the [x402 payment protocol](https://www.x402.org/).
 
 Intercepts x402 payment requests **before transmission to servers and facilitators** to enforce:
