@@ -57,6 +57,7 @@ CHARLIE_SECRET = b"charlie-shared-secret"
 class TestMPAConfigValidation:
     def test_valid_config(self):
         cfg = MPAConfig(
+            dns_rebinding_protection=False,
             threshold=2,
             approvers=[
                 MPAApproverConfig("alice", mode="webhook", webhook_url="https://a.internal"),
@@ -70,6 +71,7 @@ class TestMPAConfigValidation:
     def test_threshold_zero_raises(self):
         with pytest.raises(ValueError, match="threshold must be >= 1"):
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=0,
                 approvers=[
                     MPAApproverConfig("alice", mode="webhook", webhook_url="https://a.internal"),
@@ -79,6 +81,7 @@ class TestMPAConfigValidation:
     def test_threshold_exceeds_approvers_raises(self):
         with pytest.raises(ValueError, match="cannot exceed number of approvers"):
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=3,
                 approvers=[
                     MPAApproverConfig("alice", mode="webhook", webhook_url="https://a.internal"),
@@ -89,7 +92,7 @@ class TestMPAConfigValidation:
     def test_empty_approvers_raises(self):
         # threshold 1 > 0 approvers → should raise
         with pytest.raises(ValueError, match="cannot exceed number of approvers"):
-            MPAConfig(threshold=1, approvers=[])
+            MPAConfig(dns_rebinding_protection=False, threshold=1, approvers=[])
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +104,7 @@ class TestMPAAmountThreshold:
     def setup_method(self):
         self.engine = MPAEngine(
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=1,
                 min_amount_usd=5.00,
                 approvers=[
@@ -140,6 +144,7 @@ class TestMPACryptoMode:
     async def test_single_valid_signature_meets_threshold(self):
         engine = MPAEngine(
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)],
             )
@@ -154,6 +159,7 @@ class TestMPACryptoMode:
     async def test_two_of_three_valid_signatures(self):
         engine = MPAEngine(
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=2,
                 approvers=[
                     MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET),
@@ -172,6 +178,7 @@ class TestMPACryptoMode:
     async def test_wrong_signature_is_rejected(self):
         engine = MPAEngine(
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)],
             )
@@ -189,6 +196,7 @@ class TestMPACryptoMode:
     async def test_missing_signature_is_denied(self):
         engine = MPAEngine(
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)],
             )
@@ -200,6 +208,7 @@ class TestMPACryptoMode:
     async def test_below_threshold_signatures_denied(self):
         engine = MPAEngine(
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=2,
                 approvers=[
                     MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET),
@@ -226,6 +235,7 @@ class TestMPAWebhookMode:
         self.amount_usd = 3.00
         self.engine = MPAEngine(
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=2,
                 timeout_seconds=5.0,
                 approvers=[
@@ -313,6 +323,7 @@ class TestMPAWebhookMode:
     async def test_approved_error_message_is_informative(self):
         engine = MPAEngine(
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[
                     MPAApproverConfig(
@@ -353,6 +364,7 @@ class TestMPAWebhookHMAC:
         """Webhook approver with shared_secret + correct X-MPA-HMAC → approved."""
         engine = MPAEngine(
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[
                     MPAApproverConfig(
@@ -382,6 +394,7 @@ class TestMPAWebhookHMAC:
         """Webhook approver with shared_secret but no X-MPA-HMAC header → denied."""
         engine = MPAEngine(
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[
                     MPAApproverConfig(
@@ -409,6 +422,7 @@ class TestMPAWebhookHMAC:
         """Webhook approver with shared_secret + tampered X-MPA-HMAC header → denied."""
         engine = MPAEngine(
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[
                     MPAApproverConfig(
@@ -438,6 +452,7 @@ class TestMPAWebhookHMAC:
         """Webhook approver without shared_secret accepts response without X-MPA-HMAC."""
         engine = MPAEngine(
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[
                     MPAApproverConfig(
@@ -475,6 +490,7 @@ class TestMPAMixedMode:
         """Alice provides crypto sig; Bob approves via webhook; threshold 2 → approved."""
         engine = MPAEngine(
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=2,
                 approvers=[
                     MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET),
@@ -498,6 +514,7 @@ class TestMPAMixedMode:
         """Alice provides valid crypto sig; Bob denies; threshold 2 → MPADeniedError."""
         engine = MPAEngine(
             MPAConfig(
+                dns_rebinding_protection=False,
                 threshold=2,
                 approvers=[
                     MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET),

@@ -60,20 +60,86 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
+import socket
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
+from urllib.parse import urlparse
 
 import httpx
 
-from .exceptions import MPADeniedError, MPATimeoutError
+from .exceptions import MPADeniedError, MPATimeoutError, MPAWebhookURLError
 from .replay_guard import compute_fingerprint
 
 if TYPE_CHECKING:
     from ._types import PaymentDetails
 
 logger = logging.getLogger("presidio_x402.mpa")
+
+# Networks that must never be reachable by an MPA webhook — SSRF defense.
+# Covers loopback, RFC1918 private ranges, link-local (incl. IMDS 169.254.169.254),
+# CGNAT, and IPv6 equivalents. A webhook URL resolving into any of these is refused
+# both at config time (IP literals) and at request time (post-DNS).
+_BLOCKED_NETWORKS: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("100.64.0.0/10"),
+    ipaddress.ip_network("0.0.0.0/8"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+    ipaddress.ip_network("::/128"),
+)
+
+
+def _ip_is_blocked(addr_str: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(addr_str)
+    except ValueError:
+        return False
+    return any(addr in net for net in _BLOCKED_NETWORKS)
+
+
+def _validate_webhook_url(url: str) -> None:
+    """Static validation of an MPA webhook URL (called at config time).
+
+    Enforces HTTPS-only and rejects IP-literal hosts that fall in blocked ranges.
+    Hostname-based URLs are not resolved here — DNS-rebinding defense runs at
+    request time in :meth:`MPAEngine._request_single_approval`.
+    """
+    if not url:
+        raise MPAWebhookURLError("MPA webhook URL must be a non-empty string")
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise MPAWebhookURLError(
+            f"MPA webhook URL must use https:// (got scheme {parsed.scheme!r})"
+        )
+    host = parsed.hostname
+    if not host:
+        raise MPAWebhookURLError("MPA webhook URL must include a hostname")
+    if _ip_is_blocked(host):
+        raise MPAWebhookURLError(f"MPA webhook URL host {host!r} is in a blocked network range")
+
+
+def _resolve_and_check_host(host: str) -> None:
+    """Resolve *host* and raise if any A/AAAA record falls in a blocked range.
+
+    Defeats DNS-rebinding attacks where a public hostname briefly resolves to
+    an internal IP between config time and request time.
+    """
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as exc:
+        raise MPAWebhookURLError(f"DNS resolution failed for {host!r}") from exc
+    for info in infos:
+        addr = info[4][0]
+        if _ip_is_blocked(addr):
+            raise MPAWebhookURLError(f"Host {host!r} resolves to blocked address {addr!r}")
 
 
 @dataclass(frozen=True)
@@ -108,6 +174,14 @@ class MPAApproverConfig:
     webhook_url: str | None = None
     shared_secret: bytes | None = None
 
+    def __post_init__(self) -> None:
+        if self.mode == "webhook":
+            if not self.webhook_url:
+                raise MPAWebhookURLError(
+                    f"MPA approver {self.approver_id!r} in webhook mode requires webhook_url"
+                )
+            _validate_webhook_url(self.webhook_url)
+
 
 @dataclass
 class MPAConfig:
@@ -125,12 +199,19 @@ class MPAConfig:
         meaning all payments require MPA if any approvers are configured).
     timeout_seconds:
         Maximum wait time for webhook approvals (default: ``30.0`` seconds).
+    dns_rebinding_protection:
+        Before every webhook request, resolve the hostname and verify no
+        resolved address falls in a blocked network (RFC1918, link-local,
+        loopback, IMDS, etc.). Default ``True``. Set ``False`` only in test
+        fixtures that mock the HTTP transport and do not own real DNS for
+        the configured approver hostnames.
     """
 
     threshold: int
     approvers: list[MPAApproverConfig] = field(default_factory=list)
     min_amount_usd: float = 0.0
     timeout_seconds: float = 30.0
+    dns_rebinding_protection: bool = True
 
     def __post_init__(self) -> None:
         if self.threshold < 1:
@@ -378,6 +459,16 @@ class MPAEngine:
             "amount_usd": request_data.amount_usd,
         }
         try:
+            # DNS-rebinding defense: if the URL host is a DNS name (not an IP
+            # literal), re-resolve it right before sending and refuse any
+            # resolved address that falls in a blocked network.
+            if self.config.dns_rebinding_protection:
+                host = urlparse(approver.webhook_url or "").hostname or ""
+                try:
+                    ipaddress.ip_address(host)
+                except ValueError:
+                    if host:
+                        _resolve_and_check_host(host)
             resp = await self._httpx.post(
                 approver.webhook_url,  # type: ignore[arg-type]
                 json=payload,
