@@ -69,6 +69,23 @@ _HEADER_PAYMENT_RECEIPT = "X-PAYMENT-RECEIPT"
 # Supported x402 scheme for v0.1.0
 _SUPPORTED_SCHEME = "exact"
 
+# Max characters of an exception message retained in audit records. Exception
+# text frequently carries fragments of the offending input (JSON snippets,
+# signing-key material, wallet addresses) — truncation caps blast radius.
+_SAFE_EXC_MESSAGE_MAX = 80
+
+
+def _safe_exc_message(exc: BaseException, max_len: int = _SAFE_EXC_MESSAGE_MAX) -> str:
+    msg = str(exc)
+    if len(msg) > max_len:
+        msg = msg[:max_len] + "...[truncated]"
+    return msg
+
+
+def _resource_origin(url: str) -> str:
+    parsed = httpx.URL(url)
+    return str(parsed.copy_with(path="", query=None, fragment=None)).rstrip("/")
+
 
 def _parse_402_header(header_value: str) -> PaymentDetails:
     """Parse the ``X-PAYMENT`` header from a 402 response.
@@ -92,7 +109,9 @@ def _parse_402_header(header_value: str) -> PaymentDetails:
     try:
         data = json.loads(header_value)
     except json.JSONDecodeError as exc:
-        raise X402PaymentError(f"Invalid X-PAYMENT header JSON: {exc}") from exc
+        # Never embed the raw JSON (which may carry wallet/PII fragments) in
+        # the message. Original cause remains on __cause__ for debugging.
+        raise X402PaymentError("Invalid X-PAYMENT header JSON") from exc
 
     accepts = data.get("accepts", [])
     if not accepts:
@@ -123,8 +142,8 @@ def _parse_402_header(header_value: str) -> PaymentDetails:
             reason=chosen.get("reason", ""),
             extra=chosen.get("extra", {}),
         )
-    except KeyError as exc:
-        raise X402PaymentError(f"Missing required field in X-PAYMENT entry: {exc}") from exc
+    except KeyError:
+        raise X402PaymentError("Missing required field in X-PAYMENT entry") from None
 
 
 _USD_PEGGED = frozenset({"USDC", "USDT", "DAI", "USDCE", "USDBC"})
@@ -198,6 +217,17 @@ class HardenedX402Client:
     metrics_collector:
         Optional :class:`~presidio_x402.metrics.MetricsCollector` for Prometheus
         metrics export. Requires ``pip install presidio-hardened-x402[prometheus]``.
+    trusted_wallets:
+        Optional per-origin ``pay_to`` allowlist. Maps a resource origin
+        (scheme + host[:port]) to the set of wallet addresses the client is
+        willing to pay for resources under that origin. When a 402 response
+        names a ``pay_to`` not in the allowlist for its origin, the payment is
+        blocked before signing. ``None`` (default) disables the check; an
+        origin absent from the map is unrestricted. Example::
+
+            trusted_wallets={
+                "https://api.example.com": {"0xAbC...123"},
+            }
     """
 
     def __init__(
@@ -215,6 +245,7 @@ class HardenedX402Client:
         httpx_client: httpx.AsyncClient | None = None,
         mpa_engine: MPAEngine | None = None,
         metrics_collector: MetricsCollector | None = None,
+        trusted_wallets: dict[str, set[str]] | None = None,
     ) -> None:
         self._signer = payment_signer
         self._pii_filter = PIIFilter(mode=pii_mode, entities=pii_entities)
@@ -226,6 +257,11 @@ class HardenedX402Client:
         self._httpx = httpx_client or httpx.AsyncClient(timeout=30.0)
         self._mpa = mpa_engine
         self._metrics = metrics_collector
+        self._trusted_wallets: dict[str, frozenset[str]] | None = (
+            {origin.rstrip("/"): frozenset(wallets) for origin, wallets in trusted_wallets.items()}
+            if trusted_wallets is not None
+            else None
+        )
         logger.info("Presidio hardening applied — HardenedX402Client initialized")
 
     # ------------------------------------------------------------------
@@ -273,11 +309,12 @@ class HardenedX402Client:
             details = _parse_402_header(payment_header)
         except X402PaymentError as exc:
             safe_url, _ = self._pii_filter.scan_and_redact(url)
+            safe_msg, _ = self._pii_filter.scan_and_redact(_safe_exc_message(exc))
             self._audit.emit(
                 "PAYMENT_ERROR",
                 resource_url=safe_url,
                 outcome="blocked",
-                error_message=str(exc),
+                error_message=safe_msg,
             )
             raise
 
@@ -290,15 +327,16 @@ class HardenedX402Client:
         try:
             payment_response = await self._invoke_signer(secure_details)
         except Exception as exc:
+            safe_msg, _ = self._pii_filter.scan_and_redact(_safe_exc_message(exc))
             self._audit.emit(
                 "PAYMENT_ERROR",
                 resource_url=secure_details.resource_url,
                 amount_usd=_amount_to_usd(secure_details.amount, secure_details.currency),
                 network=secure_details.network,
                 outcome="blocked",
-                error_message=str(exc),
+                error_message=safe_msg,
             )
-            raise X402PaymentError(f"Payment signing failed: {exc}") from exc
+            raise X402PaymentError("Payment signing failed") from exc
 
         # Retry request with payment token
         headers = dict(kwargs.pop("headers", {}) or {})
@@ -382,7 +420,29 @@ class HardenedX402Client:
                 self._metrics.record_pii_detection(entity_types, "warn")
 
         # ------------------------------------------------------------------
-        # 2. Policy Engine
+        # 2. Trusted-wallet allowlist (pay_to substitution defence)
+        # ------------------------------------------------------------------
+        if self._trusted_wallets is not None:
+            origin = _resource_origin(details.resource_url)
+            allowed = self._trusted_wallets.get(origin)
+            if allowed is not None and details.pay_to not in allowed:
+                self._audit.emit(
+                    "WALLET_BLOCKED",
+                    resource_url=clean_url,
+                    amount_usd=amount_usd,
+                    network=details.network,
+                    outcome="blocked",
+                    error_message=f"pay_to {details.pay_to!r} not in allowlist for {origin!r}",
+                )
+                if self._metrics:
+                    self._metrics.record_payment_blocked("wallet", amount_usd)
+                raise X402PaymentError(
+                    f"pay_to wallet {details.pay_to!r} not in trusted allowlist "
+                    f"for origin {origin!r}"
+                )
+
+        # ------------------------------------------------------------------
+        # 3. Policy Engine
         # ------------------------------------------------------------------
         try:
             self._policy.check_and_record(resource_url=details.resource_url, amount_usd=amount_usd)
@@ -401,7 +461,7 @@ class HardenedX402Client:
             raise
 
         # ------------------------------------------------------------------
-        # 3. Replay Guard
+        # 4. Replay Guard
         # ------------------------------------------------------------------
         fingerprint = compute_fingerprint(
             resource_url=details.resource_url,  # use ORIGINAL URL for fingerprinting
@@ -427,7 +487,7 @@ class HardenedX402Client:
             raise
 
         # ------------------------------------------------------------------
-        # 4. Multi-Party Authorization (if configured)
+        # 5. Multi-Party Authorization (if configured)
         # ------------------------------------------------------------------
         if self._mpa is not None:
             try:
@@ -438,13 +498,14 @@ class HardenedX402Client:
                     self._metrics.record_mpa_event("approved")
             except (MPADeniedError, MPATimeoutError) as exc:
                 outcome = "timeout" if isinstance(exc, MPATimeoutError) else "denied"
+                safe_msg, _ = self._pii_filter.scan_and_redact(_safe_exc_message(exc))
                 self._audit.emit(
                     "MPA_BLOCKED",
                     resource_url=clean_url,
                     amount_usd=amount_usd,
                     network=details.network,
                     outcome="blocked",
-                    error_message=str(exc),
+                    error_message=safe_msg,
                 )
                 if self._metrics:
                     self._metrics.record_mpa_event(outcome)

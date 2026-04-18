@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Literal
 
@@ -27,9 +28,77 @@ logger = logging.getLogger("presidio_x402.pii_filter")
 
 REDACTED_TEMPLATE = "<REDACTED>"
 
+# Invisible codepoints stripped before matching: zero-width space/non-joiner/joiner,
+# byte-order mark, soft hyphen. Present them in metadata purely to evade regex.
+_INVISIBLE_CODEPOINTS = frozenset({0x200B, 0x200C, 0x200D, 0xFEFF, 0x00AD, 0x2060})
+
+# Cyrillic → ASCII homoglyph map. Manual (no external dep) coverage of the
+# Latin-lookalike Cyrillic letters commonly used in evasion.
+_HOMOGLYPH_FOLD = str.maketrans(
+    {
+        "а": "a",
+        "А": "A",
+        "е": "e",
+        "Е": "E",
+        "о": "o",
+        "О": "O",
+        "р": "p",
+        "Р": "P",
+        "с": "c",
+        "С": "C",
+        "х": "x",
+        "Х": "X",
+        "у": "y",
+        "У": "Y",
+        "і": "i",
+        "І": "I",
+        "ј": "j",
+        "Ј": "J",
+        "ѕ": "s",
+        "Ѕ": "S",
+        "к": "k",
+        "К": "K",
+        "н": "H",
+        "М": "M",
+        "Т": "T",
+        "В": "B",
+    }
+)
+
+# Hyphen-like characters folded to ASCII hyphen-minus.
+_HYPHEN_FOLD = str.maketrans(
+    {
+        "\u2010": "-",
+        "\u2011": "-",
+        "\u2012": "-",
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2212": "-",
+        "\ufe58": "-",
+        "\ufe63": "-",
+        "\uff0d": "-",
+    }
+)
+
+
+def _normalise(text: str) -> str:
+    """Canonicalise *text* to foil regex-evasion via Unicode encoding tricks.
+
+    Steps: NFKC → strip invisible codepoints → fold Cyrillic homoglyphs and
+    hyphen-like characters to ASCII equivalents.
+    """
+    text = unicodedata.normalize("NFKC", text)
+    text = "".join(c for c in text if ord(c) not in _INVISIBLE_CODEPOINTS)
+    text = text.translate(_HOMOGLYPH_FOLD)
+    text = text.translate(_HYPHEN_FOLD)
+    return text
+
+
 # ---------------------------------------------------------------------------
 # Regex-mode PII patterns
-# Ordered: most specific first to avoid overlapping matches
+# Ordered: most specific first to avoid overlapping matches.
+# All digit classes are ASCII-only ([0-9]) to avoid false positives on
+# Unicode decimal-digit codepoints (Arabic-Indic, Devanagari, etc.).
 # ---------------------------------------------------------------------------
 _REGEX_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # Structural: emails
@@ -40,7 +109,7 @@ _REGEX_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # Structural: US SSNs (with or without dashes)
     (
         "US_SSN",
-        re.compile(r"\b(?!000|666|9\d{2})\d{3}[-\s]?(?!00)\d{2}[-\s]?(?!0000)\d{4}\b"),
+        re.compile(r"\b(?!000|666|9[0-9]{2})[0-9]{3}[-\s]?(?!00)[0-9]{2}[-\s]?(?!0000)[0-9]{4}\b"),
     ),
     # Structural: credit/debit card numbers (13–19 digit, major networks)
     (
@@ -48,23 +117,26 @@ _REGEX_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         re.compile(
             r"\b(?:4[0-9]{12}(?:[0-9]{3,6})?|5[1-5][0-9]{14}|3[47][0-9]{13}"
             r"|3(?:0[0-5]|[68][0-9])[0-9]{11}|6(?:011|5[0-9]{2})[0-9]{12}"
-            r"|(?:2131|1800|35\d{3})\d{11})\b"
+            r"|(?:2131|1800|35[0-9]{3})[0-9]{11})\b"
         ),
     ),
     # Structural: US phone numbers
     (
         "PHONE_NUMBER",
-        re.compile(r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b"),
+        re.compile(r"\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s][0-9]{3}[-.\s][0-9]{4}\b"),
     ),
     # Structural: IBAN (EU bank accounts)
     (
         "IBAN_CODE",
-        re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}(?:[A-Z0-9]{0,16})\b"),
+        re.compile(r"\b[A-Z]{2}[0-9]{2}[A-Z0-9]{4}[0-9]{7}(?:[A-Z0-9]{0,16})\b"),
     ),
     # Structural: IPv4 addresses (common in resource URLs, may be PII in some contexts)
     (
         "IP_ADDRESS",
-        re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b"),
+        re.compile(
+            r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}"
+            r"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"
+        ),
     ),
 ]
 
@@ -151,6 +223,11 @@ class PIIFilter:
         """
         if not text:
             return text, []
+
+        # Canonicalise before matching — closes Unicode regex-evasion paths
+        # (homoglyphs, zero-width chars, non-ASCII hyphens). Output is the
+        # normalised form so downstream callers see a clean, canonical string.
+        text = _normalise(text)
 
         if self.mode == "nlp" and self._analyzer is not None:
             return self._scan_nlp(text)
