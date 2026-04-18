@@ -56,6 +56,7 @@ from .exceptions import (
 if TYPE_CHECKING:
     from .metrics import MetricsCollector
     from .mpa import MPAEngine
+    from .screening_client import ScreeningClient
 from .pii_filter import PIIFilter
 from .policy_engine import PolicyConfig, PolicyEngine
 from .replay_guard import ReplayGuard, compute_fingerprint
@@ -228,6 +229,16 @@ class HardenedX402Client:
             trusted_wallets={
                 "https://api.example.com": {"0xAbC...123"},
             }
+    screening_client:
+        Optional :class:`~presidio_x402.screening_client.ScreeningClient`.
+        When combined with ``remote_screening=True``, payment-metadata PII
+        scanning is offloaded to the remote Presidio screening service instead
+        of running the local regex/NLP pipeline. The local ``PIIFilter`` is
+        still used for defense-in-depth redaction of exception messages.
+    remote_screening:
+        Toggle for the remote PII path. ``False`` (default) runs the local
+        :class:`PIIFilter`; ``True`` requires ``screening_client`` to be set
+        and forwards payment metadata to the remote service.
     """
 
     def __init__(
@@ -246,10 +257,17 @@ class HardenedX402Client:
         mpa_engine: MPAEngine | None = None,
         metrics_collector: MetricsCollector | None = None,
         trusted_wallets: dict[str, set[str]] | None = None,
+        screening_client: ScreeningClient | None = None,
+        remote_screening: bool = False,
     ) -> None:
+        if remote_screening and screening_client is None:
+            raise ValueError("remote_screening=True requires a screening_client instance")
         self._signer = payment_signer
         self._pii_filter = PIIFilter(mode=pii_mode, entities=pii_entities)
+        self._pii_entities = pii_entities
         self._pii_action = pii_action
+        self._screening_client = screening_client
+        self._remote_screening = remote_screening
         self._policy = PolicyEngine(policy)
         self._replay = ReplayGuard(ttl=replay_ttl, redis_url=redis_url)
         self._audit = AuditLog(audit_writer or NullAuditWriter(), agent_id=agent_id)
@@ -372,11 +390,26 @@ class HardenedX402Client:
         amount_usd = _amount_to_usd(details.amount, details.currency)
 
         # ------------------------------------------------------------------
-        # 1. PII Filter
+        # 1. PII Filter (local regex/NLP or remote screening service)
         # ------------------------------------------------------------------
-        clean_url, clean_desc, clean_reason, pii_entities = self._pii_filter.scan_payment_fields(
-            details.resource_url, details.description, details.reason
-        )
+        if self._remote_screening and self._screening_client is not None:
+            (
+                clean_url,
+                clean_desc,
+                clean_reason,
+                pii_entities,
+            ) = await self._screening_client.scan_payment_fields(
+                details.resource_url,
+                details.description,
+                details.reason,
+                entities=self._pii_entities,
+            )
+        else:
+            clean_url, clean_desc, clean_reason, pii_entities = (
+                self._pii_filter.scan_payment_fields(
+                    details.resource_url, details.description, details.reason
+                )
+            )
 
         if pii_entities:
             entity_types = [e.entity_type for e in pii_entities]

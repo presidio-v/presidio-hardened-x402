@@ -34,6 +34,10 @@ from .exceptions import (
     PIIBlockedError,
     PolicyViolationError,
     ReplayDetectedError,
+    ScreeningAuthError,
+    ScreeningError,
+    ScreeningRateLimitError,
+    ScreeningUnavailableError,
     X402Error,
     X402PaymentError,
 )
@@ -43,6 +47,7 @@ from .mpa import MPAApproverConfig, MPAConfig, MPAEngine
 from .pii_filter import PIIFilter
 from .policy_engine import PolicyConfig, PolicyEngine
 from .replay_guard import ReplayGuard, compute_fingerprint
+from .screening_client import ScreeningClient
 
 __version__ = "0.3.0"
 __all__ = [
@@ -56,6 +61,8 @@ __all__ = [
     "MPAEngine",
     # Prometheus metrics
     "MetricsCollector",
+    # Remote screening
+    "ScreeningClient",
     # Exceptions
     "X402Error",
     "X402PaymentError",
@@ -64,6 +71,10 @@ __all__ = [
     "ReplayDetectedError",
     "MPADeniedError",
     "MPATimeoutError",
+    "ScreeningError",
+    "ScreeningAuthError",
+    "ScreeningRateLimitError",
+    "ScreeningUnavailableError",
     # Components (for custom composition)
     "PIIFilter",
     "PolicyEngine",
