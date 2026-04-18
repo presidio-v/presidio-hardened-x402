@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import os
 import secrets
 import threading
 import time
@@ -29,9 +30,38 @@ from .exceptions import ReplayDetectedError
 
 logger = logging.getLogger("presidio_x402.replay_guard")
 
-# A random per-process key for the HMAC — prevents cross-process fingerprint
-# collision attacks while still allowing in-memory deduplication.
-_PROCESS_KEY = secrets.token_bytes(32)
+_FINGERPRINT_KEY_ENV = "PRESIDIO_X402_FINGERPRINT_KEY"
+
+
+def _load_fingerprint_key() -> bytes:
+    hex_key = os.environ.get(_FINGERPRINT_KEY_ENV)
+    if hex_key:
+        try:
+            key = bytes.fromhex(hex_key)
+        except ValueError:
+            logger.error(
+                "%s is set but not valid hex — falling back to per-process key. "
+                "Cross-process replay detection is disabled.",
+                _FINGERPRINT_KEY_ENV,
+            )
+            return secrets.token_bytes(32)
+        if len(key) < 16:
+            logger.error(
+                "%s is shorter than 16 bytes — falling back to per-process key.",
+                _FINGERPRINT_KEY_ENV,
+            )
+            return secrets.token_bytes(32)
+        return key
+    logger.warning(
+        "%s not set — replay guard uses a per-process key and will NOT detect "
+        "replays across load-balanced replicas. Set this env var (32-byte hex) "
+        "in all replicas to enable cross-process deduplication.",
+        _FINGERPRINT_KEY_ENV,
+    )
+    return secrets.token_bytes(32)
+
+
+_FINGERPRINT_KEY = _load_fingerprint_key()
 
 
 def compute_fingerprint(
@@ -62,7 +92,7 @@ def compute_fingerprint(
         considered distinct to avoid false positives on retried expired payments.
     """
     canonical = "|".join([resource_url, pay_to, amount, currency, str(deadline_seconds)])
-    return hmac.new(_PROCESS_KEY, canonical.encode(), hashlib.sha256).hexdigest()
+    return hmac.new(_FINGERPRINT_KEY, canonical.encode(), hashlib.sha256).hexdigest()
 
 
 class _MemoryStore:
@@ -72,17 +102,15 @@ class _MemoryStore:
         self._lock = threading.Lock()
         self._store: dict[str, float] = {}  # fingerprint → expiry timestamp
 
-    def exists(self, key: str) -> bool:
+    def check_and_set(self, key: str, ttl: int) -> bool:
+        """Atomically record *key* if absent. Returns True if newly added."""
         now = time.monotonic()
         with self._lock:
             self._evict(now)
-            return key in self._store
-
-    def set(self, key: str, ttl: int) -> None:
-        now = time.monotonic()
-        with self._lock:
-            self._evict(now)
+            if key in self._store:
+                return False
             self._store[key] = now + ttl
+            return True
 
     def _evict(self, now: float) -> None:
         expired = [k for k, exp in self._store.items() if exp <= now]
@@ -108,11 +136,10 @@ class _RedisStore:
             ) from exc
         self._prefix = "presidio_x402:replay:"
 
-    def exists(self, key: str) -> bool:
-        return bool(self._client.exists(self._prefix + key))
-
-    def set(self, key: str, ttl: int) -> None:
-        self._client.set(self._prefix + key, "1", ex=ttl)
+    def check_and_set(self, key: str, ttl: int) -> bool:
+        # SET NX EX is atomic on the Redis server — no TOCTOU window.
+        result = self._client.set(self._prefix + key, "1", ex=ttl, nx=True)
+        return result is not None
 
     def clear(self) -> None:
         keys = self._client.keys(self._prefix + "*")
@@ -149,13 +176,12 @@ class ReplayGuard:
         fingerprint was seen within the TTL window. Otherwise, records the
         fingerprint and returns normally.
         """
-        if self._store.exists(fingerprint):
+        if not self._store.check_and_set(fingerprint, self.ttl):
             logger.warning("Replay detected: fingerprint %s...", fingerprint[:16])
             raise ReplayDetectedError(
                 f"Duplicate payment detected (fingerprint: {fingerprint[:16]}…)",
                 fingerprint=fingerprint,
             )
-        self._store.set(fingerprint, self.ttl)
         logger.debug("Replay guard: new fingerprint recorded %s...", fingerprint[:16])
 
     def reset(self) -> None:
