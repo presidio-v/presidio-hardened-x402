@@ -68,3 +68,11 @@ class MPATimeoutError(X402Error):
         super().__init__(message)
         self.approvals_received = approvals_received
         self.threshold = threshold
+
+
+class MPAWebhookURLError(X402Error):
+    """Raised when an MPA webhook URL fails SSRF safety validation.
+
+    Applies at config time (scheme + IP-literal checks) and at request time
+    (DNS-resolution check against blocked networks).
+    """

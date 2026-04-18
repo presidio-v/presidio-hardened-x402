@@ -39,6 +39,7 @@ Usage::
 
 from __future__ import annotations
 
+import atexit
 import hashlib
 import hmac
 import json
@@ -47,6 +48,7 @@ import os
 import secrets
 import sys
 import threading
+import weakref
 from datetime import datetime, timezone
 from typing import IO
 
@@ -99,6 +101,9 @@ class NullAuditWriter:
     def write(self, event: AuditEvent) -> None:
         pass
 
+    def flush(self) -> None:
+        return
+
 
 class StreamAuditWriter:
     """Writes JSON-L audit events to a file-like stream (e.g., ``sys.stdout``)."""
@@ -113,18 +118,50 @@ class StreamAuditWriter:
             self._stream.write(line + "\n")
             self._stream.flush()
 
+    def flush(self) -> None:
+        """Flush the underlying stream — matches the writer-uniform interface."""
+        with self._lock:
+            try:
+                self._stream.flush()
+            except Exception:
+                logger.exception("StreamAuditWriter flush failed")
+
 
 class FileAuditWriter:
-    """Appends JSON-L audit events to a file path."""
+    """Appends JSON-L audit events to a file path.
 
-    def __init__(self, path: str) -> None:
+    Parameters
+    ----------
+    path:
+        Filesystem path to append audit records to.
+    fsync:
+        When ``True`` (default), issues ``os.fsync`` after every write so the
+        entry survives a kernel-level process death (OOM-kill, SIGKILL,
+        container restart). Pay the syscall-per-write cost in exchange for
+        durability — the security posture audit logs exist for.
+        When ``False``, relies on OS buffer flushing — **not safe** for
+        compliance use but acceptable for short-lived test fixtures.
+    """
+
+    def __init__(self, path: str, *, fsync: bool = True) -> None:
         self._path = path
+        self._fsync = fsync
         self._lock = threading.Lock()
 
     def write(self, event: AuditEvent) -> None:
         line = json.dumps(_event_to_dict(event), default=str)
         with self._lock, open(self._path, "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
+            if self._fsync:
+                fh.flush()
+                os.fsync(fh.fileno())
+
+    def flush(self) -> None:
+        """No-op for the file writer — each ``write`` already fsyncs when enabled.
+
+        Provided so :class:`AuditLog.flush` has a uniform interface across writers.
+        """
+        return
 
 
 class AuditLog:
@@ -149,11 +186,18 @@ class AuditLog:
         writer: AuditWriter | None = None,
         *,
         agent_id: str | None = None,
+        flush_on_exit: bool = True,
     ) -> None:
         self._writer = writer or NullAuditWriter()
         self._agent_id = agent_id
         self._prev_hmac: str | None = None
         self._lock = threading.Lock()
+        if flush_on_exit:
+            # Register a best-effort flush on clean interpreter shutdown.
+            # For OOM-kill / SIGKILL paths the writer's per-write fsync is the
+            # actual durability guarantee; atexit only helps the graceful case.
+            self_ref = weakref.ref(self)
+            atexit.register(_atexit_flush, self_ref)
 
     def emit(
         self,
@@ -197,3 +241,23 @@ class AuditLog:
             self._prev_hmac = _hmac_entry(entry_json)
 
         return event
+
+    def flush(self) -> None:
+        """Force the underlying writer to flush any buffered state.
+
+        Call from signal handlers (e.g., ``SIGTERM``) or shutdown hooks to
+        ensure the last emitted events are on stable storage before the
+        process exits. Safe to call multiple times.
+        """
+        try:
+            flush = getattr(self._writer, "flush", None)
+            if callable(flush):
+                flush()
+        except Exception:
+            logger.exception("AuditLog flush failed")
+
+
+def _atexit_flush(self_ref: weakref.ref[AuditLog]) -> None:
+    log = self_ref()
+    if log is not None:
+        log.flush()
