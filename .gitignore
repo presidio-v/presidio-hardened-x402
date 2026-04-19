@@ -27,7 +27,6 @@ htmlcov/
 # Distribution / packaging
 MANIFEST
 .installed.cfg
-uv.lock
 
 # IDEs
 .idea/
