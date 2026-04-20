@@ -308,3 +308,8 @@ The threat model for presidio-hardened-x402 addresses the following adversaries:
 - **Zero-trust metadata**: All payment metadata is treated as untrusted until scanned.
 - **Fail-safe**: Security control errors default to blocking the payment, not allowing it.
 - **Observable**: Every security decision is audited; no silent suppression.
+
+## SDLC
+
+These requirements are delivered under the family-wide Presidio SDLC:
+<https://github.com/presidio-v/presidio-hardened-docs/blob/main/sdlc/sdlc-report.md>.

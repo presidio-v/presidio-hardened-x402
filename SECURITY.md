@@ -68,3 +68,9 @@ See `PRESIDIO-REQ.md` for the full threat model and security design rationale.
   only (emails, SSNs, credit cards, phone numbers) and may miss free-text PII
 - The in-memory replay guard does not persist across process restarts; use the Redis
   backend for production deployments requiring cross-process deduplication
+
+## Software Development Lifecycle
+
+This repository is developed under the Presidio hardened-family SDLC. The public report
+— scope, standards mapping, threat-model gates, and supply-chain controls — is at
+<https://github.com/presidio-v/presidio-hardened-docs/blob/main/sdlc/sdlc-report.md>.
