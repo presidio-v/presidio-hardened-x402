@@ -36,8 +36,15 @@ MANIFEST
 # macOS
 .DS_Store
 
-# Project-specific: never commit session config
-.claude/
+# Tooling directories — personal session config stays local; published assets
+# (e.g. .claude/skills/, .cursor/skills/) remain tracked.
+.claude/settings*.json
+.claude/todos/
+.claude/history/
+.claude/implementation-template.md
+.cursor/settings*.json
+.cursor/todos/
+.cursor/history/
 
 # Generated corpus data (large; tracked via corpus_meta.json instead)
 corpus/corpus.jsonl
