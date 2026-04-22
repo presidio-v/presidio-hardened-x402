@@ -313,8 +313,8 @@ All exceptions are importable from `presidio_x402`.
 | Version | Milestone |
 |---------|-----------|
 | v0.1.0 | PII redaction + spending policy + replay detection |
-| v0.2.0 | Synthetic corpus + 42-configuration precision/recall sweep, LangChain/CrewAI adapters, compliance report · [arXiv preprint (pending)](https://arxiv.org/abs/2504.xxxxx) |
-| v0.2.1 | Live ecosystem characterisation via Dune Analytics (20 projects, 96 wallets, 11 chains, ≥79M transactions); IEEE S&P magazine article submitted; IEEE TIFS paper under review |
+| v0.2.0 | Synthetic corpus + 42-configuration precision/recall sweep, LangChain/CrewAI adapters, compliance report · [arXiv:2604.11430](https://arxiv.org/abs/2604.11430) |
+| v0.2.1 | Live ecosystem characterisation via Dune Analytics (20 projects, 96 wallets, 11 chains, ≥79M transactions); IEEE S&P magazine article submitted; IEEE TIFS paper under review · Corpus: [`v0.2.1/dataport/`](v0.2.1/dataport/), [Hugging Face](https://huggingface.co/datasets/vstantch/x402-pii-corpus), [IEEE DataPort (doi:10.21227/kpsz-nq73)](https://doi.org/10.21227/kpsz-nq73) |
 | **v0.3.0** | **Multi-party authorization** (`mpa.py`: n-of-m, webhook + crypto modes) · **Policy-as-code** JSON Schema (IETF draft candidate) · **Prometheus metrics** exporter · Kubernetes Helm chart + Docker image · SOC2 reference architecture — **current** |
 | v0.4.0 | Production hardening: security audit, OpenTelemetry spans, policy hot-reload, operator runbook |
 | v0.5.0 | **SLO payment broker** — x402 micropayments as runtime infrastructure bids; `presidio-hardened-arch-translucency` integration |
