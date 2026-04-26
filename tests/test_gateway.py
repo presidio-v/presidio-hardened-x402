@@ -324,3 +324,93 @@ async def test_post_method_works():
         async with _make_client() as client:
             resp = await client.post("https://api.example.com/v1/data")
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Amount validation — F1 regression (audit 2026-04-26)
+# ---------------------------------------------------------------------------
+
+
+def _amount_header(amount: str) -> str:
+    return json.dumps(
+        {
+            "accepts": [
+                {
+                    "scheme": "exact",
+                    "network": "base-sepolia",
+                    "maxAmountRequired": amount,
+                    "resource": "https://api.example.com/v1/data",
+                    "description": "API data access",
+                    "payTo": "0xabcdef1234567890abcdef1234567890abcdef12",
+                    "requiredDeadlineSeconds": 300,
+                }
+            ]
+        }
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_amount", ["nan", "NaN", "inf", "-inf", "Infinity", "-1.0"])
+async def test_non_finite_or_negative_amount_rejected(bad_amount):
+    """Non-finite / negative amounts must not silently bypass policy limits.
+
+    `float("nan") > limit` is False under IEEE 754, which previously let NaN /
+    inf payments pass per-call, daily, and per-endpoint comparison checks.
+    Audit 2026-04-26 finding F1.
+    """
+    with respx.mock:
+        respx.get("https://api.example.com/v1/data").mock(
+            return_value=httpx.Response(402, headers={"X-PAYMENT": _amount_header(bad_amount)})
+        )
+        async with _make_client(policy={"max_per_call_usd": 0.01}) as client:
+            with pytest.raises(X402PaymentError, match="finite non-negative"):
+                await client.get("https://api.example.com/v1/data")
+
+
+# ---------------------------------------------------------------------------
+# resource_url redaction — F2 regression (audit 2026-04-26)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_redact_strips_pii_from_resource_url_before_signer():
+    """In pii_action='redact' mode, the signer must receive the redacted URL,
+    not the original PII-bearing one. Audit 2026-04-26 finding F2.
+    """
+    captured: dict[str, PaymentDetails] = {}
+
+    async def capturing_signer(details: PaymentDetails) -> PaymentResponse:
+        captured["details"] = details
+        return PaymentResponse(token="signed", details=details)  # noqa: S106
+
+    pii_url = "https://api.example.com/user/alice@example.com/pay"
+    pii_header = json.dumps(
+        {
+            "accepts": [
+                {
+                    "scheme": "exact",
+                    "network": "base-sepolia",
+                    "maxAmountRequired": "0.01",
+                    "resource": pii_url,
+                    "description": "user alice@example.com",
+                    "payTo": "0xabcdef1234567890abcdef1234567890abcdef12",
+                    "requiredDeadlineSeconds": 300,
+                }
+            ]
+        }
+    )
+    with respx.mock:
+        route = respx.get(pii_url)
+        route.side_effect = [
+            httpx.Response(402, headers={"X-PAYMENT": pii_header}),
+            httpx.Response(200, text="ok"),
+        ]
+        async with _make_client(payment_signer=capturing_signer, pii_action="redact") as client:
+            await client.get(pii_url)
+
+    assert "details" in captured, "signer was not invoked"
+    signed_url = captured["details"].resource_url
+    assert "alice@example.com" not in signed_url, signed_url
+    # Some redaction marker must be present — exact token depends on PIIFilter
+    # config (e.g. "<REDACTED>" for resource_url path, "<EMAIL_ADDRESS>" elsewhere).
+    assert "<" in signed_url and ">" in signed_url, signed_url

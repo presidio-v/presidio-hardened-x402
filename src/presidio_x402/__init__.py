@@ -91,10 +91,15 @@ logger = logging.getLogger("presidio_x402")
 # ---------------------------------------------------------------------------
 # On-import security audit
 # ---------------------------------------------------------------------------
-_KNOWN_VULNERABLE: dict[str, dict[str, str]] = {
-    "httpx": {},
-    "presidio-analyzer": {},
-    "presidio-anonymizer": {},
+# Minimum-safe versions per PRESIDIO-REQ.md REQ-6. Bumped when a CVE / security
+# advisory lands or when the upstream project marks a version as vulnerable.
+# Keys are PyPI distribution names; values are the lowest version known not to
+# carry an unfixed advisory at the time of this release.
+_KNOWN_VULNERABLE: dict[str, str] = {
+    "httpx": "0.27.0",
+    "presidio-analyzer": "2.2.362",
+    "presidio-anonymizer": "2.2.362",
+    "cryptography": "46.0.6",
 }
 
 
@@ -102,19 +107,39 @@ def _on_import_audit() -> None:
     try:
         from importlib.metadata import PackageNotFoundError, version
 
+        try:
+            from packaging.version import InvalidVersion as _InvalidVersion
+            from packaging.version import Version as _Version
+        except ImportError:  # pragma: no cover - packaging ships with pip
+            _Version = None  # noqa: N806 - aliasing imported class symbol
+            _InvalidVersion = Exception  # noqa: N806 - aliasing imported class symbol
+
         issues: list[str] = []
-        for pkg in _KNOWN_VULNERABLE:
+        for pkg, min_safe in _KNOWN_VULNERABLE.items():
             try:
                 ver = version(pkg)
-                logger.debug("Dependency OK: %s==%s", pkg, ver)
             except PackageNotFoundError:
                 issues.append(f"{pkg} is not installed")
+                continue
+            if _Version is None:
+                logger.debug("Dependency present (version compare unavailable): %s==%s", pkg, ver)
+                continue
+            try:
+                if _Version(ver) < _Version(min_safe):
+                    issues.append(
+                        f"{pkg}=={ver} is below minimum-safe version {min_safe} "
+                        "(see PRESIDIO-REQ §REQ-6)"
+                    )
+                else:
+                    logger.debug("Dependency OK: %s==%s (>= %s)", pkg, ver, min_safe)
+            except _InvalidVersion:
+                logger.debug("Dependency version unparseable: %s==%s", pkg, ver)
 
         if issues:
             for issue in issues:
                 logger.warning("[PRESIDIO AUDIT] %s", issue)
         else:
-            logger.info("[PRESIDIO AUDIT] All x402 dependencies present")
+            logger.info("[PRESIDIO AUDIT] All x402 dependencies present at minimum-safe versions")
 
     except Exception:
         logger.debug("Dependency audit skipped")

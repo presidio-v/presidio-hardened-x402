@@ -1011,7 +1011,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -2977,6 +2977,7 @@ name = "presidio-hardened-x402"
 version = "0.3.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "httpx" },
     { name = "presidio-analyzer" },
     { name = "presidio-anonymizer" },
@@ -3015,6 +3016,7 @@ schema = [
 [package.metadata]
 requires-dist = [
     { name = "crewai", marker = "extra == 'crewai'", specifier = ">=0.28.0" },
+    { name = "cryptography", specifier = ">=46.0.6" },
     { name = "fakeredis", marker = "extra == 'dev'", specifier = ">=2.23" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", marker = "extra == 'dev'", specifier = ">=4.21.0" },

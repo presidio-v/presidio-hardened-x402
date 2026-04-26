@@ -106,7 +106,7 @@ explicitly deferred.*
 
 ### Publication
 
-- arXiv cs.CR preprint by 2026-11-01
+- arXiv cs.CR preprint — **delivered**: [arXiv:2604.11430](https://arxiv.org/abs/2604.11430)
 - Conference paper submission (USENIX Security 2027 or IEEE S&P 2027) after live
   data replication in v0.2.1
 
@@ -195,6 +195,13 @@ on controlled data with known ground truth, then confirm the threat model on liv
 
 - `docs/soc2-reference-architecture.md`: SOC 2 TSC mapping, three deployment patterns,
   audit log retention, GDPR obligations, secret management guidance, evidence collection table
+
+### Anchor project within PRESIDIO SDLC — delivered
+
+- `presidio-hardened-x402` serves as the canonical reference implementation for the
+  PRESIDIO SDLC: the `sdlc/` documentation set (14 docs + 6 ADRs + JSON inventory)
+  lives in the outer repo and is kept aligned with the codebase via the
+  data-inventory drift test that blocks PR merge.
 
 ### New exceptions
 

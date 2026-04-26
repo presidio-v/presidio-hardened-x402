@@ -58,6 +58,26 @@ class TestInit:
         # Not public, but the stripped prefix is what matters for URL concat.
         assert c._base_url == BASE
 
+    def test_http_base_url_rejected_by_default(self) -> None:
+        """Audit 2026-04-26 finding F4: a typo'd http:// base_url must not
+        silently transmit the X-API-Key header in cleartext.
+        """
+        with pytest.raises(ValueError, match="cleartext|allow_insecure"):
+            ScreeningClient(base_url="http://screen.presidio-group.eu", api_key=API_KEY)
+
+    def test_http_base_url_allowed_with_allow_insecure(self) -> None:
+        """allow_insecure=True opt-in is honoured for local development."""
+        c = ScreeningClient(
+            base_url="http://localhost:8080",
+            api_key=API_KEY,
+            allow_insecure=True,
+        )
+        assert c._base_url == "http://localhost:8080"
+
+    def test_unknown_scheme_rejected(self) -> None:
+        with pytest.raises(ValueError, match="https://"):
+            ScreeningClient(base_url="ftp://example.com", api_key=API_KEY)
+
 
 class TestHappyPath:
     @pytest.mark.asyncio

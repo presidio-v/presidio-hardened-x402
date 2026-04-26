@@ -68,6 +68,12 @@ class ScreeningClient:
     httpx_client:
         Optional pre-configured ``httpx.AsyncClient`` (useful for tests or for
         sharing a connection pool with the gateway).
+    allow_insecure:
+        Allow ``http://`` base URLs for local development. Defaults to ``False``.
+        With the default, an ``http://`` ``base_url`` raises :class:`ValueError` at
+        construction time so a typo cannot silently transmit the ``X-API-Key`` header
+        in cleartext to a production hostname. Set to ``True`` only for ``localhost`` /
+        ``127.0.0.1`` development testing.
     """
 
     def __init__(
@@ -77,11 +83,29 @@ class ScreeningClient:
         *,
         timeout: httpx.Timeout | float | None = None,
         httpx_client: httpx.AsyncClient | None = None,
+        allow_insecure: bool = False,
     ) -> None:
         if not base_url:
             raise ValueError("ScreeningClient requires a non-empty base_url")
         if not api_key:
             raise ValueError("ScreeningClient requires a non-empty api_key")
+        scheme = base_url.split("://", 1)[0].lower() if "://" in base_url else ""
+        if scheme == "http" and not allow_insecure:
+            raise ValueError(
+                f"ScreeningClient base_url uses http:// ({base_url!r}); the X-API-Key "
+                "header would be transmitted in cleartext. Use https:// for production, "
+                "or pass allow_insecure=True to opt into plaintext for local development."
+            )
+        if scheme == "http" and allow_insecure:
+            logger.warning(
+                "ScreeningClient configured with http:// base_url %r and allow_insecure=True. "
+                "X-API-Key is sent in cleartext. Use only for local development.",
+                base_url,
+            )
+        elif scheme not in {"https", "http"}:
+            raise ValueError(
+                f"ScreeningClient base_url must start with https:// or http://; got {base_url!r}"
+            )
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout if timeout is not None else _DEFAULT_TIMEOUT

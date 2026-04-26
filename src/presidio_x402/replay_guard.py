@@ -52,10 +52,12 @@ def _load_fingerprint_key() -> bytes:
             )
             return secrets.token_bytes(32)
         return key
-    logger.warning(
+    logger.error(
         "%s not set — replay guard uses a per-process key and will NOT detect "
         "replays across load-balanced replicas. Set this env var (32-byte hex) "
-        "in all replicas to enable cross-process deduplication.",
+        "in all replicas to enable cross-process deduplication. This message is "
+        "ERROR-level rather than WARNING because the default is silently insecure "
+        "in any horizontally-scaled deployment; treat as a deployment-time defect.",
         _FINGERPRINT_KEY_ENV,
     )
     return secrets.token_bytes(32)
