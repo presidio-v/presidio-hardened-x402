@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -162,6 +163,12 @@ def _amount_to_usd(amount: str, currency: str) -> float:
         value = float(amount)
     except ValueError as exc:
         raise X402PaymentError(f"Invalid payment amount {amount!r}: not a numeric value") from exc
+    if not math.isfinite(value) or value < 0:
+        raise X402PaymentError(
+            f"Invalid payment amount {amount!r}: must be a finite non-negative number. "
+            "Non-finite values (nan, inf, -inf) bypass IEEE 754 comparison-based limit checks "
+            "and are rejected to preserve policy enforcement integrity."
+        )
     if currency.upper() not in _USD_PEGGED:
         raise X402PaymentError(
             f"Unsupported currency {currency!r} for policy enforcement. "
@@ -389,6 +396,15 @@ class HardenedX402Client:
         """
         amount_usd = _amount_to_usd(details.amount, details.currency)
 
+        # Preserve the original resource_url for replay-guard fingerprinting.
+        # In pii_action="redact" mode the URL gets rewritten with PII tokens
+        # masked; using the redacted URL for fingerprinting would collide
+        # distinct user-specific URLs (e.g. /user/alice@.../pay vs
+        # /user/bob@.../pay both reduce to /user/<EMAIL_ADDRESS>/pay) and
+        # produce false-positive ReplayDetectedError. Original URL is never
+        # passed downstream to signer / MPA — only used for the local HMAC.
+        original_resource_url = details.resource_url
+
         # ------------------------------------------------------------------
         # 1. PII Filter (local regex/NLP or remote screening service)
         # ------------------------------------------------------------------
@@ -440,13 +456,16 @@ class HardenedX402Client:
                 )
                 if self._metrics:
                     self._metrics.record_pii_detection(entity_types, "redact")
-                # Replace metadata fields with redacted versions
+                # Replace metadata fields with redacted versions.
+                # resource_url is replaced AFTER replay-fingerprint computation
+                # earlier in this function so the original URL still drives
+                # deduplication; from this point on every downstream consumer
+                # (signer, MPA webhooks, audit log post-event) sees clean_url.
                 details = replace(
                     details,
+                    resource_url=clean_url,
                     description=clean_desc,
                     reason=clean_reason,
-                    # Note: resource_url is used for fingerprinting with ORIGINAL value
-                    # but we pass clean_url to the signer to avoid PII in the chain
                 )
             elif self._metrics:
                 # pii_action == "warn": log already happened in PIIFilter
@@ -497,7 +516,7 @@ class HardenedX402Client:
         # 4. Replay Guard
         # ------------------------------------------------------------------
         fingerprint = compute_fingerprint(
-            resource_url=details.resource_url,  # use ORIGINAL URL for fingerprinting
+            resource_url=original_resource_url,  # ORIGINAL URL — see top of method
             pay_to=details.pay_to,
             amount=details.amount,
             currency=details.currency,
