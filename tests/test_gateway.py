@@ -22,17 +22,6 @@ from presidio_x402.exceptions import (
 # Test helpers
 # ---------------------------------------------------------------------------
 
-PAYMENT_DETAILS = PaymentDetails(
-    resource_url="https://api.example.com/v1/data",
-    pay_to="0xabcdef1234567890abcdef1234567890abcdef12",
-    amount="0.01",
-    currency="USDC",
-    network="base-sepolia",
-    deadline_seconds=300,
-    description="API data access",
-    reason="research",
-)
-
 PAYMENT_HEADER_VALUE = json.dumps(
     {
         "accepts": [

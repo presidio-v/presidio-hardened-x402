@@ -25,7 +25,6 @@ import argparse
 import json
 import sys
 import time
-from itertools import combinations
 from pathlib import Path
 from typing import Any
 

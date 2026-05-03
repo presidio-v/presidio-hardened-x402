@@ -106,8 +106,8 @@ class ComplianceReport:
         path = Path(path)
         raws: list[dict[str, Any]] = []
         with path.open(encoding="utf-8") as fh:
-            for lineno, line in enumerate(fh, 1):
-                line = line.strip()
+            for lineno, raw_line in enumerate(fh, 1):
+                line = raw_line.strip()
                 if not line:
                     continue
                 try:

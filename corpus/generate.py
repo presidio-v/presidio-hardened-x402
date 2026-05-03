@@ -22,10 +22,8 @@ from __future__ import annotations
 import argparse
 import json
 import random
-import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from .schema import CorpusSample, EntityLabel
 
@@ -350,8 +348,6 @@ _REASON_TEMPLATES: dict[str, list[Template]] = {
 # Sample generation helpers
 # ---------------------------------------------------------------------------
 
-CATEGORIES = list(_URL_TEMPLATES.keys())
-
 # How many samples per category (proportional, sums to DEFAULT_N)
 _CATEGORY_WEIGHTS = {
     "ai_inference": 0.18,
@@ -554,7 +550,7 @@ def generate_corpus(
         pii_flags = [True] * n_pii + [False] * (count - n_pii)
         rng.shuffle(pii_flags)
 
-        for i, pii_positive in enumerate(pii_flags):
+        for pii_positive in pii_flags:
             sample_id = f"syn-{global_idx:05d}"
             sample = _generate_sample(rng, sample_id, cat, pii_positive, pii_rate)
             samples.append(sample)
@@ -626,8 +622,8 @@ def load_corpus(path: Path) -> list[CorpusSample]:
     """Load a corpus from a JSONL file."""
     samples = []
     with path.open(encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
+        for raw_line in fh:
+            line = raw_line.strip()
             if line:
                 samples.append(CorpusSample.from_dict(json.loads(line)))
     return samples
