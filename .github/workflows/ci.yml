@@ -11,8 +11,8 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install ruff
@@ -26,8 +26,8 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
@@ -36,7 +36,7 @@ jobs:
         run: pytest tests/ --cov=presidio_x402 --cov-report=xml --cov-fail-under=90
       - name: Upload coverage
         if: matrix.python-version == '3.12'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           file: coverage.xml
 
@@ -44,8 +44,8 @@ jobs:
     name: Lockfile drift
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
       - name: Verify uv.lock is up to date with pyproject.toml
         run: uv lock --locked
