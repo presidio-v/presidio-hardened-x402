@@ -148,6 +148,41 @@ class TestPIIFilterRegexMode:
         assert "[REDACTED:EMAIL_ADDRESS]" in redacted
 
     # ------------------------------------------------------------------
+    # scan_dict — recursive PII scan over arbitrary JSON data
+    # (closes F-A 2026-05-03 — extra field bypassed REQ-1 PII scanner)
+    # ------------------------------------------------------------------
+    def test_scan_dict_redacts_string_values(self):
+        clean, entities = self.filt.scan_dict({"user_id": "alice@example.com", "tier": "gold"})
+        assert "alice@example.com" not in str(clean)
+        assert clean["tier"] == "gold"
+        assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
+
+    def test_scan_dict_recurses_nested_dicts_and_lists(self):
+        clean, entities = self.filt.scan_dict(
+            {
+                "contacts": [
+                    {"email": "alice@example.com"},
+                    {"email": "bob@example.com"},
+                ],
+            }
+        )
+        assert "alice@example.com" not in str(clean)
+        assert "bob@example.com" not in str(clean)
+        assert sum(1 for e in entities if e.entity_type == "EMAIL_ADDRESS") == 2
+
+    def test_scan_dict_preserves_non_string_primitives(self):
+        clean, entities = self.filt.scan_dict(
+            {"amount_cents": 100, "active": True, "ratio": 0.5, "missing": None}
+        )
+        assert clean == {"amount_cents": 100, "active": True, "ratio": 0.5, "missing": None}
+        assert entities == []
+
+    def test_scan_dict_empty(self):
+        clean, entities = self.filt.scan_dict({})
+        assert clean == {}
+        assert entities == []
+
+    # ------------------------------------------------------------------
     # NLP mode import error
     # ------------------------------------------------------------------
     def test_nlp_mode_import_error_without_spacy(self, monkeypatch):

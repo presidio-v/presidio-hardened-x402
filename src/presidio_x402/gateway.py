@@ -427,6 +427,14 @@ class HardenedX402Client:
                 )
             )
 
+        # The remote screening API only covers the three primary string fields.
+        # The `extra` dict is arbitrary server-controlled JSON and must be
+        # scanned locally for defense-in-depth — this closes REQ-1 against
+        # malicious 402 servers that smuggle PII through the extra channel.
+        clean_extra, extra_entities = self._pii_filter.scan_dict(details.extra)
+        if extra_entities:
+            pii_entities = list(pii_entities) + list(extra_entities)
+
         if pii_entities:
             entity_types = [e.entity_type for e in pii_entities]
             if self._pii_action == "block":
@@ -461,11 +469,14 @@ class HardenedX402Client:
                 # earlier in this function so the original URL still drives
                 # deduplication; from this point on every downstream consumer
                 # (signer, MPA webhooks, audit log post-event) sees clean_url.
+                # The `extra` dict is also redacted in-place when PII is found
+                # in any of its string values (REQ-1 — closes F-A 2026-05-03).
                 details = replace(
                     details,
                     resource_url=clean_url,
                     description=clean_desc,
                     reason=clean_reason,
+                    extra=clean_extra if extra_entities else details.extra,
                 )
             elif self._metrics:
                 # pii_action == "warn": log already happened in PIIFilter

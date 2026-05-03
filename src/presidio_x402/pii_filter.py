@@ -336,3 +336,34 @@ class PIIFilter:
             )
 
         return clean_url, clean_desc, clean_reason, all_entities
+
+    def scan_dict(self, data: object) -> tuple[object, list[EntityResult]]:
+        """Recursively scan and redact string values in arbitrary JSON-shaped data.
+
+        Used for the ``extra`` field of :class:`PaymentDetails`, which is server-
+        controlled JSON that must be treated as untrusted. Dicts and lists are
+        traversed; strings are passed through :meth:`scan_and_redact`; all other
+        primitives (int, float, bool, None) are returned unchanged.
+
+        Returns ``(redacted_data, entities)``. ``redacted_data`` is a new
+        container of the same shape as the input.
+        """
+        if isinstance(data, str):
+            return self.scan_and_redact(data)
+        if isinstance(data, dict):
+            redacted_dict: dict[object, object] = {}
+            entities: list[EntityResult] = []
+            for k, v in data.items():
+                clean_v, v_entities = self.scan_dict(v)
+                redacted_dict[k] = clean_v
+                entities.extend(v_entities)
+            return redacted_dict, entities
+        if isinstance(data, list):
+            redacted_list: list[object] = []
+            entities = []
+            for item in data:
+                clean_item, item_entities = self.scan_dict(item)
+                redacted_list.append(clean_item)
+                entities.extend(item_entities)
+            return redacted_list, entities
+        return data, []
