@@ -469,9 +469,29 @@ class MPAEngine:
                 except ValueError:
                     if host:
                         _resolve_and_check_host(host)
+            # Outbound request authentication. When a shared_secret is
+            # configured, sign the request body with HMAC-SHA256 so the
+            # approver can verify the request originated from this MPA engine
+            # (closes F-B 2026-05-03 — CWE-306). Approvers receiving a missing
+            # or invalid X-MPA-REQUEST-HMAC must reject the request.
+            request_body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if approver.shared_secret is not None:
+                request_hmac = hmac.new(
+                    approver.shared_secret, request_body, hashlib.sha256
+                ).hexdigest()
+                headers["X-MPA-REQUEST-HMAC"] = request_hmac
+            else:
+                logger.warning(
+                    "MPA webhook approver %s has no shared_secret; outbound "
+                    "request is unauthenticated. Acceptable only on a trusted "
+                    "internal network — set shared_secret in production.",
+                    approver.approver_id,
+                )
             resp = await self._httpx.post(
                 approver.webhook_url,  # type: ignore[arg-type]
-                json=payload,
+                content=request_body,
+                headers=headers,
             )
             resp.raise_for_status()
 

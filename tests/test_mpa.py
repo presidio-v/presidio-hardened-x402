@@ -559,3 +559,86 @@ class TestCanonicalPayload:
         parsed = json.loads(payload)
         assert parsed["resource_url"] == details.resource_url
         assert "amount_usd" in parsed
+
+
+# ---------------------------------------------------------------------------
+# Webhook outbound request HMAC — F-B regression (audit 2026-05-03)
+# ---------------------------------------------------------------------------
+
+
+class TestMPAWebhookOutboundHMAC:
+    """Approver must be able to authenticate the engine via X-MPA-REQUEST-HMAC."""
+
+    def setup_method(self):
+        self.details = _make_details(amount="2.00")
+        self.amount_usd = 2.00
+
+    @pytest.mark.asyncio
+    async def test_outbound_request_carries_hmac_when_shared_secret_set(self):
+        """When approver has shared_secret, X-MPA-REQUEST-HMAC must match HMAC(secret, body)."""
+        engine = MPAEngine(
+            MPAConfig(
+                dns_rebinding_protection=False,
+                threshold=1,
+                approvers=[
+                    MPAApproverConfig(
+                        "alice",
+                        mode="webhook",
+                        webhook_url="https://approvals.internal/alice",
+                        shared_secret=WEBHOOK_SECRET,
+                    ),
+                ],
+            )
+        )
+        body = json.dumps({"approved": True, "approver_id": "alice"}).encode()
+        resp_header = _make_hmac_header(WEBHOOK_SECRET, body)
+
+        captured_requests: list[httpx.Request] = []
+
+        def _handler(request: httpx.Request) -> httpx.Response:
+            captured_requests.append(request)
+            return httpx.Response(
+                200,
+                content=body,
+                headers={"Content-Type": "application/json", "X-MPA-HMAC": resp_header},
+            )
+
+        with respx.mock:
+            respx.post("https://approvals.internal/alice").mock(side_effect=_handler)
+            await engine.request_approval(self.details, self.amount_usd)
+
+        assert len(captured_requests) == 1
+        req = captured_requests[0]
+        assert "X-MPA-REQUEST-HMAC" in req.headers
+        expected = hmac.new(WEBHOOK_SECRET, req.content, hashlib.sha256).hexdigest()
+        assert hmac.compare_digest(req.headers["X-MPA-REQUEST-HMAC"], expected)
+
+    @pytest.mark.asyncio
+    async def test_outbound_request_omits_hmac_when_no_shared_secret(self):
+        """Backwards-compat: no shared_secret → no header; approver runs unauthenticated."""
+        engine = MPAEngine(
+            MPAConfig(
+                dns_rebinding_protection=False,
+                threshold=1,
+                approvers=[
+                    MPAApproverConfig(
+                        "alice",
+                        mode="webhook",
+                        webhook_url="https://approvals.internal/alice",
+                    ),
+                ],
+            )
+        )
+
+        captured_requests: list[httpx.Request] = []
+
+        def _handler(request: httpx.Request) -> httpx.Response:
+            captured_requests.append(request)
+            return httpx.Response(200, json={"approved": True, "approver_id": "alice"})
+
+        with respx.mock:
+            respx.post("https://approvals.internal/alice").mock(side_effect=_handler)
+            await engine.request_approval(self.details, self.amount_usd)
+
+        assert len(captured_requests) == 1
+        assert "X-MPA-REQUEST-HMAC" not in captured_requests[0].headers

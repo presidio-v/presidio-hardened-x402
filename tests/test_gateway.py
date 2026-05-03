@@ -414,3 +414,88 @@ async def test_redact_strips_pii_from_resource_url_before_signer():
     # Some redaction marker must be present — exact token depends on PIIFilter
     # config (e.g. "<REDACTED>" for resource_url path, "<EMAIL_ADDRESS>" elsewhere).
     assert "<" in signed_url and ">" in signed_url, signed_url
+
+
+# ---------------------------------------------------------------------------
+# extra-field PII redaction — F-A regression (audit 2026-05-03)
+# ---------------------------------------------------------------------------
+
+
+def _header_with_extra(extra: dict) -> str:
+    return json.dumps(
+        {
+            "accepts": [
+                {
+                    "scheme": "exact",
+                    "network": "base-sepolia",
+                    "maxAmountRequired": "0.01",
+                    "resource": "https://api.example.com/v1/data",
+                    "description": "API data access",
+                    "reason": "research",
+                    "payTo": "0xabcdef1234567890abcdef1234567890abcdef12",
+                    "requiredDeadlineSeconds": 300,
+                    "extra": extra,
+                }
+            ]
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_extra_field_pii_redacted_before_signer():
+    """PII smuggled in the extra dict must not reach the signer (F-A 2026-05-03)."""
+    captured: dict[str, PaymentDetails] = {}
+
+    async def capturing_signer(details: PaymentDetails) -> PaymentResponse:
+        captured["details"] = details
+        return PaymentResponse(token="signed", details=details)  # noqa: S106
+
+    url = "https://api.example.com/v1/data"
+    header = _header_with_extra({"user_id": "alice@example.com", "tier": "gold"})
+    with respx.mock:
+        route = respx.get(url)
+        route.side_effect = [
+            httpx.Response(402, headers={"X-PAYMENT": header}),
+            httpx.Response(200, text="ok"),
+        ]
+        async with _make_client(payment_signer=capturing_signer, pii_action="redact") as client:
+            await client.get(url)
+
+    signed_extra = captured["details"].extra
+    assert "alice@example.com" not in str(signed_extra), signed_extra
+    assert signed_extra["tier"] == "gold"
+
+
+@pytest.mark.asyncio
+async def test_extra_field_pii_blocks_when_pii_action_block():
+    """PII in extra triggers PIIBlockedError when pii_action='block' (F-A 2026-05-03)."""
+    url = "https://api.example.com/v1/data"
+    header = _header_with_extra({"customer_email": "victim@example.com"})
+    with respx.mock:
+        respx.get(url).mock(return_value=httpx.Response(402, headers={"X-PAYMENT": header}))
+        async with _make_client(pii_action="block") as client:
+            with pytest.raises(PIIBlockedError):
+                await client.get(url)
+
+
+@pytest.mark.asyncio
+async def test_extra_field_without_pii_passes_through_unchanged():
+    """An extra dict with no PII is forwarded verbatim — no false redaction."""
+    captured: dict[str, PaymentDetails] = {}
+
+    async def capturing_signer(details: PaymentDetails) -> PaymentResponse:
+        captured["details"] = details
+        return PaymentResponse(token="signed", details=details)  # noqa: S106
+
+    url = "https://api.example.com/v1/data"
+    header = _header_with_extra({"tier": "gold", "rate_limit": 100})
+    with respx.mock:
+        route = respx.get(url)
+        route.side_effect = [
+            httpx.Response(402, headers={"X-PAYMENT": header}),
+            httpx.Response(200, text="ok"),
+        ]
+        async with _make_client(payment_signer=capturing_signer) as client:
+            await client.get(url)
+
+    assert captured["details"].extra == {"tier": "gold", "rate_limit": 100}
