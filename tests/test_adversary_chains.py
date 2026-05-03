@@ -193,8 +193,7 @@ class TestChain04UnicodeEvasion:
 
     def test_en_dash_ssn_separator_is_detected(self):
         """SSN with U+2013 (en-dash) instead of ASCII '-' still matches."""
-        hostile = "SSN: 123\u20130-0\u20130 bad example"  # non-matching content
-        # Use a realistic SSN with en-dash separators
+        # Realistic SSN with en-dash separators
         hostile = "ssn 123\u201345\u20136789 on file"
         _, entities = self.filt.scan_and_redact(hostile)
         assert any(e.entity_type == "US_SSN" for e in entities)

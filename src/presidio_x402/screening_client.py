@@ -176,12 +176,10 @@ class ScreeningClient:
         url = f"{self._base_url}{path}"
         headers = {"X-API-Key": self._api_key, "Content-Type": "application/json"}
 
-        last_exc: Exception | None = None
         for attempt in (1, 2):
             try:
                 resp = await self._httpx.post(url, json=payload, headers=headers)
             except httpx.RequestError as exc:
-                last_exc = exc
                 if attempt == 1:
                     await asyncio.sleep(_RETRY_BACKOFF_SECONDS)
                     continue

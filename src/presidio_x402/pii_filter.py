@@ -140,8 +140,6 @@ _REGEX_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ),
 ]
 
-_REGEX_ENTITY_NAMES = {name for name, _ in _REGEX_PATTERNS}
-
 
 @dataclass
 class EntityResult:
