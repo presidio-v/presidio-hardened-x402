@@ -66,7 +66,6 @@ logger = logging.getLogger("presidio_x402.gateway")
 
 # Header names per x402 spec
 _HEADER_PAYMENT = "X-PAYMENT"
-_HEADER_PAYMENT_RECEIPT = "X-PAYMENT-RECEIPT"
 
 # Supported x402 scheme for v0.1.0
 _SUPPORTED_SCHEME = "exact"

@@ -112,7 +112,9 @@ def _on_import_audit() -> None:
             from packaging.version import Version as _Version
         except ImportError:  # pragma: no cover - packaging ships with pip
             _Version = None  # noqa: N806 - aliasing imported class symbol
-            _InvalidVersion = Exception  # noqa: N806 - aliasing imported class symbol
+            # _InvalidVersion is unreachable on the fallback path: line 124's
+            # `if _Version is None: continue` short-circuits before any code
+            # that would reference it. Omitted here.
 
         issues: list[str] = []
         for pkg, min_safe in _KNOWN_VULNERABLE.items():

@@ -29,7 +29,10 @@ app = FastAPI(
     redoc_url=None,
 )
 
-_collector = MetricsCollector()
+# Constructed for its prometheus-collector registration side-effect; the
+# instance itself is parked on app.state so module-level attribute reads
+# keep it from looking unused to static analysers.
+app.state.metrics_collector = MetricsCollector()
 
 
 @app.get("/health")
