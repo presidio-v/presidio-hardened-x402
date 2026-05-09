@@ -46,7 +46,11 @@ redis = [
     "redis>=5.0.0",
 ]
 langchain = [
-    "langchain-core>=0.1.0",
+    # >=1.3.3 closes CVE-2026-44843 (GHSA-pjwx-r37v-7724) — unsafe broad-allowlist
+    # deserialization in older runtime paths (RunnableWithMessageHistory,
+    # astream_log, astream_events(version="v1")). The 0.3.x line gets the same
+    # fix at 0.3.85.
+    "langchain-core>=1.3.3",
 ]
 crewai = [
     "crewai>=0.28.0",

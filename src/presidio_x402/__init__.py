@@ -100,6 +100,11 @@ _KNOWN_VULNERABLE: dict[str, str] = {
     "presidio-analyzer": "2.2.362",
     "presidio-anonymizer": "2.2.362",
     "cryptography": "46.0.6",
+    # CVE-2026-44843 / GHSA-pjwx-r37v-7724 — unsafe deserialization in
+    # RunnableWithMessageHistory, astream_log, astream_events(version="v1").
+    # 1.3.3 (1.x line) and 0.3.85 (0.3.x line) carry the fix; pinning the
+    # 1.3.3 floor here is correct for our optional [langchain] extra.
+    "langchain-core": "1.3.3",
 }
 
 
