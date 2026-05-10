@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import os
 import secrets
@@ -93,8 +94,12 @@ def compute_fingerprint(
         Payment deadline (seconds). Payments with different deadlines are
         considered distinct to avoid false positives on retried expired payments.
     """
-    canonical = "|".join([resource_url, pay_to, amount, currency, str(deadline_seconds)])
-    return hmac.new(_FINGERPRINT_KEY, canonical.encode(), hashlib.sha256).hexdigest()
+    canonical = json.dumps(
+        [resource_url, pay_to, amount, currency, deadline_seconds],
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hmac.new(_FINGERPRINT_KEY, canonical, hashlib.sha256).hexdigest()
 
 
 class _MemoryStore:
@@ -179,7 +184,11 @@ class ReplayGuard:
         fingerprint and returns normally.
         """
         if not self._store.check_and_set(fingerprint, self.ttl):
-            logger.warning("Replay detected: fingerprint %s...", fingerprint[:16])
+            logger.error(
+                "Replay detected: fingerprint %s...",
+                fingerprint[:16],
+                extra={"event": "REPLAY_DETECTED", "fingerprint": fingerprint[:16]},
+            )
             raise ReplayDetectedError(
                 f"Duplicate payment detected (fingerprint: {fingerprint[:16]}…)",
                 fingerprint=fingerprint,
