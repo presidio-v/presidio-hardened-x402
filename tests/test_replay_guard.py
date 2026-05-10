@@ -42,6 +42,17 @@ class TestComputeFingerprint:
         assert len(fp) == 64  # SHA-256 hex is 64 chars
         int(fp, 16)  # should not raise
 
+    def test_pipe_in_resource_url_does_not_collide_with_other_tuples(self):
+        # F-D regression: prior `"|".join(...)` canonicalisation was ambiguous
+        # under server-controlled `resource_url`. JSON-array canonicalisation
+        # must produce distinct fingerprints for these structurally distinct
+        # tuples even though the legacy pipe-joined forms were identical.
+        fp_attacker = compute_fingerprint(
+            "https://a.com/x|0xLegit|1.00|USDC", "300", "0.00", "USDC", 0
+        )
+        fp_legit = compute_fingerprint("https://a.com/x", "0xLegit", "1.00", "USDC", 300)
+        assert fp_attacker != fp_legit
+
 
 class TestReplayGuardMemory:
     def setup_method(self):

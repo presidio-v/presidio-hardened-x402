@@ -29,5 +29,4 @@ jobs:
           bandit -r src/ \
             --severity-level medium \
             --confidence-level medium \
-            -f txt \
-            --exit-zero
+            -f txt
