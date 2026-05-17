@@ -233,6 +233,23 @@ class TestChainKeyFromEnv:
         with pytest.raises(ValueError, match="exactly 32 bytes"):
             importlib.reload(al_mod)
 
+    def test_missing_env_key_logs_error(self, monkeypatch, caplog):
+        # F2 regression (2026-05-17): when PRESIDIO_X402_CHAIN_KEY is unset,
+        # the silent fallback to a per-process key must emit an ERROR-level
+        # log so operators get the same deployment-defect signal that
+        # replay_guard.py emits for its equivalent env var.
+        import logging
+
+        monkeypatch.delenv("PRESIDIO_X402_CHAIN_KEY", raising=False)
+        import presidio_x402.audit_log as al_mod
+
+        with caplog.at_level(logging.ERROR, logger="presidio_x402.audit_log"):
+            importlib.reload(al_mod)
+        assert any(
+            "PRESIDIO_X402_CHAIN_KEY" in rec.message and rec.levelno == logging.ERROR
+            for rec in caplog.records
+        )
+
     def teardown_method(self, method):
         # Reload without env var so other tests get a fresh ephemeral key
         os.environ.pop("PRESIDIO_X402_CHAIN_KEY", None)

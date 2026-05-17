@@ -137,6 +137,22 @@ async def test_malformed_x_payment_header_raises_x402_error():
 
 
 @pytest.mark.asyncio
+async def test_oversized_x_payment_header_raises_before_json_parse():
+    # F3 regression (2026-05-17): a hostile 402 server could return a
+    # multi-megabyte X-PAYMENT header and force json.loads to allocate memory
+    # before any security control fires. The header length must be checked
+    # before parsing.
+    oversized = "x" * 70_000  # > 65 KiB limit
+    with respx.mock:
+        respx.get("https://api.example.com/v1/data").mock(
+            return_value=httpx.Response(402, headers={"X-PAYMENT": oversized})
+        )
+        async with _make_client() as client:
+            with pytest.raises(X402PaymentError, match="exceeds maximum length"):
+                await client.get("https://api.example.com/v1/data")
+
+
+@pytest.mark.asyncio
 async def test_unsupported_scheme_raises_x402_error():
     header = json.dumps({"accepts": [{"scheme": "unknown-scheme", "network": "base-sepolia"}]})
     with respx.mock:
