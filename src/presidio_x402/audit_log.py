@@ -71,6 +71,13 @@ if _chain_key_hex:
         )
     logger.debug("AuditLog: loaded persistent chain key from PRESIDIO_X402_CHAIN_KEY")
 else:
+    logger.error(
+        "PRESIDIO_X402_CHAIN_KEY not set — audit HMAC chain is process-scoped "
+        "and cross-session tamper detection is disabled. Set this env var "
+        "(32-byte hex) in production. This message is ERROR-level rather than "
+        "WARNING because the default is silently insecure in any deployment "
+        "that survives a process restart; treat as a deployment-time defect."
+    )
     _CHAIN_KEY = secrets.token_bytes(32)
 
 

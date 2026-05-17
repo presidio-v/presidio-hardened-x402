@@ -75,6 +75,12 @@ _SUPPORTED_SCHEME = "exact"
 # signing-key material, wallet addresses) — truncation caps blast radius.
 _SAFE_EXC_MESSAGE_MAX = 80
 
+# Max byte length of the raw X-PAYMENT header before JSON parsing. A malicious
+# 402 server could otherwise force the client to allocate arbitrary memory in
+# json.loads before any security control fires. 64 KiB is multiple orders of
+# magnitude above any legitimate x402 accepts payload.
+_PAYMENT_HEADER_MAX_BYTES = 65_536
+
 
 def _safe_exc_message(exc: BaseException, max_len: int = _SAFE_EXC_MESSAGE_MAX) -> str:
     msg = str(exc)
@@ -107,6 +113,10 @@ def _parse_402_header(header_value: str) -> PaymentDetails:
           }]
         }
     """
+    if len(header_value.encode("utf-8")) > _PAYMENT_HEADER_MAX_BYTES:
+        raise X402PaymentError(
+            f"X-PAYMENT header exceeds maximum length of {_PAYMENT_HEADER_MAX_BYTES} bytes"
+        )
     try:
         data = json.loads(header_value)
     except json.JSONDecodeError as exc:

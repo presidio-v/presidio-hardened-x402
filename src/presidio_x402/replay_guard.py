@@ -94,8 +94,13 @@ def compute_fingerprint(
         Payment deadline (seconds). Payments with different deadlines are
         considered distinct to avoid false positives on retried expired payments.
     """
+    # Canonicalise case-insensitive fields before serialisation. EVM addresses
+    # are case-insensitive (EIP-55 checksum is optional); a server that returns
+    # the same `pay_to` in mixed case across retries would otherwise produce
+    # distinct fingerprints and bypass replay detection. Currency tickers are
+    # conventionally uppercase but not enforced by the 402 spec.
     canonical = json.dumps(
-        [resource_url, pay_to, amount, currency, deadline_seconds],
+        [resource_url, pay_to.lower(), amount, currency.upper(), deadline_seconds],
         separators=(",", ":"),
         ensure_ascii=False,
     ).encode("utf-8")

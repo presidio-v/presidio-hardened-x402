@@ -42,6 +42,27 @@ class TestComputeFingerprint:
         assert len(fp) == 64  # SHA-256 hex is 64 chars
         int(fp, 16)  # should not raise
 
+    def test_pay_to_case_variants_produce_same_fingerprint(self):
+        # F1 regression (2026-05-17): EVM addresses are case-insensitive at the
+        # protocol level. A malicious 402 server retrying with `pay_to` toggled
+        # between checksummed and lower-case would otherwise bypass replay
+        # detection. Canonicalisation must lowercase `pay_to` before hashing.
+        fp_upper = compute_fingerprint(
+            "https://api.example.com", "0xAbCdEf0123456789", "0.01", "USDC", 300
+        )
+        fp_lower = compute_fingerprint(
+            "https://api.example.com", "0xabcdef0123456789", "0.01", "USDC", 300
+        )
+        assert fp_upper == fp_lower
+
+    def test_currency_case_variants_produce_same_fingerprint(self):
+        # F1 regression (2026-05-17): currency tickers are conventionally
+        # uppercase but not enforced by the 402 spec; canonicalisation must
+        # uppercase `currency` before hashing.
+        fp_upper = compute_fingerprint("https://api.example.com", "0xabc", "0.01", "USDC", 300)
+        fp_lower = compute_fingerprint("https://api.example.com", "0xabc", "0.01", "usdc", 300)
+        assert fp_upper == fp_lower
+
     def test_pipe_in_resource_url_does_not_collide_with_other_tuples(self):
         # F-D regression: prior `"|".join(...)` canonicalisation was ambiguous
         # under server-controlled `resource_url`. JSON-array canonicalisation
