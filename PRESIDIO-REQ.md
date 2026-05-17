@@ -215,17 +215,110 @@ on controlled data with known ground truth, then confirm the threat model on liv
 
 ---
 
-## v0.4.0 Requirements (Production Hardening)
+## v0.4.0 Requirements (Screening API Launch) — Delivered
 
-- Third-party security audit of all v0.1.0–v0.3.0 modules
-- Performance regression test suite: p99 < 50ms latency SLO enforced in CI
-- Policy hot-reload: update `PolicyConfig` at runtime without client restart
-- OpenTelemetry span export for every security control activation
-- Operator runbook (GitHub Pages)
+**Re-scoped from the original "production hardening 2027" plan per
+[ADR-0006](../sdlc/adr/0006-v040-scope-redefinition.md).** v0.4.0 now pairs the
+library release with the hosted `screen.presidio-group.eu` screening service
+that acts as its authoritative remote backend. The 2027-hardening umbrella is
+redistributed across v0.5.0+ (see below).
+
+### Hosted screening service
+
+- **`screen.presidio-group.eu`** — FastAPI service behind nginx on an OVHcloud
+  VPS (deploy 2026-04-20: SSH key-only, UFW, fail2ban, unattended-upgrades,
+  Let's Encrypt ECDSA cert with certbot.timer auto-renewal). Free tier only:
+  regex mode, 100 screenings/day/key, no audit token. Paid tiers gated on real
+  usage data and deferred to v0.4.1+.
+- Baseline load test (`run/load-tests/health-baseline.js`, 2026-04-20):
+  100 req/s × 5 min on `GET /health` → 29,989 requests, 100.00% 2xx,
+  p95 33 ms, p99 92 ms, 0 failures.
+
+### Client-side integration
+
+- **`screening_client.py`** — `ScreeningClient`: httpx-injectable client that
+  posts metadata fields to the screening service and consumes the structured
+  PII analysis response.
+- **Gateway integration**: `HardenedX402Client(remote_screening=True, screening_api_key=...)`
+  routes PII analysis to the hosted service instead of the in-process PIIFilter;
+  falls back to local regex/NLP modes when the network is unhealthy.
+
+### New library-side controls
+
+- **Per-origin `pay_to` allowlist** (`gateway.py:495-512`): defence against
+  DNS-poisoning attacks that substitute the recipient wallet in a 402 response.
+  Configured via `HardenedX402Client(trusted_wallets={origin: {pay_to, ...}})`.
+  Adversary-attack chain-06 mitigation.
+- **Replay fingerprint case-canonicalisation** (F1, audit 2026-05-17):
+  `compute_fingerprint` now lowercases `pay_to` and uppercases `currency`
+  before HMAC, so a server cannot bypass replay detection by toggling case
+  across retries.
+- **`PRESIDIO_X402_CHAIN_KEY` startup ERROR log** (F2, audit 2026-05-17):
+  matches the existing `PRESIDIO_X402_FINGERPRINT_KEY` pattern; silent
+  fallback to a per-process key is no longer observable-free.
+- **`X-PAYMENT` length cap** (F3, audit 2026-05-17): 64 KiB hard cap before
+  `json.loads` to bound client-side DoS exposure from hostile 402 servers.
+
+### Audit cycle closures rolled up into 0.4.0
+
+- 2026-05-03: F-A (PII `scan_dict` covers `extra` dict), F-B (MPA webhook
+  outbound HMAC).
+- 2026-05-10: F-C (Bandit `--exit-zero` removed → MEDIUM+ findings now block
+  CI), F-D (replay fingerprint JSON-array canonical form replaces pipe-joined
+  string), F-E (replay-detected event promoted from WARNING to ERROR with
+  structured `extra` for SIEM).
+- 2026-05-17: F1, F2, F3 (listed above).
+
+### Adversary-chain disposition
+
+All 8 chains in `adversary-attack/` dispositioned per the closure table in the
+parent repo's `adversary-attack/README.md`: 3 CLOSED (04 Unicode evasion,
+05 exception exfiltration, 07 MPA SSRF), 3 MITIGATED-config (02 replay,
+03 audit OOM, 06 wallet hijack — operator must set
+`PRESIDIO_X402_FINGERPRINT_KEY` + `PRESIDIO_X402_CHAIN_KEY` and populate the
+wallet allowlist at deploy), 2 PARTIAL (01 spaCy model not yet wheel-pinned,
+08 tools/ sidecar Dockerfile not digest-pinned — residual scope deferred to
+v0.5.0). No CRITICAL/HIGH chain remains OPEN with zero in-tree control.
+
+### Out of v0.4.0 (moved to later milestones per ADR-0006)
+
+- Third-party external security audit → v0.5.0 (closes RSK-019)
+- Multi-tenant key scoping + remote audit sinks (S3 / Splunk / Datadog) → v0.5.0
+- Email-hash per-install salt → v0.5.0 (closes RSK-002)
+- `/v1/revoke` endpoint → v0.4.1
+- Prometheus `/metrics` on the hosted service → v0.4.1
+- SLSA L3 hardened build worker → v0.5.0+
+- Hard startup-gates for `PRESIDIO_X402_*_KEY` env vars → v0.5.0
+- Policy hot-reload, OpenTelemetry span export, performance regression CI →
+  v0.5.0
 
 ---
 
-## v0.5.0 Requirements (SLO Payment Broker)
+## v0.5.0 Requirements (Multi-Tenant + Audit Sink + SLSA L3)
+
+Converts the single-tenant v0.4.0 screening service into a production platform.
+Largely the "production hardening" scope previously carried under v0.4.0, plus
+the multi-tenant work required to take paid tiers live.
+
+- Multi-tenant key scoping with per-tenant Redis namespace
+- Remote audit sink interfaces: `S3AuditWriter`, `SplunkAuditWriter`,
+  `DatadogAuditWriter` (enterprise tier)
+- Per-install salt for `email:<sha256>` audit prefix (closes RSK-002)
+- Third-party security audit (closes RSK-019); blocks Track 1/Track 2 paid
+  tiers
+- SLSA L3 hardened build worker + provenance attestation; digest-pinned base
+  image for `tools/docker/` and pinned spaCy model wheel (closes chain-01 and
+  chain-08 residuals)
+- Performance regression test suite: p99 < 50ms latency SLO enforced in CI
+- Policy hot-reload: update `PolicyConfig` at runtime without client restart
+- OpenTelemetry span export for every security control activation
+- Hard startup-gates: `PRESIDIO_X402_REQUIRE_FINGERPRINT_KEY=1` and
+  `PRESIDIO_X402_REQUIRE_CHAIN_KEY=1` opt-ins that hard-fail import when the
+  corresponding env var is unset
+
+---
+
+## v0.6.0 Requirements (SLO Payment Broker)
 
 This version fills a second white spot: **market-based SLO enforcement**. Current
 autoscaling is reactive and rule-based. This milestone makes the agent an economic actor

@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml/badge.svg)](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml)
 
-> v0.3.0 — PII redaction, spending policy, replay detection, audit logging, multi-party authorization, and Prometheus metrics for x402 payments
+> v0.4.0 — PII redaction, spending policy, replay detection, audit logging, multi-party authorization, Prometheus metrics, and opt-in remote screening for x402 payments
 
 Security middleware for the [x402 payment protocol](https://www.x402.org/).
 
@@ -14,10 +14,12 @@ Intercepts x402 payment requests **before transmission to servers and facilitato
 
 - **PII redaction** — Presidio-based detection and redaction of personal data (emails, names, SSNs, credit cards, etc.) from payment metadata fields before they are sent to the payment server or facilitator API
 - **Spending policy** — per-agent, per-endpoint, and per-time-window budget limits that block or throttle payments before execution
-- **Replay detection** — HMAC-SHA256 fingerprinting of canonical payment fields to prevent duplicate and replayed payments
+- **Replay detection** — HMAC-SHA256 fingerprinting of canonical payment fields to prevent duplicate and replayed payments; case-canonicalised on `pay_to` and `currency` *(v0.4.0)*
 - **Audit logging** — HMAC-chained JSON-L audit trail for every payment attempt (including blocked ones)
 - **Multi-party authorization** — n-of-m approval requirement for high-value payments, via webhook or HMAC-SHA256 cryptographic countersignature modes *(v0.3.0)*
 - **Prometheus metrics** — structured telemetry for every security control activation *(v0.3.0)*
+- **Remote screening** — opt-in `remote_screening=True` mode offloads PII analysis to the hosted [`screen.presidio-group.eu`](https://screen.presidio-group.eu) service via `ScreeningClient`; avoids the in-process spaCy dependency *(v0.4.0)*
+- **Per-origin wallet allowlist** — per-origin `pay_to` allowlist blocks payments to attacker-controlled addresses when a DNS-poisoned 402 response substitutes the recipient (chain-06 mitigation) *(v0.4.0)*
 
 Part of the [presidio-hardened-*](https://github.com/presidio-v) toolkit family.
 
@@ -266,6 +268,45 @@ client = HardenedX402Client(payment_signer=signer, policy=policy)
 
 ---
 
+## Remote Screening (v0.4.0)
+
+Offload PII analysis to the hosted [`screen.presidio-group.eu`](https://screen.presidio-group.eu)
+service. Useful when you want to keep the agent process small (no in-process spaCy
+model) and centralise screening policy across many agents.
+
+```python
+from presidio_x402 import HardenedX402Client
+
+client = HardenedX402Client(
+    payment_signer=signer,
+    remote_screening=True,
+    screening_api_key="...",   # obtain by registering at screen.presidio-group.eu
+)
+```
+
+The free tier serves the regex-mode screening backend at 100 screenings/day per key.
+Falls back to local regex / NLP modes if the network is unhealthy, so the client never
+hard-fails on a screening-service outage.
+
+### Per-origin wallet allowlist (v0.4.0)
+
+Defence against DNS-poisoning attacks that substitute the recipient wallet in a 402
+response. Configure the trusted `pay_to` addresses per resource origin:
+
+```python
+client = HardenedX402Client(
+    payment_signer=signer,
+    trusted_wallets={
+        "https://api.example.com": {"0xAbC...123"},
+    },
+)
+```
+
+Payments to a `pay_to` not in the allowlist for the response's origin are blocked
+before signing.
+
+---
+
 ## Kubernetes Deployment (v0.3.0)
 
 Deploy as a sidecar using the bundled Helm chart:
@@ -315,9 +356,10 @@ All exceptions are importable from `presidio_x402`.
 | v0.1.0 | PII redaction + spending policy + replay detection |
 | v0.2.0 | Synthetic corpus + 42-configuration precision/recall sweep, LangChain/CrewAI adapters, compliance report · [arXiv:2604.11430](https://arxiv.org/abs/2604.11430) |
 | v0.2.1 | Live ecosystem characterisation via Dune Analytics (20 projects, 96 wallets, 11 chains, ≥79M transactions); IEEE S&P magazine article submitted; IEEE TIFS paper under review · Corpus: [`v0.2.1/dataport/`](v0.2.1/dataport/), [Hugging Face](https://huggingface.co/datasets/vstantch/x402-pii-corpus), [IEEE DataPort (doi:10.21227/kpsz-nq73)](https://doi.org/10.21227/kpsz-nq73) |
-| **v0.3.0** | **Multi-party authorization** (`mpa.py`: n-of-m, webhook + crypto modes) · **Policy-as-code** JSON Schema (IETF draft candidate) · **Prometheus metrics** exporter · Kubernetes Helm chart + Docker image · SOC2 reference architecture — **current** |
-| v0.4.0 | Production hardening: security audit, OpenTelemetry spans, policy hot-reload, operator runbook |
-| v0.5.0 | **SLO payment broker** — x402 micropayments as runtime infrastructure bids; `presidio-hardened-arch-translucency` integration |
+| v0.3.0 | **Multi-party authorization** (`mpa.py`: n-of-m, webhook + crypto modes) · **Policy-as-code** JSON Schema (IETF draft candidate) · **Prometheus metrics** exporter · Kubernetes Helm chart + Docker image · SOC2 reference architecture |
+| **v0.4.0** | **Screening API launch** — hosted [`screen.presidio-group.eu`](https://screen.presidio-group.eu) free tier (regex mode, 100 req/day) · `ScreeningClient` + `remote_screening=True` mode · per-origin `pay_to` allowlist (chain-06 mitigation) · audit-cycle hardening (F-A/B 2026-05-03, F-C/D/E 2026-05-10, F1/F2/F3 2026-05-17); see [`CHANGELOG.md`](CHANGELOG.md) — **current** |
+| v0.5.0 | Multi-tenant key scoping · enterprise-tier remote audit sinks (S3 / Splunk / Datadog) · third-party security audit · SLSA L3 hardened build worker · hard startup-gates for `PRESIDIO_X402_*_KEY` env vars |
+| v0.6.0 | **SLO payment broker** — x402 micropayments as runtime infrastructure bids; `presidio-hardened-arch-translucency` integration |
 
 See [PRESIDIO-REQ.md](PRESIDIO-REQ.md) for full deliberation and rationale.
 
