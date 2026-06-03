@@ -89,6 +89,20 @@ class _SpendLedger:
             self._evict_stale(now)
             self._entries.append((now, amount_usd))
 
+    def release(self, amount_usd: float) -> bool:
+        """Reverse a single previously recorded *amount_usd* entry.
+
+        Removes the most-recent entry matching the amount (the one just
+        recorded). Returns True if an entry was removed. Used for compensating
+        rollback when a recorded spend is later denied or fails to settle.
+        """
+        with self._lock:
+            for i in range(len(self._entries) - 1, -1, -1):
+                if self._entries[i][1] == amount_usd:
+                    del self._entries[i]
+                    return True
+        return False
+
     def would_exceed(self, amount_usd: float, limit_usd: float) -> bool:
         return self.total() + amount_usd > limit_usd
 
@@ -244,6 +258,21 @@ class PolicyEngine:
                 self._get_endpoint_ledger(prefix).record(amount_usd)
 
         logger.debug("Policy check passed: %.4f USD for %s", amount_usd, resource_url)
+
+    def refund(self, *, resource_url: str, amount_usd: float) -> None:
+        """Reverse a spend recorded by :meth:`check_and_record`.
+
+        Compensating rollback for a payment that passed policy but was then
+        denied (MPA) or failed to sign, so the ledger only reflects payments
+        that actually committed (F-03). Mirrors the global + per-endpoint
+        recording done at check time, under the same serialisation lock. A
+        no-op if the entry has already aged out of the window.
+        """
+        with self._check_lock:
+            self._global_ledger.release(amount_usd)
+            prefix = self._matching_endpoint_prefix(resource_url)
+            if prefix is not None:
+                self._get_endpoint_ledger(prefix).release(amount_usd)
 
     def reset(self) -> None:
         """Reset all spend ledgers (useful in tests)."""

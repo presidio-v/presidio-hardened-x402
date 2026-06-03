@@ -12,11 +12,13 @@ from presidio_x402 import HardenedX402Client
 from presidio_x402._types import PaymentDetails, PaymentResponse
 from presidio_x402.audit_log import NullAuditWriter
 from presidio_x402.exceptions import (
+    MPADeniedError,
     PIIBlockedError,
     PolicyViolationError,
     ReplayDetectedError,
     X402PaymentError,
 )
+from presidio_x402.mpa import MPAApproverConfig, MPAConfig, MPAEngine
 
 # ---------------------------------------------------------------------------
 # Test helpers
@@ -300,6 +302,101 @@ async def test_signer_failure_raises_x402_payment_error():
         async with _make_client(payment_signer=failing_signer) as client:
             with pytest.raises(X402PaymentError, match="Payment signing failed"):
                 await client.get("https://api.example.com/v1/data")
+
+
+# ---------------------------------------------------------------------------
+# F-03: spend + replay are rolled back when the payment never commits
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_signer_failure_rolls_back_spend_and_replay():
+    """A signer failure must not leak budget or burn the replay fingerprint:
+    the payment was committed to the ledgers before signing, so a failed sign
+    has to be compensated (F-03)."""
+
+    async def failing_signer(details):
+        raise RuntimeError("transient wallet error")
+
+    with respx.mock:
+        respx.get("https://api.example.com/v1/data").mock(
+            return_value=httpx.Response(402, headers={"X-PAYMENT": PAYMENT_HEADER_VALUE})
+        )
+        async with _make_client(
+            payment_signer=failing_signer,
+            policy={"daily_limit_usd": 1.0},
+            replay_ttl=300,
+        ) as client:
+            with pytest.raises(X402PaymentError, match="Payment signing failed"):
+                await client.get("https://api.example.com/v1/data")
+
+            # Spend ledger rolled back to zero; fingerprint released.
+            assert client._policy._global_ledger.total() == 0.0
+            assert client._replay._store._store == {}
+
+
+@pytest.mark.asyncio
+async def test_retry_after_signer_failure_is_not_blocked_as_replay():
+    """End-to-end: a transient signer failure on attempt 1 must not poison the
+    legitimate retry of the same canonical payment (F-03)."""
+    calls = {"n": 0}
+
+    async def flaky_signer(details: PaymentDetails) -> PaymentResponse:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("transient wallet error")
+        return PaymentResponse(token="ok-token", details=details)  # noqa: S106
+
+    with respx.mock:
+        route = respx.get("https://api.example.com/v1/data")
+        route.side_effect = [
+            # attempt 1: 402 → signer fails (rolled back)
+            httpx.Response(402, headers={"X-PAYMENT": PAYMENT_HEADER_VALUE}),
+            # attempt 2: 402 → signer succeeds → 200
+            httpx.Response(402, headers={"X-PAYMENT": PAYMENT_HEADER_VALUE}),
+            httpx.Response(200, text="paid"),
+        ]
+        async with _make_client(
+            payment_signer=flaky_signer,
+            policy={"daily_limit_usd": 1.0},
+            replay_ttl=300,
+        ) as client:
+            with pytest.raises(X402PaymentError, match="Payment signing failed"):
+                await client.get("https://api.example.com/v1/data")
+
+            resp = await client.get("https://api.example.com/v1/data")
+            assert resp.status_code == 200
+            assert resp.text == "paid"
+
+
+@pytest.mark.asyncio
+async def test_mpa_denial_rolls_back_spend_and_replay():
+    """An MPA-denied payment must not consume budget or burn the replay
+    fingerprint — the latter would block the legitimate crypto-mode retry that
+    carries the countersignatures (F-03)."""
+    mpa = MPAEngine(
+        MPAConfig(
+            threshold=1,
+            approvers=[MPAApproverConfig("alice", mode="crypto", shared_secret=b"alice-secret")],
+            min_amount_usd=0.0,
+            dns_rebinding_protection=False,
+        )
+    )
+    with respx.mock:
+        respx.get("https://api.example.com/v1/data").mock(
+            return_value=httpx.Response(402, headers={"X-PAYMENT": PAYMENT_HEADER_VALUE})
+        )
+        async with _make_client(
+            mpa_engine=mpa,
+            policy={"daily_limit_usd": 1.0},
+            replay_ttl=300,
+        ) as client:
+            # No mpa_signatures supplied → crypto approver denies.
+            with pytest.raises(MPADeniedError):
+                await client.get("https://api.example.com/v1/data")
+
+            assert client._policy._global_ledger.total() == 0.0
+            assert client._replay._store._store == {}
 
 
 # ---------------------------------------------------------------------------
