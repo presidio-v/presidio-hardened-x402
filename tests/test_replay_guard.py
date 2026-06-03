@@ -92,6 +92,15 @@ class TestReplayGuardMemory:
         self.guard.check_and_record("fp-a")
         self.guard.check_and_record("fp-b")  # different fingerprint — should not raise
 
+    def test_release_allows_same_fingerprint_again(self):
+        # F-03 compensating rollback: a released fingerprint can be re-recorded.
+        self.guard.check_and_record("fp-rollback")
+        self.guard.release("fp-rollback")
+        self.guard.check_and_record("fp-rollback")  # must not raise
+
+    def test_release_unknown_fingerprint_is_noop(self):
+        self.guard.release("never-recorded")  # must not raise
+
     def test_replay_error_message_contains_fingerprint_prefix(self):
         self.guard.check_and_record("abcdef1234567890")
         with pytest.raises(ReplayDetectedError, match="abcdef12"):

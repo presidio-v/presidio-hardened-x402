@@ -129,6 +129,11 @@ class _MemoryStore:
         for k in expired:
             del self._store[k]
 
+    def release(self, key: str) -> None:
+        """Forget *key* if present (compensating rollback)."""
+        with self._lock:
+            self._store.pop(key, None)
+
     def clear(self) -> None:
         with self._lock:
             self._store.clear()
@@ -152,6 +157,10 @@ class _RedisStore:
         # SET NX EX is atomic on the Redis server — no TOCTOU window.
         result = self._client.set(self._prefix + key, "1", ex=ttl, nx=True)
         return result is not None
+
+    def release(self, key: str) -> None:
+        """Delete the fingerprint key (compensating rollback)."""
+        self._client.delete(self._prefix + key)
 
     def clear(self) -> None:
         keys = self._client.keys(self._prefix + "*")
@@ -199,6 +208,19 @@ class ReplayGuard:
                 fingerprint=fingerprint,
             )
         logger.debug("Replay guard: new fingerprint recorded %s...", fingerprint[:16])
+
+    def release(self, fingerprint: str) -> None:
+        """Forget a fingerprint recorded by :meth:`check_and_record`.
+
+        Compensating rollback: when a payment passes the replay check but is
+        then denied (MPA) or fails to sign, the fingerprint must be released so
+        the legitimate retry of the same canonical payment is not rejected as a
+        replay. This is what makes the documented MPA crypto-mode
+        countersignature retry workflow work — the signature-less first attempt
+        no longer poisons the retry (F-03).
+        """
+        self._store.release(fingerprint)
+        logger.debug("Replay guard: released fingerprint %s...", fingerprint[:16])
 
     def reset(self) -> None:
         """Clear all recorded fingerprints (useful in tests)."""

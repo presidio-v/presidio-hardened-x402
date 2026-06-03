@@ -163,3 +163,29 @@ class TestPolicyEngineWindowExpiry:
         time.sleep(1.1)
         # Old entry expired; new payment should be allowed
         engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.08)
+
+
+class TestPolicyEngineRefund:
+    """F-03 compensating rollback: refund reverses a recorded spend on both the
+    global and per-endpoint ledgers."""
+
+    def test_refund_frees_global_budget(self):
+        engine = PolicyEngine(PolicyConfig(daily_limit_usd=0.10))
+        engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.08)
+        # A second 0.08 would exceed the 0.10 daily limit...
+        with pytest.raises(PolicyViolationError):
+            engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.08)
+        # ...but after refunding the first, it fits again.
+        engine.refund(resource_url="https://api.example.com", amount_usd=0.08)
+        engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.08)
+
+    def test_refund_frees_per_endpoint_budget(self):
+        engine = PolicyEngine(PolicyConfig(per_endpoint={"https://api.example.com": 0.10}))
+        engine.check_and_record(resource_url="https://api.example.com/data", amount_usd=0.08)
+        engine.refund(resource_url="https://api.example.com/data", amount_usd=0.08)
+        # Endpoint ledger reversed → same payment is allowed again.
+        engine.check_and_record(resource_url="https://api.example.com/data", amount_usd=0.08)
+
+    def test_refund_without_matching_entry_is_noop(self):
+        engine = PolicyEngine(PolicyConfig(daily_limit_usd=0.10))
+        engine.refund(resource_url="https://api.example.com", amount_usd=0.05)  # must not raise

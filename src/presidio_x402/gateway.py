@@ -352,8 +352,9 @@ class HardenedX402Client:
             )
             raise
 
-        # Apply security controls; get (possibly modified) details back
-        secure_details = await self._apply_security_controls(
+        # Apply security controls; get (possibly modified) details + the replay
+        # fingerprint back so a signing failure can roll the commit back.
+        secure_details, fingerprint = await self._apply_security_controls(
             details, mpa_signatures=mpa_signatures
         )
 
@@ -361,6 +362,15 @@ class HardenedX402Client:
         try:
             payment_response = await self._invoke_signer(secure_details)
         except Exception as exc:
+            # The spend + replay slot were committed before signing; a signer
+            # failure means no payment was made, so release them (F-03) —
+            # otherwise a hostile server inducing repeated signer failures could
+            # drain the accounting budget and block legitimate retries.
+            self._rollback_commit(
+                resource_url=secure_details.resource_url,
+                amount_usd=_amount_to_usd(secure_details.amount, secure_details.currency),
+                fingerprint=fingerprint,
+            )
             safe_msg, _ = self._pii_filter.scan_and_redact(_safe_exc_message(exc))
             self._audit.emit(
                 "PAYMENT_ERROR",
@@ -390,18 +400,38 @@ class HardenedX402Client:
             self._metrics.record_payment_allowed(paid_usd)
         return resp
 
+    def _rollback_commit(self, *, resource_url: str, amount_usd: float, fingerprint: str) -> None:
+        """Reverse the spend + replay fingerprint speculatively committed in
+        :meth:`_apply_security_controls`.
+
+        The policy spend and replay fingerprint are recorded *before* the payment
+        is signed (so the TOCTOU-critical check+record stays atomic under a
+        single lock — a guarantee that cannot span the async signer ``await``).
+        When the payment is subsequently denied (MPA) or fails to sign, this
+        compensating rollback keeps the spend ledger consistent with payments
+        that actually committed and frees the fingerprint for a legitimate retry
+        (F-03, 2026-06-03).
+        """
+        self._policy.refund(resource_url=resource_url, amount_usd=amount_usd)
+        self._replay.release(fingerprint)
+
     async def _apply_security_controls(
         self,
         details: PaymentDetails,
         *,
         mpa_signatures: dict[str, str] | None = None,
-    ) -> PaymentDetails:
+    ) -> tuple[PaymentDetails, str]:
         """Apply PIIFilter → PolicyEngine → ReplayGuard → MPAEngine → AuditLog.
 
-        Returns (possibly modified) :class:`~presidio_x402._types.PaymentDetails`
-        with PII redacted from metadata fields if ``pii_action="redact"``.
+        Returns a ``(details, fingerprint)`` tuple: the (possibly modified)
+        :class:`~presidio_x402._types.PaymentDetails` with PII redacted from
+        metadata fields if ``pii_action="redact"``, plus the replay fingerprint
+        recorded for this payment so the caller can roll it back if signing
+        fails.
 
         Raises on policy violation, replay, PII block, or MPA denial/timeout.
+        On MPA denial/timeout the spend + replay commit is rolled back before
+        re-raising.
         """
         amount_usd = _amount_to_usd(details.amount, details.currency)
 
@@ -578,6 +608,15 @@ class HardenedX402Client:
                 if self._metrics:
                     self._metrics.record_mpa_event("approved")
             except (MPADeniedError, MPATimeoutError) as exc:
+                # Roll back the spend + replay fingerprint committed at steps 3–4:
+                # an MPA-denied/timed-out payment was never signed, so it must not
+                # charge the budget or burn the fingerprint (which would block the
+                # legitimate crypto-mode retry that carries the countersignatures).
+                self._rollback_commit(
+                    resource_url=details.resource_url,
+                    amount_usd=amount_usd,
+                    fingerprint=fingerprint,
+                )
                 outcome = "timeout" if isinstance(exc, MPATimeoutError) else "denied"
                 safe_msg, _ = self._pii_filter.scan_and_redact(_safe_exc_message(exc))
                 self._audit.emit(
@@ -593,7 +632,7 @@ class HardenedX402Client:
                     self._metrics.record_payment_blocked(f"mpa_{outcome}", amount_usd)
                 raise
 
-        return details
+        return details, fingerprint
 
     # ------------------------------------------------------------------
     # Context manager support
