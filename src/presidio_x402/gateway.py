@@ -495,22 +495,31 @@ class HardenedX402Client:
         # 2. Trusted-wallet allowlist (pay_to substitution defence)
         # ------------------------------------------------------------------
         if self._trusted_wallets is not None:
-            origin = _resource_origin(details.resource_url)
+            # Key the allowlist off the ORIGINAL (pre-redaction) origin. PII
+            # redaction can rewrite the host (IP literals via IP_ADDRESS,
+            # digit-laden DNS labels via US_SSN/PHONE_NUMBER), which would shift
+            # the origin string out of the allowlist, miss the lookup, and
+            # silently skip the pay_to check entirely. The host is a
+            # security-control key, not PII — this mirrors the replay
+            # fingerprint, which also keys off original_resource_url below
+            # (CWE-348 / F-02, 2026-06-03).
+            origin = _resource_origin(original_resource_url)
             allowed = self._trusted_wallets.get(origin)
             if allowed is not None and details.pay_to not in allowed:
+                # The raw origin may contain a redactable host; keep it out of
+                # the persisted audit message and surface only the redacted URL.
                 self._audit.emit(
                     "WALLET_BLOCKED",
                     resource_url=clean_url,
                     amount_usd=amount_usd,
                     network=details.network,
                     outcome="blocked",
-                    error_message=f"pay_to {details.pay_to!r} not in allowlist for {origin!r}",
+                    error_message=f"pay_to {details.pay_to!r} not in trusted wallet allowlist",
                 )
                 if self._metrics:
                     self._metrics.record_payment_blocked("wallet", amount_usd)
                 raise X402PaymentError(
-                    f"pay_to wallet {details.pay_to!r} not in trusted allowlist "
-                    f"for origin {origin!r}"
+                    f"pay_to wallet {details.pay_to!r} not in trusted allowlist"
                 )
 
         # ------------------------------------------------------------------

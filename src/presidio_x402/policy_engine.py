@@ -21,7 +21,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 from .exceptions import PolicyViolationError
 
@@ -97,6 +97,22 @@ class _SpendLedger:
             self._entries.clear()
 
 
+def _endpoint_prefix_matches(prefix: str, url: str) -> bool:
+    """True if *url* falls under per-endpoint *prefix* on a host/path boundary.
+
+    Requires an exact (scheme, host[:port]) match and, when the configured
+    prefix carries a path, alignment on a ``/`` segment boundary. This prevents
+    prefix-confusion bypasses where a sibling host or path merely shares a
+    leading substring with a trusted prefix (F-01, 2026-06-03).
+    """
+    p = urlsplit(prefix)
+    u = urlsplit(url)
+    if (p.scheme, p.netloc) != (u.scheme, u.netloc):
+        return False
+    base = p.path.rstrip("/")
+    return base == "" or u.path == base or u.path.startswith(base + "/")
+
+
 class PolicyEngine:
     """Enforces spending policy for x402 payments.
 
@@ -127,13 +143,20 @@ class PolicyEngine:
             return self._endpoint_ledgers[prefix]
 
     def _matching_endpoint_prefix(self, resource_url: str) -> str | None:
-        """Return the longest matching per_endpoint prefix, or None."""
-        parsed = urlparse(resource_url)
-        base = f"{parsed.scheme}://{parsed.netloc}"
-        # Try full URL, then base URL, then any configured prefix
+        """Return the longest matching per_endpoint prefix, or None.
+
+        Matching is boundary-aware: the prefix and the URL must share the same
+        scheme and host exactly, and any prefix path must align on a ``/``
+        boundary. A raw ``startswith`` (the prior implementation) let a hostile
+        origin whose hostname merely *begins with* a trusted prefix — e.g.
+        ``https://api.example.com.attacker.com`` against a configured
+        ``https://api.example.com`` — inherit that endpoint's budget
+        (CWE-697 / F-01, 2026-06-03). Candidates are tried longest-first so the
+        most specific configured prefix wins.
+        """
         candidates = sorted(self.config.per_endpoint.keys(), key=len, reverse=True)
         for prefix in candidates:
-            if resource_url.startswith(prefix) or base.startswith(prefix):
+            if _endpoint_prefix_matches(prefix, resource_url):
                 return prefix
         return None
 
