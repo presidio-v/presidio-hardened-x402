@@ -27,6 +27,38 @@ class TestLangchainAdapterStub:
             HardenedX402Tool(payment_signer=None)
 
 
+class TestLangchainAdapterClose:
+    """F-09 (2026-06-03): the adapter's aclose() must delegate to the client's
+    public aclose(), not a non-existent ``_http`` attribute."""
+
+    @pytest.mark.asyncio
+    async def test_aclose_delegates_to_client_public_aclose(self):
+        try:
+            import langchain_core  # noqa: F401
+        except ImportError:
+            pytest.skip("langchain-core not installed — adapter aclose() is the stub")
+
+        from presidio_x402.adapters.langchain import HardenedX402Tool
+
+        closed = {"called": False}
+
+        class _FakeClient:
+            async def aclose(self) -> None:
+                closed["called"] = True
+
+        tool = HardenedX402Tool.__new__(HardenedX402Tool)
+        tool._client = _FakeClient()
+        await tool.aclose()
+        assert closed["called"]
+
+    def test_client_exposes_public_aclose_and_no_underscore_http(self):
+        # Guards the attribute the adapter relies on, independent of langchain.
+        from presidio_x402 import HardenedX402Client
+
+        assert callable(getattr(HardenedX402Client, "aclose", None))
+        assert not hasattr(HardenedX402Client, "_http")
+
+
 class TestCrewAIAdapterStub:
     """CrewAI is not installed in test env — adapter should raise ImportError at init."""
 

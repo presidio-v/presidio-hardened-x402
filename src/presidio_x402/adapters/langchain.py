@@ -105,7 +105,7 @@ try:  # pragma: no cover
 
         async def aclose(self) -> None:
             """Close the underlying httpx client."""
-            await self._client._http.aclose()
+            await self._client.aclose()
 
 except ImportError:
 

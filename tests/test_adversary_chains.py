@@ -553,6 +553,44 @@ class TestChain06WalletSubstitution:
             finally:
                 await client.aclose()
 
+    @pytest.mark.asyncio
+    async def test_allowlist_keyed_on_original_origin_not_redacted_host(self):
+        """F-02 (2026-06-03): redaction of a PII-shaped host must not disable the
+        wallet allowlist.
+
+        An operator pins an IP-literal facilitator origin. The IP_ADDRESS PII
+        pattern rewrites the host to ``<REDACTED>`` during redaction; if the
+        allowlist were keyed off the post-redaction URL the lookup would miss,
+        ``allowed`` would be None, and the pay_to check would be silently
+        skipped. Keying off the original origin keeps the attacker blocked.
+        """
+        signed_details: list[PaymentDetails] = []
+
+        async def _capture_signer(details: PaymentDetails) -> PaymentResponse:
+            signed_details.append(details)
+            return PaymentResponse(token="mock-signed-token", details=details)  # noqa: S106
+
+        audit = _RecordingAuditWriter()
+        ip_resource = "https://10.20.30.40:8080/v1/data"
+        attacker_header = _header_for(self._ATTACKER, resource=ip_resource)
+        with respx.mock:
+            respx.get(ip_resource).mock(
+                return_value=httpx.Response(402, headers={"X-PAYMENT": attacker_header})
+            )
+            client = HardenedX402Client(
+                payment_signer=_capture_signer,
+                audit_writer=audit,
+                trusted_wallets={"https://10.20.30.40:8080": {self._LEGIT}},
+            )
+            try:
+                with pytest.raises(X402PaymentError, match="not in trusted allowlist"):
+                    await client.get(ip_resource)
+            finally:
+                await client.aclose()
+
+        assert not signed_details, "Signer must not run: redacted host must still gate pay_to"
+        assert [e for e in audit.events if e.event_type == "WALLET_BLOCKED"]
+
 
 # Suppress "unused import" for ``replace`` — retained in case future POC tests
 # need to mutate PaymentDetails fixtures without rebuilding them.

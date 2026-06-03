@@ -80,6 +80,43 @@ class TestPolicyEnginePerEndpointLimit:
             engine.check_and_record(resource_url="https://premium-api.io/another", amount_usd=0.04)
 
 
+class TestPolicyEnginePrefixConfusion:
+    """F-01 (2026-06-03): a sibling host/path sharing a leading substring with a
+    configured per-endpoint prefix must NOT inherit that prefix's budget."""
+
+    def test_lookalike_host_does_not_inherit_endpoint_budget(self):
+        # api.example.com has a generous $5.00 endpoint limit. A hostile origin
+        # whose hostname merely begins with it must not borrow that budget.
+        engine = PolicyEngine(
+            PolicyConfig(
+                daily_limit_usd=100.0,
+                per_endpoint={"https://api.example.com": 5.00},
+            )
+        )
+        assert (
+            engine._matching_endpoint_prefix("https://api.example.com.attacker.com/drain") is None
+        )
+        assert engine._matching_endpoint_prefix("https://api.example.com/data") == (
+            "https://api.example.com"
+        )
+
+    def test_path_prefix_requires_segment_boundary(self):
+        engine = PolicyEngine(PolicyConfig(per_endpoint={"https://api.example.com/v1": 0.50}))
+        # Exact and child paths match; a sibling that merely shares the substring does not.
+        assert engine._matching_endpoint_prefix("https://api.example.com/v1") == (
+            "https://api.example.com/v1"
+        )
+        assert engine._matching_endpoint_prefix("https://api.example.com/v1/data") == (
+            "https://api.example.com/v1"
+        )
+        assert engine._matching_endpoint_prefix("https://api.example.com/v1beta") is None
+
+    def test_scheme_and_port_must_match_exactly(self):
+        engine = PolicyEngine(PolicyConfig(per_endpoint={"https://api.example.com": 0.50}))
+        assert engine._matching_endpoint_prefix("http://api.example.com/data") is None
+        assert engine._matching_endpoint_prefix("https://api.example.com:8443/data") is None
+
+
 class TestPolicyEngineFromDict:
     def test_from_dict_creates_correct_config(self):
         engine = PolicyEngine({"max_per_call_usd": 0.05, "daily_limit_usd": 1.0})
