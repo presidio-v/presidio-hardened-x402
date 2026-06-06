@@ -51,6 +51,12 @@ logger = logging.getLogger("presidio_x402.screening_client")
 _DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=3.0)
 _RETRY_BACKOFF_SECONDS = 0.5
 
+# Max size of a screening response body before JSON parsing. A compromised or
+# misconfigured screening endpoint could otherwise return a huge body and force
+# memory-heavy parsing in the agent process (F4 local audit, 2026-06-03). 1 MiB
+# is far above any legitimate screening result.
+_SCREENING_RESPONSE_MAX_BYTES = 1_048_576
+
 
 class ScreeningClient:
     """HTTPS client for the Presidio screening service.
@@ -189,6 +195,8 @@ class ScreeningClient:
 
             status = resp.status_code
             if status == 200:
+                if len(resp.content) > _SCREENING_RESPONSE_MAX_BYTES:
+                    raise ScreeningUnavailableError("Screening response too large")
                 try:
                     return resp.json()
                 except ValueError as exc:

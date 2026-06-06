@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from presidio_x402.exceptions import X402PaymentError
 from presidio_x402.pii_filter import PIIFilter
 
 
@@ -181,6 +182,22 @@ class TestPIIFilterRegexMode:
         clean, entities = self.filt.scan_dict({})
         assert clean == {}
         assert entities == []
+
+    def test_scan_dict_rejects_excessive_nesting(self):
+        """F-04 (2026-06-03): deeply nested data raises a structured payment
+        error rather than an uncaught RecursionError."""
+        deep: object = "leaf"
+        for _ in range(200):
+            deep = {"k": deep}
+        with pytest.raises(X402PaymentError, match="nesting exceeds maximum depth"):
+            self.filt.scan_dict(deep)
+
+    def test_scan_dict_allows_reasonable_nesting(self):
+        # A modestly nested structure is still scanned normally.
+        nested = {"a": {"b": {"c": ["alice@example.com"]}}}
+        clean, entities = self.filt.scan_dict(nested)
+        assert entities and entities[0].entity_type == "EMAIL_ADDRESS"
+        assert clean["a"]["b"]["c"][0] != "alice@example.com"
 
     # ------------------------------------------------------------------
     # NLP mode import error

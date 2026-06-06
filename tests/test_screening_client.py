@@ -79,6 +79,20 @@ class TestInit:
             ScreeningClient(base_url="ftp://example.com", api_key=API_KEY)
 
 
+class TestResponseSizeCap:
+    @pytest.mark.asyncio
+    async def test_oversized_response_rejected_before_parse(self) -> None:
+        """local-F4 (2026-06-03): a 200 body over the size cap is rejected before
+        json parsing so a hostile/misconfigured endpoint cannot force memory-heavy
+        parsing in the agent process."""
+        huge = b'{"x":"' + b"a" * 1_200_000 + b'"}'  # > 1 MiB
+        with respx.mock:
+            respx.post(SCREEN_URL).mock(return_value=httpx.Response(200, content=huge))
+            async with ScreeningClient(BASE, API_KEY) as c:
+                with pytest.raises(ScreeningUnavailableError, match="too large"):
+                    await c.scan_payment_fields("https://api.example.com/x", "d", "")
+
+
 class TestHappyPath:
     @pytest.mark.asyncio
     async def test_200_response_returns_redacted_tuple(self) -> None:
