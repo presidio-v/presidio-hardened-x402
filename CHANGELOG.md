@@ -4,6 +4,22 @@ All notable changes to `presidio-hardened-x402` are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **BREAKING (crypto-mode MPA):** countersignatures are now freshness-bound. The
+  wire format is `"<unix_ts>:<hmac_hex>"` and the signed payload includes the
+  approver's timestamp; the engine rejects signatures outside the new
+  `MPAConfig.max_signature_age_seconds` window (default 300s). This prevents a
+  captured countersignature from being replayed for an identical payment once the
+  ReplayGuard TTL elapses (F-8, audit 2026-06-03). Approvers should produce
+  signatures with the new `build_countersignature()` helper; bare-hex signatures
+  from prior versions no longer validate.
+
+### Added
+- `mpa.build_countersignature(shared_secret, details, amount_usd)` — public
+  helper that produces the timestamped crypto-mode countersignature.
+
 ## [0.4.0] — 2026-05-17
 
 The screening-api release. Pairs the published `screen.presidio-group.eu`

@@ -36,8 +36,7 @@ Usage (webhook mode)::
 
 Usage (crypto mode)::
 
-    import hashlib
-    import hmac
+    from presidio_x402.mpa import build_countersignature
 
     mpa = MPAEngine(MPAConfig(
         threshold=2,
@@ -48,11 +47,15 @@ Usage (crypto mode)::
         ],
     ))
 
-    # Collect countersignatures out-of-band; pass in kwargs:
+    # Each approver signs the payment out-of-band with build_countersignature,
+    # which embeds a freshness timestamp ("<unix_ts>:<hmac_hex>"). Pass in kwargs:
     response = await client.get(url, mpa_signatures={
-        "alice": hmac.new(b"alice-secret", payload, hashlib.sha256).hexdigest(),
-        "bob":   hmac.new(b"bob-secret",   payload, hashlib.sha256).hexdigest(),
+        "alice": build_countersignature(b"alice-secret", details, amount_usd),
+        "bob":   build_countersignature(b"bob-secret",   details, amount_usd),
     })
+
+    # Signatures older than MPAConfig.max_signature_age_seconds are rejected, so
+    # they cannot be replayed once the ReplayGuard TTL has elapsed.
 """
 
 from __future__ import annotations
@@ -64,6 +67,7 @@ import ipaddress
 import json
 import logging
 import socket
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlparse
@@ -212,6 +216,13 @@ class MPAConfig:
         loopback, IMDS, etc.). Default ``True``. Set ``False`` only in test
         fixtures that mock the HTTP transport and do not own real DNS for
         the configured approver hostnames.
+    max_signature_age_seconds:
+        Freshness window for ``crypto``-mode countersignatures (default ``300``).
+        Each countersignature embeds the approver's signing timestamp; the engine
+        rejects any whose timestamp is older (or further in the future) than this
+        many seconds. Without it a captured valid countersignature could be
+        replayed for an identical payment once the ReplayGuard TTL expires
+        (CWE-294 / F-8, 2026-06-03).
     """
 
     threshold: int
@@ -219,6 +230,7 @@ class MPAConfig:
     min_amount_usd: float = 0.0
     timeout_seconds: float = 30.0
     dns_rebinding_protection: bool = True
+    max_signature_age_seconds: int = 300
 
     def __post_init__(self) -> None:
         if self.threshold < 1:
@@ -228,6 +240,8 @@ class MPAConfig:
                 f"MPAConfig.threshold ({self.threshold}) cannot exceed "
                 f"number of approvers ({len(self.approvers)})"
             )
+        if self.max_signature_age_seconds < 1:
+            raise ValueError("MPAConfig.max_signature_age_seconds must be >= 1")
 
 
 @dataclass(frozen=True)
@@ -252,8 +266,12 @@ class ApprovalResponse:
     reason: str | None = None
 
 
-def _canonical_payload(details: PaymentDetails, amount_usd: float) -> bytes:
-    """Build a deterministic canonical bytes payload for HMAC countersignature."""
+def _canonical_payload(details: PaymentDetails, amount_usd: float, timestamp: int) -> bytes:
+    """Build a deterministic canonical bytes payload for HMAC countersignature.
+
+    The approver's signing *timestamp* is part of the signed material so the
+    engine can enforce a freshness window and reject replayed signatures (F-8).
+    """
     canonical = json.dumps(
         {
             "resource_url": details.resource_url,
@@ -263,11 +281,33 @@ def _canonical_payload(details: PaymentDetails, amount_usd: float) -> bytes:
             "network": details.network,
             "deadline_seconds": details.deadline_seconds,
             "amount_usd": f"{amount_usd:.6f}",
+            "timestamp": timestamp,
         },
         sort_keys=True,
         separators=(",", ":"),
     )
     return canonical.encode()
+
+
+def build_countersignature(
+    shared_secret: bytes,
+    details: PaymentDetails,
+    amount_usd: float,
+    *,
+    timestamp: int | None = None,
+) -> str:
+    """Produce a crypto-mode MPA countersignature for *details*.
+
+    Returns a ``"<unix_ts>:<hmac_hex>"`` string: the approver's signing
+    timestamp and an HMAC-SHA256 over the canonical payment fields *including*
+    that timestamp. Approvers call this; the value is passed back to the agent
+    and supplied to :meth:`MPAEngine.request_approval` via
+    ``provided_signatures``. The engine rejects signatures whose timestamp is
+    outside ``MPAConfig.max_signature_age_seconds`` (F-8, 2026-06-03).
+    """
+    ts = int(time.time()) if timestamp is None else int(timestamp)
+    sig = hmac.new(shared_secret, _canonical_payload(details, amount_usd, ts), hashlib.sha256)
+    return f"{ts}:{sig.hexdigest()}"
 
 
 class MPAEngine:
@@ -313,9 +353,11 @@ class MPAEngine:
         amount_usd:
             Payment amount in USD.
         provided_signatures:
-            For ``crypto``-mode approvers: mapping of
-            ``approver_id`` → hex-encoded HMAC-SHA256 countersignature.
-            Signatures are verified against each approver's ``shared_secret``.
+            For ``crypto``-mode approvers: mapping of ``approver_id`` →
+            ``"<unix_ts>:<hmac_hex>"`` countersignature (produced by
+            :func:`build_countersignature`). Each is verified against the
+            approver's ``shared_secret`` and rejected if its timestamp is outside
+            ``config.max_signature_age_seconds``.
 
         Raises
         ------
@@ -341,11 +383,12 @@ class MPAEngine:
         # 1. Crypto mode: verify pre-collected HMAC countersignatures
         # ------------------------------------------------------------------
         if crypto_approvers:
-            payload = _canonical_payload(details, amount_usd)
             sigs = provided_signatures or {}
+            now = int(time.time())
+            max_age = self.config.max_signature_age_seconds
             for approver in crypto_approvers:
-                sig = sigs.get(approver.approver_id)
-                if not sig:
+                raw = sigs.get(approver.approver_id)
+                if not raw:
                     continue
                 if approver.shared_secret is None:
                     logger.warning(
@@ -353,8 +396,36 @@ class MPAEngine:
                         approver.approver_id,
                     )
                     continue
-                expected = hmac.new(approver.shared_secret, payload, hashlib.sha256).hexdigest()
-                if hmac.compare_digest(expected, sig.lower()):
+                # Wire format: "<unix_ts>:<hmac_hex>" (see build_countersignature).
+                ts_str, sep, hexsig = raw.partition(":")
+                if not sep or not hexsig:
+                    logger.warning(
+                        "MPA crypto signature for %s missing timestamp prefix",
+                        approver.approver_id,
+                    )
+                    continue
+                try:
+                    ts = int(ts_str)
+                except ValueError:
+                    logger.warning(
+                        "MPA crypto signature for %s has non-integer timestamp",
+                        approver.approver_id,
+                    )
+                    continue
+                if abs(now - ts) > max_age:
+                    logger.warning(
+                        "MPA crypto signature for %s is stale (age %ds, max %ds) — rejected",
+                        approver.approver_id,
+                        now - ts,
+                        max_age,
+                    )
+                    continue
+                expected = hmac.new(
+                    approver.shared_secret,
+                    _canonical_payload(details, amount_usd, ts),
+                    hashlib.sha256,
+                ).hexdigest()
+                if hmac.compare_digest(expected, hexsig.lower()):
                     approved_ids.add(approver.approver_id)
                     logger.info("MPA crypto approval verified: %s", approver.approver_id)
                 else:

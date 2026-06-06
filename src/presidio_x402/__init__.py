@@ -43,7 +43,7 @@ from .exceptions import (
 )
 from .gateway import HardenedX402Client
 from .metrics import MetricsCollector
-from .mpa import MPAApproverConfig, MPAConfig, MPAEngine
+from .mpa import MPAApproverConfig, MPAConfig, MPAEngine, build_countersignature
 from .pii_filter import PIIFilter
 from .policy_engine import PolicyConfig, PolicyEngine
 from .replay_guard import ReplayGuard, compute_fingerprint
@@ -59,6 +59,7 @@ __all__ = [
     "MPAConfig",
     "MPAApproverConfig",
     "MPAEngine",
+    "build_countersignature",
     # Prometheus metrics
     "MetricsCollector",
     # Remote screening

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import time
 
 import httpx
 import pytest
@@ -18,6 +19,7 @@ from presidio_x402.mpa import (
     MPAEngine,
     _canonical_payload,
     _resolve_and_check_host,
+    build_countersignature,
 )
 
 
@@ -53,9 +55,11 @@ def _make_details(**overrides) -> PaymentDetails:
     return PaymentDetails(**defaults)
 
 
-def _make_crypto_sig(secret: bytes, details: PaymentDetails, amount_usd: float) -> str:
-    payload = _canonical_payload(details, amount_usd)
-    return hmac.new(secret, payload, hashlib.sha256).hexdigest()
+def _make_crypto_sig(
+    secret: bytes, details: PaymentDetails, amount_usd: float, *, timestamp: int | None = None
+) -> str:
+    # Now produces the "<unix_ts>:<hmac_hex>" freshness-bound format (F-8).
+    return build_countersignature(secret, details, amount_usd, timestamp=timestamp)
 
 
 ALICE_SECRET = b"alice-shared-secret"
@@ -236,6 +240,73 @@ class TestMPACryptoMode:
             await engine.request_approval(self.details, self.amount_usd, provided_signatures=sigs)
         assert exc_info.value.approvals_received == 1
         assert exc_info.value.threshold == 2
+
+
+class TestMPACryptoFreshness:
+    """F-8 (2026-06-03): crypto countersignatures embed a timestamp and are
+    rejected outside MPAConfig.max_signature_age_seconds, so a captured signature
+    cannot be replayed for an identical payment after the ReplayGuard TTL."""
+
+    def setup_method(self):
+        self.details = _make_details(amount="2.00")
+        self.amount_usd = 2.00
+
+    def _engine(self, max_age: int = 300):
+        return MPAEngine(
+            MPAConfig(
+                dns_rebinding_protection=False,
+                threshold=1,
+                max_signature_age_seconds=max_age,
+                approvers=[MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)],
+            )
+        )
+
+    @pytest.mark.asyncio
+    async def test_fresh_signature_accepted(self):
+        sig = _make_crypto_sig(ALICE_SECRET, self.details, self.amount_usd)  # now()
+        await self._engine().request_approval(
+            self.details, self.amount_usd, provided_signatures={"alice": sig}
+        )
+
+    @pytest.mark.asyncio
+    async def test_stale_signature_rejected(self):
+        old = int(time.time()) - 3600  # 1h ago, well past the 300s window
+        sig = _make_crypto_sig(ALICE_SECRET, self.details, self.amount_usd, timestamp=old)
+        with pytest.raises(MPADeniedError):
+            await self._engine().request_approval(
+                self.details, self.amount_usd, provided_signatures={"alice": sig}
+            )
+
+    @pytest.mark.asyncio
+    async def test_legacy_format_without_timestamp_rejected(self):
+        # A bare hex signature (old format, no "<ts>:" prefix) must not validate.
+        legacy = hmac.new(
+            ALICE_SECRET, _canonical_payload(self.details, self.amount_usd, 0), hashlib.sha256
+        ).hexdigest()
+        with pytest.raises(MPADeniedError):
+            await self._engine().request_approval(
+                self.details, self.amount_usd, provided_signatures={"alice": legacy}
+            )
+
+    @pytest.mark.asyncio
+    async def test_tampered_timestamp_rejected(self):
+        # Take a valid sig, bump its timestamp — the HMAC no longer matches.
+        sig = _make_crypto_sig(ALICE_SECRET, self.details, self.amount_usd)
+        ts, _, hexsig = sig.partition(":")
+        tampered = f"{int(ts) + 1}:{hexsig}"
+        with pytest.raises(MPADeniedError):
+            await self._engine().request_approval(
+                self.details, self.amount_usd, provided_signatures={"alice": tampered}
+            )
+
+    def test_invalid_max_age_rejected(self):
+        with pytest.raises(ValueError, match="max_signature_age_seconds"):
+            MPAConfig(
+                dns_rebinding_protection=False,
+                threshold=1,
+                max_signature_age_seconds=0,
+                approvers=[MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)],
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -555,24 +626,30 @@ class TestMPAMixedMode:
 
 
 class TestCanonicalPayload:
-    def test_same_details_produce_same_payload(self):
+    def test_same_details_and_timestamp_produce_same_payload(self):
         details = _make_details()
-        p1 = _canonical_payload(details, 1.00)
-        p2 = _canonical_payload(details, 1.00)
+        p1 = _canonical_payload(details, 1.00, 1000)
+        p2 = _canonical_payload(details, 1.00, 1000)
         assert p1 == p2
 
     def test_different_amounts_produce_different_payloads(self):
         details = _make_details()
-        p1 = _canonical_payload(details, 1.00)
-        p2 = _canonical_payload(details, 2.00)
+        p1 = _canonical_payload(details, 1.00, 1000)
+        p2 = _canonical_payload(details, 2.00, 1000)
         assert p1 != p2
+
+    def test_different_timestamp_produces_different_payload(self):
+        # F-8: the timestamp is part of the signed material.
+        details = _make_details()
+        assert _canonical_payload(details, 1.00, 1000) != _canonical_payload(details, 1.00, 2000)
 
     def test_payload_is_valid_json(self):
         details = _make_details()
-        payload = _canonical_payload(details, 1.00)
+        payload = _canonical_payload(details, 1.00, 1700000000)
         parsed = json.loads(payload)
         assert parsed["resource_url"] == details.resource_url
         assert "amount_usd" in parsed
+        assert parsed["timestamp"] == 1700000000
 
 
 # ---------------------------------------------------------------------------
