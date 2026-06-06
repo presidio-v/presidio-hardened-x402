@@ -139,6 +139,34 @@ async def test_malformed_x_payment_header_raises_x402_error():
 
 
 @pytest.mark.asyncio
+async def test_deeply_nested_x_payment_header_raises_x402_error():
+    # F-04 (2026-06-03): a small but deeply nested JSON header (under the size
+    # cap) makes json.loads hit the recursion limit. The parse guard must catch
+    # RecursionError and surface a structured X402PaymentError, not crash.
+    nested = "[" * 10000 + "]" * 10000  # ~20 KB, < 64 KiB cap; triggers RecursionError
+    with respx.mock:
+        respx.get("https://api.example.com/v1/data").mock(
+            return_value=httpx.Response(402, headers={"X-PAYMENT": nested})
+        )
+        async with _make_client() as client:
+            with pytest.raises(X402PaymentError, match="Invalid X-PAYMENT header JSON"):
+                await client.get("https://api.example.com/v1/data")
+
+
+@pytest.mark.asyncio
+async def test_non_object_x_payment_header_raises_x402_error():
+    # F-04 (2026-06-03): a valid-but-non-object header (here a bare JSON array)
+    # must not reach data.get() and raise an uncaught AttributeError.
+    with respx.mock:
+        respx.get("https://api.example.com/v1/data").mock(
+            return_value=httpx.Response(402, headers={"X-PAYMENT": "[1, 2, 3]"})
+        )
+        async with _make_client() as client:
+            with pytest.raises(X402PaymentError, match="Invalid X-PAYMENT header JSON"):
+                await client.get("https://api.example.com/v1/data")
+
+
+@pytest.mark.asyncio
 async def test_oversized_x_payment_header_raises_before_json_parse():
     # F3 regression (2026-05-17): a hostile 402 server could return a
     # multi-megabyte X-PAYMENT header and force json.loads to allocate memory

@@ -11,13 +11,27 @@ import pytest
 import respx
 
 from presidio_x402._types import PaymentDetails
-from presidio_x402.exceptions import MPADeniedError
+from presidio_x402.exceptions import MPADeniedError, MPAWebhookURLError
 from presidio_x402.mpa import (
     MPAApproverConfig,
     MPAConfig,
     MPAEngine,
     _canonical_payload,
+    _resolve_and_check_host,
 )
+
+
+class TestResolveAndCheckHost:
+    """F-05 (2026-06-03): DNS-rebinding resolution runs off the event loop and
+    still flags hosts that resolve into a blocked range."""
+
+    @pytest.mark.asyncio
+    async def test_loopback_resolution_is_blocked(self):
+        # localhost resolves to a loopback address (blocked range) — deterministic
+        # and offline. Exercises the async loop.getaddrinfo path.
+        with pytest.raises(MPAWebhookURLError, match="blocked address"):
+            await _resolve_and_check_host("localhost")
+
 
 # ---------------------------------------------------------------------------
 # Fixtures

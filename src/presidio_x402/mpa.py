@@ -126,14 +126,21 @@ def _validate_webhook_url(url: str) -> None:
         raise MPAWebhookURLError(f"MPA webhook URL host {host!r} is in a blocked network range")
 
 
-def _resolve_and_check_host(host: str) -> None:
+async def _resolve_and_check_host(host: str) -> None:
     """Resolve *host* and raise if any A/AAAA record falls in a blocked range.
 
     Defeats DNS-rebinding attacks where a public hostname briefly resolves to
     an internal IP between config time and request time.
+
+    Resolution runs on the event loop's executor (``loop.getaddrinfo``) rather
+    than the blocking ``socket.getaddrinfo``. A slow/hostile DNS authority would
+    otherwise block the entire event loop — stalling all concurrent approvals —
+    and the surrounding ``asyncio.wait_for`` timeout could not fire during a
+    synchronous C call (F-05, 2026-06-03).
     """
+    loop = asyncio.get_running_loop()
     try:
-        infos = socket.getaddrinfo(host, None)
+        infos = await loop.getaddrinfo(host, None)
     except socket.gaierror as exc:
         raise MPAWebhookURLError(f"DNS resolution failed for {host!r}") from exc
     for info in infos:
@@ -468,7 +475,7 @@ class MPAEngine:
                     ipaddress.ip_address(host)
                 except ValueError:
                     if host:
-                        _resolve_and_check_host(host)
+                        await _resolve_and_check_host(host)
             # Outbound request authentication. When a shared_secret is
             # configured, sign the request body with HMAC-SHA256 so the
             # approver can verify the request originated from this MPA engine

@@ -119,10 +119,21 @@ def _parse_402_header(header_value: str) -> PaymentDetails:
         )
     try:
         data = json.loads(header_value)
-    except json.JSONDecodeError as exc:
-        # Never embed the raw JSON (which may carry wallet/PII fragments) in
-        # the message. Original cause remains on __cause__ for debugging.
+    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
+        # Also catch RecursionError: deeply nested JSON (small byte payload, under
+        # the size cap above) makes json.loads recurse to the interpreter limit;
+        # without this it would propagate uncaught and bypass the sanitised audit
+        # path (F-04, 2026-06-03). Never embed the raw JSON (which may carry
+        # wallet/PII fragments) in the message; the parse-error cause itself
+        # carries only position info, so it is kept on __cause__ for debugging.
         raise X402PaymentError("Invalid X-PAYMENT header JSON") from exc
+
+    # The top level must be a JSON object. A valid-but-non-object payload (a
+    # bare array/number/string, e.g. a moderately nested list that parses before
+    # the recursion limit) would otherwise reach data.get() and raise an uncaught
+    # AttributeError outside the sanitised audit path (F-04, 2026-06-03).
+    if not isinstance(data, dict):
+        raise X402PaymentError("Invalid X-PAYMENT header JSON")
 
     accepts = data.get("accepts", [])
     if not accepts:
@@ -291,8 +302,16 @@ class HardenedX402Client:
         self._httpx = httpx_client or httpx.AsyncClient(timeout=30.0)
         self._mpa = mpa_engine
         self._metrics = metrics_collector
+        # Store allowlisted wallet addresses lower-cased: EVM addresses are
+        # case-insensitive (EIP-55 checksum casing is optional), so comparing
+        # verbatim would reject a valid checksummed/lower-case variant and cause
+        # an avoidable payment outage (F-06 local audit, 2026-06-03). pay_to is
+        # lower-cased at comparison time to match.
         self._trusted_wallets: dict[str, frozenset[str]] | None = (
-            {origin.rstrip("/"): frozenset(wallets) for origin, wallets in trusted_wallets.items()}
+            {
+                origin.rstrip("/"): frozenset(w.lower() for w in wallets)
+                for origin, wallets in trusted_wallets.items()
+            }
             if trusted_wallets is not None
             else None
         )
@@ -380,7 +399,13 @@ class HardenedX402Client:
                 outcome="blocked",
                 error_message=safe_msg,
             )
-            raise X402PaymentError("Payment signing failed") from exc
+            # Drop the cause (F-07, 2026-06-03): a wallet/signer SDK exception can
+            # carry key material, mnemonics, or raw payloads in its message and
+            # traceback. Preserving it on __cause__ would leak that into any
+            # caller that logs the exception chain — outside this library's
+            # sanitised audit path. The truncated+redacted message is already in
+            # the audit record above.
+            raise X402PaymentError("Payment signing failed") from None
 
         # Retry request with payment token
         headers = dict(kwargs.pop("headers", {}) or {})
@@ -459,6 +484,17 @@ class HardenedX402Client:
                 details.reason,
                 entities=self._pii_entities,
             )
+            # Defense-in-depth (F-06, 2026-06-03): the remote screener is the
+            # only scan of the three primary fields, so a mis-redacting, empty,
+            # or silently degraded response would pass PII through unredacted.
+            # Re-run the fast local regex filter over its output as a cheap
+            # backstop. On a correct remote response the fields are already
+            # masked, so this finds nothing; it only catches what the remote
+            # missed, and feeds those entities into the block/redact decision.
+            clean_url, url_ent = self._pii_filter.scan_and_redact(clean_url)
+            clean_desc, desc_ent = self._pii_filter.scan_and_redact(clean_desc)
+            clean_reason, reason_ent = self._pii_filter.scan_and_redact(clean_reason)
+            pii_entities = list(pii_entities) + url_ent + desc_ent + reason_ent
         else:
             clean_url, clean_desc, clean_reason, pii_entities = (
                 self._pii_filter.scan_payment_fields(
@@ -535,7 +571,7 @@ class HardenedX402Client:
             # (CWE-348 / F-02, 2026-06-03).
             origin = _resource_origin(original_resource_url)
             allowed = self._trusted_wallets.get(origin)
-            if allowed is not None and details.pay_to not in allowed:
+            if allowed is not None and details.pay_to.lower() not in allowed:
                 # The raw origin may contain a redactable host; keep it out of
                 # the persisted audit message and surface only the redacted URL.
                 self._audit.emit(

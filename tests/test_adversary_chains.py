@@ -310,9 +310,11 @@ class TestChain05ExceptionExfiltration:
     async def test_site_c_signer_exception_not_reraised_in_message(self):
         """Signer exception text does not leak into the raised X402PaymentError.
 
-        The fix contract is: ``X402PaymentError`` message is a constant; the
-        original cause is preserved on ``__cause__`` for local debug only.
-        Callers (and anything consuming ``str(exc)``) see no payload.
+        The fix contract is: ``X402PaymentError`` message is a constant AND the
+        signer cause is dropped (``from None``) so a caller that logs the
+        exception chain cannot leak key material the signer SDK put in its
+        message/traceback (F-07, 2026-06-03). The redacted detail still reaches
+        the sanitised audit record.
         """
 
         async def _leaky_signer(details: PaymentDetails) -> PaymentResponse:
@@ -336,7 +338,8 @@ class TestChain05ExceptionExfiltration:
         assert msg == "Payment signing failed"
         assert self._SECRET_KEY_FRAGMENT not in msg
         assert self._SECRET_WALLET not in msg
-        assert isinstance(exc_info.value.__cause__, RuntimeError)
+        # F-07: signer cause is suppressed so it cannot leak via a logged chain.
+        assert exc_info.value.__cause__ is None
 
     @pytest.mark.asyncio
     async def test_site_c_signer_structural_pii_scrubbed_from_audit(self):
@@ -590,6 +593,30 @@ class TestChain06WalletSubstitution:
 
         assert not signed_details, "Signer must not run: redacted host must still gate pay_to"
         assert [e for e in audit.events if e.event_type == "WALLET_BLOCKED"]
+
+    @pytest.mark.asyncio
+    async def test_allowlist_is_case_insensitive_for_evm_address(self):
+        """local-F6 (2026-06-03): EVM addresses are case-insensitive, so a valid
+        case variant of an allowlisted wallet must be accepted, not rejected as a
+        substitution — otherwise checksum-casing differences cause a payment
+        outage."""
+        checksummed = "0xAbCdEf1234567890aBcDeF1234567890AbCdEf12"
+        with respx.mock:
+            route = respx.get("https://api.example.com/v1/data")
+            route.side_effect = [
+                # Server pays the lower-case form of the allowlisted address.
+                httpx.Response(402, headers={"X-PAYMENT": _header_for(checksummed.lower())}),
+                httpx.Response(200, text="ok"),
+            ]
+            client = HardenedX402Client(
+                payment_signer=_mock_signer,
+                trusted_wallets={"https://api.example.com": {checksummed}},
+            )
+            try:
+                resp = await client.get("https://api.example.com/v1/data")
+            finally:
+                await client.aclose()
+        assert resp.status_code == 200
 
 
 # Suppress "unused import" for ``replace`` — retained in case future POC tests

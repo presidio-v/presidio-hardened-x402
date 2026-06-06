@@ -24,9 +24,16 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Literal
 
+from .exceptions import X402PaymentError
+
 logger = logging.getLogger("presidio_x402.pii_filter")
 
 REDACTED_TEMPLATE = "<REDACTED>"
+
+# Maximum nesting depth for scan_dict over the untrusted `extra` field. Deeper
+# structures are rejected to prevent a RecursionError DoS (F-04). 32 is far above
+# any legitimate x402 `extra` payload.
+_MAX_SCAN_DEPTH = 32
 
 # Invisible codepoints stripped before matching: zero-width space/non-joiner/joiner,
 # byte-order mark, soft hyphen. Present them in metadata purely to evade regex.
@@ -345,14 +352,27 @@ class PIIFilter:
 
         Returns ``(redacted_data, entities)``. ``redacted_data`` is a new
         container of the same shape as the input.
+
+        Raises :class:`~presidio_x402.exceptions.X402PaymentError` if the nesting
+        depth exceeds ``_MAX_SCAN_DEPTH``. A malicious 402 server could otherwise
+        send a deeply nested ``extra`` payload that exhausts the interpreter
+        recursion limit and surfaces as an uncaught ``RecursionError`` rather
+        than a structured payment error (F-04, 2026-06-03).
         """
+        return self._scan_dict(data, _depth=0)
+
+    def _scan_dict(self, data: object, _depth: int) -> tuple[object, list[EntityResult]]:
+        if _depth > _MAX_SCAN_DEPTH:
+            raise X402PaymentError(
+                f"payment metadata 'extra' nesting exceeds maximum depth of {_MAX_SCAN_DEPTH}"
+            )
         if isinstance(data, str):
             return self.scan_and_redact(data)
         if isinstance(data, dict):
             redacted_dict: dict[object, object] = {}
             entities: list[EntityResult] = []
             for k, v in data.items():
-                clean_v, v_entities = self.scan_dict(v)
+                clean_v, v_entities = self._scan_dict(v, _depth + 1)
                 redacted_dict[k] = clean_v
                 entities.extend(v_entities)
             return redacted_dict, entities
@@ -360,7 +380,7 @@ class PIIFilter:
             redacted_list: list[object] = []
             entities = []
             for item in data:
-                clean_item, item_entities = self.scan_dict(item)
+                clean_item, item_entities = self._scan_dict(item, _depth + 1)
                 redacted_list.append(clean_item)
                 entities.extend(item_entities)
             return redacted_list, entities

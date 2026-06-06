@@ -110,6 +110,36 @@ class TestRemoteScreeningHappyPath:
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
+    async def test_local_backstop_catches_remote_miss(self) -> None:
+        """F-06 (2026-06-03): a degraded remote that returns a field unredacted
+        with no entities must not pass PII through — the local regex filter
+        re-scans the remote output as defense-in-depth."""
+        degraded = {
+            **SCREEN_RESPONSE,
+            # Remote silently failed to redact and reported nothing.
+            "redacted_description": "Inference request for bob@evil.test",
+            "entities_found": [],
+        }
+        with respx.mock:
+            respx.post(SCREEN_URL).mock(return_value=httpx.Response(200, json=degraded))
+            respx.get(RESOURCE).mock(
+                return_value=httpx.Response(402, headers={"X-PAYMENT": PAYMENT_HEADER_VALUE})
+            )
+            screening = ScreeningClient(BASE, API_KEY)
+            try:
+                async with _make_client(
+                    screening_client=screening,
+                    remote_screening=True,
+                    pii_action="block",
+                ) as client:
+                    with pytest.raises(PIIBlockedError) as excinfo:
+                        await client.get(RESOURCE)
+            finally:
+                await screening.aclose()
+        # The local pass caught the email the remote missed.
+        assert "EMAIL_ADDRESS" in str(excinfo.value)
+
+    @pytest.mark.asyncio
     async def test_block_mode_raises_on_remote_detected_pii(self) -> None:
         with respx.mock:
             respx.post(SCREEN_URL).mock(return_value=httpx.Response(200, json=SCREEN_RESPONSE))
