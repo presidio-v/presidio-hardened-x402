@@ -20,6 +20,23 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `mpa.build_countersignature(shared_secret, details, amount_usd)` — public
   helper that produces the timestamped crypto-mode countersignature.
 
+### Security
+- Harden `_parse_402_header` against non-dict `accepts[]` entries. A hostile 402
+  server sending a primitive (e.g. `{"accepts": ["exact"]}`) previously raised an
+  uncaught `AttributeError` that bypassed the sanitised audit path; non-dict
+  entries are now skipped and surface as the structured "No supported payment
+  scheme" `X402PaymentError` (F1, audit 2026-06-07; CWE-20).
+- `PIIFilter.scan_dict` now scans and redacts string **keys** in addition to
+  values. PII embedded as a dict key (e.g. `{"alice@example.com": ...}`) in the
+  server-controlled `extra` field previously passed through unredacted to MPA
+  webhooks and the audit log (F2, audit 2026-06-07; CWE-200).
+- Add explicit `idna>=3.15` floor (previously only transitive via httpx) to
+  evict CVE-2026-45409 on a fresh resolve (defense-in-depth; family audit rec R3).
+
+### Documentation
+- `SECURITY.md` now documents which security controls are automatic vs. opt-in,
+  removing ambiguity in the prior controls list (family audit rec R5).
+
 ## [0.4.0] — 2026-05-17
 
 The screening-api release. Pairs the published `screen.presidio-group.eu`

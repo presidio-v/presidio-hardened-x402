@@ -372,8 +372,14 @@ class PIIFilter:
             redacted_dict: dict[object, object] = {}
             entities: list[EntityResult] = []
             for k, v in data.items():
+                # Scan string keys too: a server can embed PII as a dict key
+                # (e.g. {"alice@example.com": ...}), which would otherwise be
+                # copied verbatim into the redacted output and reach MPA webhooks
+                # and the audit log unredacted (F2, 2026-06-07).
+                clean_k, k_entities = self.scan_and_redact(k) if isinstance(k, str) else (k, [])
                 clean_v, v_entities = self._scan_dict(v, _depth + 1)
-                redacted_dict[k] = clean_v
+                redacted_dict[clean_k] = clean_v
+                entities.extend(k_entities)
                 entities.extend(v_entities)
             return redacted_dict, entities
         if isinstance(data, list):

@@ -282,7 +282,11 @@ v0.5.0). No CRITICAL/HIGH chain remains OPEN with zero in-tree control.
 
 ### Out of v0.4.0 (moved to later milestones per ADR-0006)
 
-- Third-party external security audit → v0.5.0 (closes RSK-019)
+- Third-party external security audit → **DONE 2026-06-06**: external second-set-of-eyes
+  review performed by Grok 4.3 (xAI) across the published `tools/` package and research
+  tree (report in `presidio-third-party-audits/`). No Critical/High; advisory-only
+  family-lens findings. Mitigates RSK-019. Residual: a commissioned human penetration
+  test before paid tiers go live remains tracked under v0.5.0 (see below).
 - Multi-tenant key scoping + remote audit sinks (S3 / Splunk / Datadog) → v0.5.0
 - Email-hash per-install salt → v0.5.0 (closes RSK-002)
 - `/v1/revoke` endpoint → v0.4.1
@@ -304,8 +308,9 @@ the multi-tenant work required to take paid tiers live.
 - Remote audit sink interfaces: `S3AuditWriter`, `SplunkAuditWriter`,
   `DatadogAuditWriter` (enterprise tier)
 - Per-install salt for `email:<sha256>` audit prefix (closes RSK-002)
-- Third-party security audit (closes RSK-019); blocks Track 1/Track 2 paid
-  tiers
+- Commissioned human penetration test before paid tiers (closes RSK-019 residual;
+  the 2026-06-06 AI-based external review already mitigated the "no second set of
+  eyes" risk); blocks Track 1/Track 2 paid tiers
 - SLSA L3 hardened build worker + provenance attestation; digest-pinned base
   image for `tools/docker/` and pinned spaCy model wheel (closes chain-01 and
   chain-08 residuals)
