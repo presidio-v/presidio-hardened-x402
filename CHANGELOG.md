@@ -38,6 +38,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   webhooks and the audit log (F2, audit 2026-06-07; CWE-200).
 - Add explicit `idna>=3.15` floor (previously only transitive via httpx) to
   evict CVE-2026-45409 on a fresh resolve (defense-in-depth; family audit rec R3).
+- Pin all GitHub Actions in CI/CodeQL workflows to commit SHAs (was floating
+  `@v6`/`@v7` tags), closing a supply-chain tag-mutation vector. Dependabot's
+  `github-actions` ecosystem keeps the pins current (config audit, 2026-06-07).
+
+### Added (packaging)
+- Top-level `LICENSE` file (MIT) so GitHub detects the license badge; the
+  package already declared `license = "MIT"` in `pyproject.toml` (config audit).
 
 ### Documentation
 - `SECURITY.md` now documents which security controls are automatic vs. opt-in,
