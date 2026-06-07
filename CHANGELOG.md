@@ -19,6 +19,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - `mpa.build_countersignature(shared_secret, details, amount_usd)` — public
   helper that produces the timestamped crypto-mode countersignature.
+- Sink-level secret redaction: `install_log_redaction()` attaches a
+  `RedactingFilter` (`SecretRedactor`) to every logger in the `presidio_x402`
+  namespace at import time, scrubbing API keys, bearer tokens, and 32-byte hex
+  key/signature material from log records before they reach any handler. Wallet
+  *addresses* (20-byte) are intentionally preserved. Closes the call-site-only
+  redaction gap flagged by the third-party family audit (rec R2, 2026-06-06).
 
 ## [0.4.0] — 2026-05-17
 

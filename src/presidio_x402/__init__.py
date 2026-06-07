@@ -42,6 +42,7 @@ from .exceptions import (
     X402PaymentError,
 )
 from .gateway import HardenedX402Client
+from .log_redaction import RedactingFilter, SecretRedactor, install_log_redaction
 from .metrics import MetricsCollector
 from .mpa import MPAApproverConfig, MPAConfig, MPAEngine, build_countersignature
 from .pii_filter import PIIFilter
@@ -85,9 +86,19 @@ __all__ = [
     "NullAuditWriter",
     "StreamAuditWriter",
     "FileAuditWriter",
+    # Log-sink secret redaction
+    "install_log_redaction",
+    "RedactingFilter",
+    "SecretRedactor",
 ]
 
 logger = logging.getLogger("presidio_x402")
+
+# Enforce sink-level secret redaction across the whole presidio_x402 logger
+# namespace as soon as the package is imported (family audit rec R2, 2026-06-06).
+# Runs before _on_import_audit() below so even the audit's own log lines are
+# filtered. All submodule loggers already exist (imported above).
+install_log_redaction()
 
 # ---------------------------------------------------------------------------
 # On-import security audit
