@@ -139,14 +139,17 @@ def _parse_402_header(header_value: str) -> PaymentDetails:
     if not accepts:
         raise X402PaymentError("X-PAYMENT header contains no 'accepts' entries")
 
-    # Pick the first supported scheme
+    # Pick the first supported scheme. Each accepts[] entry must be a JSON object;
+    # a hostile server can send a primitive (e.g. {"accepts": ["exact"]} or [42]),
+    # and entry.get() on a non-dict would raise an uncaught AttributeError outside
+    # the sanitised audit path (F1, 2026-06-07). Skip non-dict entries.
     chosen = None
     for entry in accepts:
-        if entry.get("scheme") == _SUPPORTED_SCHEME:
+        if isinstance(entry, dict) and entry.get("scheme") == _SUPPORTED_SCHEME:
             chosen = entry
             break
     if chosen is None:
-        schemes = [e.get("scheme") for e in accepts]
+        schemes = [e.get("scheme") for e in accepts if isinstance(e, dict)]
         raise X402PaymentError(
             f"No supported payment scheme found. Server offered: {schemes}; "
             f"client supports: [{_SUPPORTED_SCHEME!r}]"
