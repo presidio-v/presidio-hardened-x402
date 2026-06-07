@@ -158,6 +158,22 @@ class TestPIIFilterRegexMode:
         assert clean["tier"] == "gold"
         assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
 
+    def test_scan_dict_redacts_pii_in_keys(self):
+        """F2 (2026-06-07): PII embedded as a dict key is detected and redacted.
+
+        A hostile 402 server can place PII in a key (e.g. {"alice@example.com": ...}).
+        The key must be scanned, not copied verbatim, so it cannot reach MPA webhooks
+        or the audit log unredacted.
+        """
+        clean, entities = self.filt.scan_dict({"alice@example.com": "ignored_value"})
+        assert "alice@example.com" not in str(clean)
+        assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
+
+    def test_scan_dict_redacts_pii_in_nested_keys(self):
+        clean, entities = self.filt.scan_dict({"outer": {"bob@example.com": "v"}})
+        assert "bob@example.com" not in str(clean)
+        assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
+
     def test_scan_dict_recurses_nested_dicts_and_lists(self):
         clean, entities = self.filt.scan_dict(
             {

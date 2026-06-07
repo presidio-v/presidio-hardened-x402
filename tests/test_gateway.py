@@ -194,6 +194,35 @@ async def test_unsupported_scheme_raises_x402_error():
                 await client.get("https://api.example.com/v1/data")
 
 
+@pytest.mark.parametrize(
+    "hostile_accepts",
+    [
+        ["exact"],  # bare string entry
+        [42],  # bare int entry
+        [None],  # null entry
+        [["exact"]],  # nested list entry
+        [{"scheme": "other"}, "exact"],  # dict miss followed by string
+    ],
+)
+@pytest.mark.asyncio
+async def test_non_dict_accepts_entry_raises_clean_x402_error(hostile_accepts):
+    """Non-dict accepts[] entries must surface as X402PaymentError, not AttributeError.
+
+    A hostile 402 server can send primitives in accepts[] (e.g. {"accepts": ["exact"]}).
+    Calling entry.get() on a non-dict would raise an uncaught AttributeError that bypasses
+    the sanitised audit path (F1, 2026-06-07). The guard skips non-dict entries so the
+    request falls through to the structured "No supported payment scheme" error.
+    """
+    header = json.dumps({"accepts": hostile_accepts})
+    with respx.mock:
+        respx.get("https://api.example.com/v1/data").mock(
+            return_value=httpx.Response(402, headers={"X-PAYMENT": header})
+        )
+        async with _make_client() as client:
+            with pytest.raises(X402PaymentError, match="No supported payment scheme"):
+                await client.get("https://api.example.com/v1/data")
+
+
 # ---------------------------------------------------------------------------
 # PII blocking
 # ---------------------------------------------------------------------------

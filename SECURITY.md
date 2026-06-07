@@ -39,6 +39,30 @@ presidio-hardened-x402 provides the following security controls for x402 payment
 6. **Prometheus metrics** — Structured telemetry for all security control activations,
    enabling real-time alerting on policy violations, PII detections, and replay attempts (v0.3.0+)
 
+### Automatic vs. opt-in controls
+
+To avoid over-claiming, the table below states exactly which controls are applied
+automatically by `HardenedX402Client` on every payment flow and which require
+explicit configuration by the integrator. Controls marked **opt-in** are *not*
+active unless you enable them.
+
+| Control | Mode | How to enable |
+|---------|------|---------------|
+| PII detection + redaction of payment metadata | **Automatic** | On by default (`pii_action="redact"`); `regex` engine, zero-setup |
+| `pii_action="block"` / `"warn"` instead of redact | Opt-in | Pass `pii_action=` to the client |
+| spaCy NER (`nlp`) PII engine | Opt-in | Install `presidio-hardened-x402[nlp]` + set the regex/nlp mode flag; `regex` is the default |
+| Spending-policy enforcement | **Automatic when a policy is set** | Pass `policy={...}`; with no policy, no budget limits are enforced |
+| Replay detection | **Automatic** (in-memory) | On by default; set `PRESIDIO_X402_FINGERPRINT_KEY` + the Redis backend for cross-process durability |
+| Audit logging (HMAC-chained JSON-L) | **Automatic when an audit writer is set** | Provide an `audit_writer`; set `PRESIDIO_X402_CHAIN_KEY` for a stable chain key (else per-process key + ERROR log) |
+| Multi-party authorization (MPA) | Opt-in | Construct and pass an `MPAEngine` |
+| Hosted screening service | Opt-in | `remote_screening=True` + a `screening_client` (local regex still runs as backstop) |
+| Prometheus metrics | Opt-in | Install `prometheus-client` and wire a `MetricsCollector` (graceful no-op when absent) |
+
+Header/secret redaction at the logging sink is being added in v0.5.0 (family
+audit rec R2); until then, do not pass secrets or wallet key material into log
+calls — the client itself never logs them, but integrator code must follow the
+same discipline.
+
 ## Threat Model
 
 See `PRESIDIO-REQ.md` for the full threat model and security design rationale.
