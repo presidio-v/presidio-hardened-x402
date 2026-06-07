@@ -30,6 +30,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   values. PII embedded as a dict key (e.g. `{"alice@example.com": ...}`) in the
   server-controlled `extra` field previously passed through unredacted to MPA
   webhooks and the audit log (F2, audit 2026-06-07; CWE-200).
+- Add explicit `idna>=3.15` floor (previously only transitive via httpx) to
+  evict CVE-2026-45409 on a fresh resolve (defense-in-depth; family audit rec R3).
+
+### Documentation
+- `SECURITY.md` now documents which security controls are automatic vs. opt-in,
+  removing ambiguity in the prior controls list (family audit rec R5).
 
 ## [0.4.0] — 2026-05-17
 
