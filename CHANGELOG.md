@@ -6,7 +6,53 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+(nothing yet)
+
+## [0.5.0] — 2026-06-12
+
+The OEM embed-kit release (session-3 T1+T2). Includes everything previously
+listed under Unreleased (MPA freshness binding, sink-level redaction, F1/F2
+hardening) — folded into this version. Founder-signed release pending.
+
+### Added
+- **Rail-agnostic screening core:** `core.ScreeningPipeline` — the four-control
+  sequence (PII → trusted-wallet → policy → replay → MPA, with audit and
+  speculative-commit rollback) extracted verbatim from the gateway. Operates on
+  `PaymentDetails` alone; contains no payment-protocol assumptions. Behaviour,
+  audit events, metrics, and exceptions are byte-identical to v0.4.0.
+- **Binding layer:** `bindings/x402.X402Binding` owns everything x402-specific
+  (402 status, `X-PAYMENT` header, scheme `exact`, `accepts[]` parsing with the
+  F-04/F1 hardening). New `PaymentProtocolBinding` protocol in `_types`;
+  `HardenedX402Client(binding=...)` accepts a custom rail binding — the hedge
+  against payment-rail fragmentation (Stripe ACP/Tempo, AP2).
+- `PIIFilter.scan_fields(mapping)` — rail-agnostic generalisation of
+  `scan_payment_fields` for bindings with different metadata field names.
+- **Partner conformance suite:** `python -m presidio_x402.conformance` — 7
+  end-to-end checks (API surface, pre-signing redaction, fail-closed PII block,
+  policy block, replay + rollback, audit-chain integrity incl. tamper
+  detection, binding parse hardening). No network; exit 0/1. Runs in CI on
+  every push and intended for OEM partners' CI on every upgrade.
+- **SEMVER.md** — public-API definition, pre-1.0 semver profile, behavioural
+  security invariants that outrank API stability, partner pin guidance.
+- Integration quickstarts: `docs/quickstarts/{coinbase-cdp,langchain,crewai}.md`.
+- SBOM job (CycloneDX) in CI; conformance-suite step in the test matrix.
+
+### Fixed
+- `ComplianceReport` chain verification now resolves the chain key live from
+  the `audit_log` module instead of a value snapshot taken at import. The
+  snapshot silently desynced writer and verifier when the key changed after
+  import (module reload), failing the chain check on untampered logs. Found by
+  the new partner conformance suite running inside the full pytest matrix.
+
 ### Changed
+- `gateway.py` is now a thin composition of `ScreeningPipeline` + the configured
+  binding. All pre-v0.5.0 import paths keep working, including the grandfathered
+  gateway aliases (`_parse_402_header`, `_HEADER_PAYMENT`, `_SUPPORTED_SCHEME`,
+  `_amount_to_usd`) — kept until v1.0.0 per SEMVER.md.
+- Roadmap re-slotted: the previously planned v0.5.0 scope (multi-tenant key
+  scoping, enterprise audit sinks, SLSA L3, key-env startup gates) moves to
+  v0.6.0; the SLO payment broker moves to v0.7.0. Rationale: OEM outreach (Q3)
+  needs the embed kit first; see PRESIDIO-REQ.md.
 - **BREAKING (crypto-mode MPA):** countersignatures are now freshness-bound. The
   wire format is `"<unix_ts>:<hmac_hex>"` and the signed payload includes the
   approver's timestamp; the engine rejects signatures outside the new

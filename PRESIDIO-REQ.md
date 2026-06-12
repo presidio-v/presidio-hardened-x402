@@ -298,11 +298,43 @@ v0.5.0). No CRITICAL/HIGH chain remains OPEN with zero in-tree control.
 
 ---
 
-## v0.5.0 Requirements (Multi-Tenant + Audit Sink + SLSA L3)
+## v0.5.0 Requirements (OEM Embed Kit + Binding Layer) — Delivered
+
+Re-slotted 2026-06-12 (session-3 T1+T2, founder-selected scope): OEM outreach in
+Q3 needs the embed kit before the multi-tenant platform work, and the patent
+posture wants the screening core demonstrably rail-agnostic (claims cover the
+method, not the rail — the binding layer is the hedge against protocol
+fragmentation: Stripe ACP/Tempo, AP2). The previous v0.5.0 scope moves to
+v0.6.0 unchanged; the SLO payment broker moves to v0.7.0.
+
+- Rail-agnostic screening core: `core.ScreeningPipeline` extracted verbatim from
+  the gateway (audit events, metrics, exceptions, rollback semantics
+  byte-identical; existing 326-test suite is the conformance proof) — Delivered
+- Binding layer: `bindings/x402.X402Binding` owns the 402 status, `X-PAYMENT`
+  header, scheme, and offer parsing (F-04/F1 hardening preserved);
+  `PaymentProtocolBinding` protocol; `HardenedX402Client(binding=...)`; proven
+  by an end-to-end fake-rail test (HTTP 419 + `X-FAKEPAY`, full pipeline
+  guarantees intact) — Delivered
+- Back-compat: every pre-0.5.0 import path works; grandfathered gateway aliases
+  kept until v1.0.0 (SEMVER.md) — Delivered
+- `PIIFilter.scan_fields(mapping)` for rails with different metadata fields — Delivered
+- Partner conformance suite `python -m presidio_x402.conformance` (7 end-to-end
+  checks, no network, exit 0/1), wired into CI — Delivered
+- SEMVER.md: public-API definition, pre-1.0 semver profile, behavioural security
+  invariants, partner pin guidance (`>=0.5,<0.6`) — Delivered
+- Quickstarts: Coinbase CDP, LangChain, CrewAI (`docs/quickstarts/`) — Delivered
+- SBOM (CycloneDX) job in CI — Delivered
+- Includes the previously-unreleased MPA freshness binding (F-8) and sink-level
+  log redaction (family audit R2) — see CHANGELOG 0.5.0
+
+---
+
+## v0.6.0 Requirements (Multi-Tenant + Audit Sink + SLSA L3)
 
 Converts the single-tenant v0.4.0 screening service into a production platform.
 Largely the "production hardening" scope previously carried under v0.4.0, plus
-the multi-tenant work required to take paid tiers live.
+the multi-tenant work required to take paid tiers live. (Re-slotted from v0.5.0
+on 2026-06-12; content unchanged.)
 
 - Multi-tenant key scoping with per-tenant Redis namespace
 - Remote audit sink interfaces: `S3AuditWriter`, `SplunkAuditWriter`,
@@ -323,7 +355,7 @@ the multi-tenant work required to take paid tiers live.
 
 ---
 
-## v0.6.0 Requirements (SLO Payment Broker)
+## v0.7.0 Requirements (SLO Payment Broker) — re-slotted from v0.6.0 on 2026-06-12
 
 This version fills a second white spot: **market-based SLO enforcement**. Current
 autoscaling is reactive and rule-based. This milestone makes the agent an economic actor

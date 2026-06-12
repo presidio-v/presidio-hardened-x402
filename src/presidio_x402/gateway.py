@@ -3,6 +3,16 @@
 Implements the x402 payment flow directly over httpx, with all security controls
 applied before payment signing and submission.
 
+Since v0.5.0 the client is a thin composition of two rail-separated parts
+(session-3 T2 binding-layer refactor):
+
+- :class:`~presidio_x402.core.ScreeningPipeline` — the rail-agnostic screening
+  core (PII → trusted-wallet → policy → replay → MPA, with audit + rollback);
+- :class:`~presidio_x402.bindings.x402.X402Binding` — everything x402-specific
+  (402 status, ``X-PAYMENT`` header, accepts[] parsing).
+
+Behaviour is byte-identical to v0.4.0; all previous import paths keep working.
+
 Payment flow (per x402 spec):
   1. Client sends HTTP request to a resource URL
   2. Server responds with 402 Payment Required + ``X-PAYMENT`` header (JSON)
@@ -35,170 +45,60 @@ Usage::
 
 from __future__ import annotations
 
-import json
 import logging
-import math
-from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 
-from ._types import AuditWriter, PaymentDetails, PaymentResponse, PaymentSigner
 from .audit_log import AuditLog, NullAuditWriter
-from .exceptions import (
-    MPADeniedError,
-    MPATimeoutError,
-    PIIBlockedError,
-    PolicyViolationError,
-    ReplayDetectedError,
-    X402PaymentError,
+from .bindings.x402 import (
+    HEADER_PAYMENT,
+    PAYMENT_HEADER_MAX_BYTES,
+    SUPPORTED_SCHEME,
+    X402Binding,
+    parse_402_header,
 )
+from .core import (
+    SAFE_EXC_MESSAGE_MAX,
+    ScreeningPipeline,
+    amount_to_usd,
+    resource_origin,
+    safe_exc_message,
+)
+from .exceptions import X402PaymentError
+from .pii_filter import PIIFilter
+from .policy_engine import PolicyConfig, PolicyEngine
+from .replay_guard import ReplayGuard
 
 if TYPE_CHECKING:
+    from ._types import (
+        AuditWriter,
+        PaymentDetails,
+        PaymentProtocolBinding,
+        PaymentResponse,
+        PaymentSigner,
+    )
     from .metrics import MetricsCollector
     from .mpa import MPAEngine
     from .screening_client import ScreeningClient
-from .pii_filter import PIIFilter
-from .policy_engine import PolicyConfig, PolicyEngine
-from .replay_guard import ReplayGuard, compute_fingerprint
 
 logger = logging.getLogger("presidio_x402.gateway")
 
-# Header names per x402 spec
-_HEADER_PAYMENT = "X-PAYMENT"
-
-# Supported x402 scheme for v0.1.0
-_SUPPORTED_SCHEME = "exact"
-
-# Max characters of an exception message retained in audit records. Exception
-# text frequently carries fragments of the offending input (JSON snippets,
-# signing-key material, wallet addresses) — truncation caps blast radius.
-_SAFE_EXC_MESSAGE_MAX = 80
-
-# Max byte length of the raw X-PAYMENT header before JSON parsing. A malicious
-# 402 server could otherwise force the client to allocate arbitrary memory in
-# json.loads before any security control fires. 64 KiB is multiple orders of
-# magnitude above any legitimate x402 accepts payload.
-_PAYMENT_HEADER_MAX_BYTES = 65_536
-
-
-def _safe_exc_message(exc: BaseException, max_len: int = _SAFE_EXC_MESSAGE_MAX) -> str:
-    msg = str(exc)
-    if len(msg) > max_len:
-        msg = msg[:max_len] + "...[truncated]"
-    return msg
-
-
-def _resource_origin(url: str) -> str:
-    parsed = httpx.URL(url)
-    return str(parsed.copy_with(path="", query=None, fragment=None)).rstrip("/")
-
-
-def _parse_402_header(header_value: str) -> PaymentDetails:
-    """Parse the ``X-PAYMENT`` header from a 402 response.
-
-    Expected JSON structure (x402 spec v1)::
-
-        {
-          "accepts": [{
-            "scheme": "exact",
-            "network": "base-mainnet",
-            "maxAmountRequired": "0.01",
-            "resource": "https://...",
-            "description": "...",
-            "mimeType": "application/json",
-            "payTo": "0x...",
-            "requiredDeadlineSeconds": 300,
-            "extra": {}
-          }]
-        }
-    """
-    if len(header_value.encode("utf-8")) > _PAYMENT_HEADER_MAX_BYTES:
-        raise X402PaymentError(
-            f"X-PAYMENT header exceeds maximum length of {_PAYMENT_HEADER_MAX_BYTES} bytes"
-        )
-    try:
-        data = json.loads(header_value)
-    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
-        # Also catch RecursionError: deeply nested JSON (small byte payload, under
-        # the size cap above) makes json.loads recurse to the interpreter limit;
-        # without this it would propagate uncaught and bypass the sanitised audit
-        # path (F-04, 2026-06-03). Never embed the raw JSON (which may carry
-        # wallet/PII fragments) in the message; the parse-error cause itself
-        # carries only position info, so it is kept on __cause__ for debugging.
-        raise X402PaymentError("Invalid X-PAYMENT header JSON") from exc
-
-    # The top level must be a JSON object. A valid-but-non-object payload (a
-    # bare array/number/string, e.g. a moderately nested list that parses before
-    # the recursion limit) would otherwise reach data.get() and raise an uncaught
-    # AttributeError outside the sanitised audit path (F-04, 2026-06-03).
-    if not isinstance(data, dict):
-        raise X402PaymentError("Invalid X-PAYMENT header JSON")
-
-    accepts = data.get("accepts", [])
-    if not accepts:
-        raise X402PaymentError("X-PAYMENT header contains no 'accepts' entries")
-
-    # Pick the first supported scheme. Each accepts[] entry must be a JSON object;
-    # a hostile server can send a primitive (e.g. {"accepts": ["exact"]} or [42]),
-    # and entry.get() on a non-dict would raise an uncaught AttributeError outside
-    # the sanitised audit path (F1, 2026-06-07). Skip non-dict entries.
-    chosen = None
-    for entry in accepts:
-        if isinstance(entry, dict) and entry.get("scheme") == _SUPPORTED_SCHEME:
-            chosen = entry
-            break
-    if chosen is None:
-        schemes = [e.get("scheme") for e in accepts if isinstance(e, dict)]
-        raise X402PaymentError(
-            f"No supported payment scheme found. Server offered: {schemes}; "
-            f"client supports: [{_SUPPORTED_SCHEME!r}]"
-        )
-
-    try:
-        return PaymentDetails(
-            resource_url=chosen["resource"],
-            pay_to=chosen["payTo"],
-            amount=chosen["maxAmountRequired"],
-            currency=chosen.get("currency", "USDC"),
-            network=chosen["network"],
-            deadline_seconds=int(chosen.get("requiredDeadlineSeconds", 300)),
-            description=chosen.get("description", ""),
-            reason=chosen.get("reason", ""),
-            extra=chosen.get("extra", {}),
-        )
-    except KeyError:
-        raise X402PaymentError("Missing required field in X-PAYMENT entry") from None
-
-
-_USD_PEGGED = frozenset({"USDC", "USDT", "DAI", "USDCE", "USDBC"})
-
-
-def _amount_to_usd(amount: str, currency: str) -> float:
-    """Convert a payment amount string to USD.
-
-    Supports USD-pegged stablecoins only (USDC, USDT, DAI, USDCE, USDBC).
-    Non-stablecoin currencies raise :class:`X402PaymentError` because without a
-    price oracle the USD value cannot be determined, and silently understating it
-    would allow policy limits to be bypassed.
-    """
-    try:
-        value = float(amount)
-    except ValueError as exc:
-        raise X402PaymentError(f"Invalid payment amount {amount!r}: not a numeric value") from exc
-    if not math.isfinite(value) or value < 0:
-        raise X402PaymentError(
-            f"Invalid payment amount {amount!r}: must be a finite non-negative number. "
-            "Non-finite values (nan, inf, -inf) bypass IEEE 754 comparison-based limit checks "
-            "and are rejected to preserve policy enforcement integrity."
-        )
-    if currency.upper() not in _USD_PEGGED:
-        raise X402PaymentError(
-            f"Unsupported currency {currency!r} for policy enforcement. "
-            f"Supported stablecoins: {sorted(_USD_PEGGED)}. "
-            "For non-stablecoin payments configure a custom price oracle."
-        )
-    return value
+# ---------------------------------------------------------------------------
+# Back-compat aliases (pre-v0.5.0 module layout). New code should import from
+# presidio_x402.bindings.x402 and presidio_x402.core instead. Kept so that the
+# v0.4.0 import surface — including underscore names used in downstream test
+# suites — survives the binding-layer refactor unchanged. Removal would be a
+# breaking change (SEMVER.md); earliest at v1.0.0.
+# ---------------------------------------------------------------------------
+_HEADER_PAYMENT = HEADER_PAYMENT
+_SUPPORTED_SCHEME = SUPPORTED_SCHEME
+_PAYMENT_HEADER_MAX_BYTES = PAYMENT_HEADER_MAX_BYTES
+_SAFE_EXC_MESSAGE_MAX = SAFE_EXC_MESSAGE_MAX
+_parse_402_header = parse_402_header
+_amount_to_usd = amount_to_usd
+_safe_exc_message = safe_exc_message
+_resource_origin = resource_origin
 
 
 class HardenedX402Client:
@@ -269,6 +169,12 @@ class HardenedX402Client:
         Toggle for the remote PII path. ``False`` (default) runs the local
         :class:`PIIFilter`; ``True`` requires ``screening_client`` to be set
         and forwards payment metadata to the remote service.
+    binding:
+        The :class:`~presidio_x402._types.PaymentProtocolBinding` translating
+        the payment rail's wire format. Defaults to
+        :class:`~presidio_x402.bindings.x402.X402Binding` (HTTP 402 +
+        ``X-PAYMENT``). Supply a custom binding to reuse the screening core on
+        a different payment rail.
     """
 
     def __init__(
@@ -289,6 +195,7 @@ class HardenedX402Client:
         trusted_wallets: dict[str, set[str]] | None = None,
         screening_client: ScreeningClient | None = None,
         remote_screening: bool = False,
+        binding: PaymentProtocolBinding | None = None,
     ) -> None:
         if remote_screening and screening_client is None:
             raise ValueError("remote_screening=True requires a screening_client instance")
@@ -305,6 +212,7 @@ class HardenedX402Client:
         self._httpx = httpx_client or httpx.AsyncClient(timeout=30.0)
         self._mpa = mpa_engine
         self._metrics = metrics_collector
+        self._binding = binding or X402Binding()
         # Store allowlisted wallet addresses lower-cased: EVM addresses are
         # case-insensitive (EIP-55 checksum casing is optional), so comparing
         # verbatim would reject a valid checksummed/lower-case variant and cause
@@ -317,6 +225,22 @@ class HardenedX402Client:
             }
             if trusted_wallets is not None
             else None
+        )
+        # The rail-agnostic screening core shares the component instances above:
+        # the client keeps direct references for back-compat introspection while
+        # the pipeline owns the control-sequence logic.
+        self._pipeline = ScreeningPipeline(
+            pii_filter=self._pii_filter,
+            policy=self._policy,
+            replay=self._replay,
+            audit=self._audit,
+            pii_action=pii_action,
+            pii_entities=pii_entities,
+            mpa_engine=mpa_engine,
+            metrics_collector=metrics_collector,
+            trusted_wallets=self._trusted_wallets,
+            screening_client=screening_client,
+            remote_screening=remote_screening,
         )
         logger.info("Presidio hardening applied — HardenedX402Client initialized")
 
@@ -343,29 +267,35 @@ class HardenedX402Client:
         return await self._request(method, url, **kwargs)
 
     # ------------------------------------------------------------------
-    # Internal: request + 402 handling
+    # Internal: request + payment-required handling (rail via binding)
     # ------------------------------------------------------------------
 
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
-        """Send *method* request to *url*; handle 402 with security controls."""
+        """Send *method* request to *url*; handle payment-required responses
+        with the screening pipeline and the configured rail binding."""
         # Extract MPA crypto-mode countersignatures if provided (not passed to httpx)
         mpa_signatures: dict[str, str] | None = kwargs.pop("mpa_signatures", None)
 
         resp = await self._httpx.request(method, url, **kwargs)
 
-        if resp.status_code != 402:
+        if resp.status_code != self._binding.payment_required_status:
             return resp
 
-        payment_header = resp.headers.get(_HEADER_PAYMENT)
-        if not payment_header:
-            logger.warning("402 response missing X-PAYMENT header from %s", url)
+        offer = self._binding.payment_offer(resp.status_code, resp.headers)  # type: ignore[arg-type]
+        if not offer:
+            logger.warning(
+                "%s response missing %s header from %s",
+                self._binding.payment_required_status,
+                self._binding.header_name,
+                url,
+            )
             return resp
 
         try:
-            details = _parse_402_header(payment_header)
+            details = self._binding.parse_payment_required(offer)
         except X402PaymentError as exc:
             safe_url, _ = self._pii_filter.scan_and_redact(url)
-            safe_msg, _ = self._pii_filter.scan_and_redact(_safe_exc_message(exc))
+            safe_msg, _ = self._pii_filter.scan_and_redact(safe_exc_message(exc))
             self._audit.emit(
                 "PAYMENT_ERROR",
                 resource_url=safe_url,
@@ -376,7 +306,7 @@ class HardenedX402Client:
 
         # Apply security controls; get (possibly modified) details + the replay
         # fingerprint back so a signing failure can roll the commit back.
-        secure_details, fingerprint = await self._apply_security_controls(
+        secure_details, fingerprint = await self._pipeline.apply(
             details, mpa_signatures=mpa_signatures
         )
 
@@ -388,16 +318,16 @@ class HardenedX402Client:
             # failure means no payment was made, so release them (F-03) —
             # otherwise a hostile server inducing repeated signer failures could
             # drain the accounting budget and block legitimate retries.
-            self._rollback_commit(
+            self._pipeline.rollback(
                 resource_url=secure_details.resource_url,
-                amount_usd=_amount_to_usd(secure_details.amount, secure_details.currency),
+                amount_usd=amount_to_usd(secure_details.amount, secure_details.currency),
                 fingerprint=fingerprint,
             )
-            safe_msg, _ = self._pii_filter.scan_and_redact(_safe_exc_message(exc))
+            safe_msg, _ = self._pii_filter.scan_and_redact(safe_exc_message(exc))
             self._audit.emit(
                 "PAYMENT_ERROR",
                 resource_url=secure_details.resource_url,
-                amount_usd=_amount_to_usd(secure_details.amount, secure_details.currency),
+                amount_usd=amount_to_usd(secure_details.amount, secure_details.currency),
                 network=secure_details.network,
                 outcome="blocked",
                 error_message=safe_msg,
@@ -410,13 +340,13 @@ class HardenedX402Client:
             # the audit record above.
             raise X402PaymentError("Payment signing failed") from None
 
-        # Retry request with payment token
+        # Retry request with payment token (header channel per binding)
         headers = dict(kwargs.pop("headers", {}) or {})
-        headers[_HEADER_PAYMENT] = payment_response.token
+        headers.update(self._binding.token_headers(payment_response.token))
         kwargs["headers"] = headers
         resp = await self._httpx.request(method, url, **kwargs)
 
-        paid_usd = _amount_to_usd(secure_details.amount, secure_details.currency)
+        paid_usd = amount_to_usd(secure_details.amount, secure_details.currency)
         self._audit.emit(
             "PAYMENT_ALLOWED",
             resource_url=secure_details.resource_url,
@@ -427,251 +357,6 @@ class HardenedX402Client:
         if self._metrics:
             self._metrics.record_payment_allowed(paid_usd)
         return resp
-
-    def _rollback_commit(self, *, resource_url: str, amount_usd: float, fingerprint: str) -> None:
-        """Reverse the spend + replay fingerprint speculatively committed in
-        :meth:`_apply_security_controls`.
-
-        The policy spend and replay fingerprint are recorded *before* the payment
-        is signed (so the TOCTOU-critical check+record stays atomic under a
-        single lock — a guarantee that cannot span the async signer ``await``).
-        When the payment is subsequently denied (MPA) or fails to sign, this
-        compensating rollback keeps the spend ledger consistent with payments
-        that actually committed and frees the fingerprint for a legitimate retry
-        (F-03, 2026-06-03).
-        """
-        self._policy.refund(resource_url=resource_url, amount_usd=amount_usd)
-        self._replay.release(fingerprint)
-
-    async def _apply_security_controls(
-        self,
-        details: PaymentDetails,
-        *,
-        mpa_signatures: dict[str, str] | None = None,
-    ) -> tuple[PaymentDetails, str]:
-        """Apply PIIFilter → PolicyEngine → ReplayGuard → MPAEngine → AuditLog.
-
-        Returns a ``(details, fingerprint)`` tuple: the (possibly modified)
-        :class:`~presidio_x402._types.PaymentDetails` with PII redacted from
-        metadata fields if ``pii_action="redact"``, plus the replay fingerprint
-        recorded for this payment so the caller can roll it back if signing
-        fails.
-
-        Raises on policy violation, replay, PII block, or MPA denial/timeout.
-        On MPA denial/timeout the spend + replay commit is rolled back before
-        re-raising.
-        """
-        amount_usd = _amount_to_usd(details.amount, details.currency)
-
-        # Preserve the original resource_url for replay-guard fingerprinting.
-        # In pii_action="redact" mode the URL gets rewritten with PII tokens
-        # masked; using the redacted URL for fingerprinting would collide
-        # distinct user-specific URLs (e.g. /user/alice@.../pay vs
-        # /user/bob@.../pay both reduce to /user/<EMAIL_ADDRESS>/pay) and
-        # produce false-positive ReplayDetectedError. Original URL is never
-        # passed downstream to signer / MPA — only used for the local HMAC.
-        original_resource_url = details.resource_url
-
-        # ------------------------------------------------------------------
-        # 1. PII Filter (local regex/NLP or remote screening service)
-        # ------------------------------------------------------------------
-        if self._remote_screening and self._screening_client is not None:
-            (
-                clean_url,
-                clean_desc,
-                clean_reason,
-                pii_entities,
-            ) = await self._screening_client.scan_payment_fields(
-                details.resource_url,
-                details.description,
-                details.reason,
-                entities=self._pii_entities,
-            )
-            # Defense-in-depth (F-06, 2026-06-03): the remote screener is the
-            # only scan of the three primary fields, so a mis-redacting, empty,
-            # or silently degraded response would pass PII through unredacted.
-            # Re-run the fast local regex filter over its output as a cheap
-            # backstop. On a correct remote response the fields are already
-            # masked, so this finds nothing; it only catches what the remote
-            # missed, and feeds those entities into the block/redact decision.
-            clean_url, url_ent = self._pii_filter.scan_and_redact(clean_url)
-            clean_desc, desc_ent = self._pii_filter.scan_and_redact(clean_desc)
-            clean_reason, reason_ent = self._pii_filter.scan_and_redact(clean_reason)
-            pii_entities = list(pii_entities) + url_ent + desc_ent + reason_ent
-        else:
-            clean_url, clean_desc, clean_reason, pii_entities = (
-                self._pii_filter.scan_payment_fields(
-                    details.resource_url, details.description, details.reason
-                )
-            )
-
-        # The remote screening API only covers the three primary string fields.
-        # The `extra` dict is arbitrary server-controlled JSON and must be
-        # scanned locally for defense-in-depth — this closes REQ-1 against
-        # malicious 402 servers that smuggle PII through the extra channel.
-        clean_extra, extra_entities = self._pii_filter.scan_dict(details.extra)
-        if extra_entities:
-            pii_entities = list(pii_entities) + list(extra_entities)
-
-        if pii_entities:
-            entity_types = [e.entity_type for e in pii_entities]
-            if self._pii_action == "block":
-                self._audit.emit(
-                    "PII_BLOCKED",
-                    resource_url=clean_url,
-                    amount_usd=amount_usd,
-                    network=details.network,
-                    outcome="blocked",
-                    pii_entities_found=entity_types,
-                )
-                if self._metrics:
-                    self._metrics.record_pii_detection(entity_types, "block")
-                    self._metrics.record_payment_blocked("pii", amount_usd)
-                raise PIIBlockedError(
-                    f"PII detected in payment metadata: {', '.join(sorted(set(entity_types)))}",
-                    entities=entity_types,
-                )
-            elif self._pii_action == "redact":
-                self._audit.emit(
-                    "PII_REDACTED",
-                    resource_url=clean_url,
-                    amount_usd=amount_usd,
-                    network=details.network,
-                    outcome="allowed",
-                    pii_entities_found=entity_types,
-                )
-                if self._metrics:
-                    self._metrics.record_pii_detection(entity_types, "redact")
-                # Replace metadata fields with redacted versions.
-                # resource_url is replaced AFTER replay-fingerprint computation
-                # earlier in this function so the original URL still drives
-                # deduplication; from this point on every downstream consumer
-                # (signer, MPA webhooks, audit log post-event) sees clean_url.
-                # The `extra` dict is also redacted in-place when PII is found
-                # in any of its string values (REQ-1 — closes F-A 2026-05-03).
-                details = replace(
-                    details,
-                    resource_url=clean_url,
-                    description=clean_desc,
-                    reason=clean_reason,
-                    extra=clean_extra if extra_entities else details.extra,
-                )
-            elif self._metrics:
-                # pii_action == "warn": log already happened in PIIFilter
-                self._metrics.record_pii_detection(entity_types, "warn")
-
-        # ------------------------------------------------------------------
-        # 2. Trusted-wallet allowlist (pay_to substitution defence)
-        # ------------------------------------------------------------------
-        if self._trusted_wallets is not None:
-            # Key the allowlist off the ORIGINAL (pre-redaction) origin. PII
-            # redaction can rewrite the host (IP literals via IP_ADDRESS,
-            # digit-laden DNS labels via US_SSN/PHONE_NUMBER), which would shift
-            # the origin string out of the allowlist, miss the lookup, and
-            # silently skip the pay_to check entirely. The host is a
-            # security-control key, not PII — this mirrors the replay
-            # fingerprint, which also keys off original_resource_url below
-            # (CWE-348 / F-02, 2026-06-03).
-            origin = _resource_origin(original_resource_url)
-            allowed = self._trusted_wallets.get(origin)
-            if allowed is not None and details.pay_to.lower() not in allowed:
-                # The raw origin may contain a redactable host; keep it out of
-                # the persisted audit message and surface only the redacted URL.
-                self._audit.emit(
-                    "WALLET_BLOCKED",
-                    resource_url=clean_url,
-                    amount_usd=amount_usd,
-                    network=details.network,
-                    outcome="blocked",
-                    error_message=f"pay_to {details.pay_to!r} not in trusted wallet allowlist",
-                )
-                if self._metrics:
-                    self._metrics.record_payment_blocked("wallet", amount_usd)
-                raise X402PaymentError(
-                    f"pay_to wallet {details.pay_to!r} not in trusted allowlist"
-                )
-
-        # ------------------------------------------------------------------
-        # 3. Policy Engine
-        # ------------------------------------------------------------------
-        try:
-            self._policy.check_and_record(resource_url=details.resource_url, amount_usd=amount_usd)
-        except PolicyViolationError as exc:
-            self._audit.emit(
-                "POLICY_BLOCKED",
-                resource_url=clean_url,
-                amount_usd=amount_usd,
-                network=details.network,
-                outcome="blocked",
-                policy_limit_usd=exc.limit_usd,
-            )
-            if self._metrics:
-                self._metrics.record_policy_violation("limit_exceeded")
-                self._metrics.record_payment_blocked("policy", amount_usd)
-            raise
-
-        # ------------------------------------------------------------------
-        # 4. Replay Guard
-        # ------------------------------------------------------------------
-        fingerprint = compute_fingerprint(
-            resource_url=original_resource_url,  # ORIGINAL URL — see top of method
-            pay_to=details.pay_to,
-            amount=details.amount,
-            currency=details.currency,
-            deadline_seconds=details.deadline_seconds,
-        )
-        try:
-            self._replay.check_and_record(fingerprint)
-        except ReplayDetectedError:
-            self._audit.emit(
-                "REPLAY_BLOCKED",
-                resource_url=clean_url,
-                amount_usd=amount_usd,
-                network=details.network,
-                outcome="blocked",
-                replay_fingerprint=fingerprint[:16],
-            )
-            if self._metrics:
-                self._metrics.record_replay_detection()
-                self._metrics.record_payment_blocked("replay", amount_usd)
-            raise
-
-        # ------------------------------------------------------------------
-        # 5. Multi-Party Authorization (if configured)
-        # ------------------------------------------------------------------
-        if self._mpa is not None:
-            try:
-                await self._mpa.request_approval(
-                    details, amount_usd, provided_signatures=mpa_signatures
-                )
-                if self._metrics:
-                    self._metrics.record_mpa_event("approved")
-            except (MPADeniedError, MPATimeoutError) as exc:
-                # Roll back the spend + replay fingerprint committed at steps 3–4:
-                # an MPA-denied/timed-out payment was never signed, so it must not
-                # charge the budget or burn the fingerprint (which would block the
-                # legitimate crypto-mode retry that carries the countersignatures).
-                self._rollback_commit(
-                    resource_url=details.resource_url,
-                    amount_usd=amount_usd,
-                    fingerprint=fingerprint,
-                )
-                outcome = "timeout" if isinstance(exc, MPATimeoutError) else "denied"
-                safe_msg, _ = self._pii_filter.scan_and_redact(_safe_exc_message(exc))
-                self._audit.emit(
-                    "MPA_BLOCKED",
-                    resource_url=clean_url,
-                    amount_usd=amount_usd,
-                    network=details.network,
-                    outcome="blocked",
-                    error_message=safe_msg,
-                )
-                if self._metrics:
-                    self._metrics.record_mpa_event(outcome)
-                    self._metrics.record_payment_blocked(f"mpa_{outcome}", amount_usd)
-                raise
-
-        return details, fingerprint
 
     # ------------------------------------------------------------------
     # Context manager support

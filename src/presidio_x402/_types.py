@@ -101,3 +101,42 @@ class AuditWriter(Protocol):
     def write(self, event: AuditEvent) -> None:
         """Write a single audit event."""
         ...
+
+
+@runtime_checkable
+class PaymentProtocolBinding(Protocol):
+    """Protocol for payment-rail bindings (v0.5.0 binding-layer refactor).
+
+    A binding owns everything specific to one payment rail's wire format: how
+    a payment requirement is signalled, how the rail's payment offer parses
+    into the rail-agnostic :class:`PaymentDetails`, and how the signed token
+    travels on the retried request. The screening core
+    (:class:`~presidio_x402.core.ScreeningPipeline`) is reused unchanged across
+    bindings. Reference implementation:
+    :class:`~presidio_x402.bindings.x402.X402Binding`.
+    """
+
+    name: str
+    """Short rail identifier (e.g. ``"x402"``)."""
+
+    payment_required_status: int
+    """HTTP status code signalling that payment is required (402 for x402)."""
+
+    header_name: str
+    """Header carrying the payment offer / signed token."""
+
+    def payment_offer(self, status_code: int, headers: Any) -> str | None:
+        """Extract the raw payment-offer payload from a response, or ``None``."""
+        ...
+
+    def parse_payment_required(self, offer: str) -> PaymentDetails:
+        """Parse the rail's payment offer into :class:`PaymentDetails`.
+
+        Must fail closed: any malformed offer raises the library's payment
+        error rather than returning partial details.
+        """
+        ...
+
+    def token_headers(self, token: str) -> dict[str, str]:
+        """Headers carrying the signed payment token on the retried request."""
+        ...

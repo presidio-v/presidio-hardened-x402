@@ -26,8 +26,11 @@ from __future__ import annotations
 
 import logging
 
+from ._types import PaymentProtocolBinding
 from .audit_log import AuditLog, FileAuditWriter, NullAuditWriter, StreamAuditWriter
+from .bindings.x402 import X402Binding
 from .compliance_report import ComplianceReport
+from .core import ScreeningPipeline
 from .exceptions import (
     MPADeniedError,
     MPATimeoutError,
@@ -50,12 +53,16 @@ from .policy_engine import PolicyConfig, PolicyEngine
 from .replay_guard import ReplayGuard, compute_fingerprint
 from .screening_client import ScreeningClient
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __all__ = [
     # Primary public API
     "HardenedX402Client",
     "PolicyConfig",
     "ComplianceReport",
+    # Rail-agnostic screening core + rail bindings (v0.5.0)
+    "ScreeningPipeline",
+    "PaymentProtocolBinding",
+    "X402Binding",
     # Multi-party authorization
     "MPAConfig",
     "MPAApproverConfig",
