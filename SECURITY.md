@@ -4,9 +4,9 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.4.x   | ✓ (current) |
-| 0.3.x   | ✓ |
-| 0.2.x   | security fixes only |
+| 0.5.x   | ✓ (current) |
+| 0.4.x   | ✓ |
+| 0.3.x   | security fixes only |
 
 ## Reporting a Vulnerability
 
@@ -58,10 +58,13 @@ active unless you enable them.
 | Hosted screening service | Opt-in | `remote_screening=True` + a `screening_client` (local regex still runs as backstop) |
 | Prometheus metrics | Opt-in | Install `prometheus-client` and wire a `MetricsCollector` (graceful no-op when absent) |
 
-Header/secret redaction at the logging sink is being added in v0.5.0 (family
-audit rec R2); until then, do not pass secrets or wallet key material into log
-calls — the client itself never logs them, but integrator code must follow the
-same discipline.
+Header/secret redaction at the logging sink ships in v0.5.0 (family audit rec
+R2): `install_log_redaction()` runs at package import and scrubs API keys,
+bearer tokens, and 32-byte hex key/signature material from every
+`presidio_x402` log record. Integrator code outside this logger namespace must
+still follow the same discipline. From v0.5.0 the documented security
+guarantees can be verified end-to-end in your environment with the partner
+conformance suite: `python -m presidio_x402.conformance` (see SEMVER.md).
 
 ## Threat Model
 

@@ -30,8 +30,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# The chain key is read live from the audit_log module (not imported as a value
+# snapshot): the writer signs with `audit_log._CHAIN_KEY` at call time, so the
+# verifier must resolve the same attribute at verification time. A from-import
+# froze the key at import and silently desynced writer and verifier whenever
+# the module was reloaded with a different key — the chain check then failed on
+# untampered logs (found by the v0.5.0 partner conformance suite).
+from . import audit_log as _audit_log
 from ._types import AuditEvent
-from .audit_log import _CHAIN_KEY  # type: ignore[attr-defined]
 
 # ---------------------------------------------------------------------------
 # Entry parsing
@@ -148,7 +154,11 @@ class ComplianceReport:
                 )
             # Compute expected HMAC of this entry for the next entry
             entry_json = json.dumps(dict(raw), default=str)
-            prev_hmac = hmac.new(_CHAIN_KEY, entry_json.encode(), hashlib.sha256).hexdigest()
+            prev_hmac = hmac.new(
+                _audit_log._CHAIN_KEY,  # live module attribute — see import note
+                entry_json.encode(),
+                hashlib.sha256,
+            ).hexdigest()
 
     # ---------------------------------------------------------------------------
     # Analysis helpers

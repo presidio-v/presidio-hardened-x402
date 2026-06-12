@@ -342,6 +342,30 @@ class PIIFilter:
 
         return clean_url, clean_desc, clean_reason, all_entities
 
+    def scan_fields(self, fields: dict[str, str]) -> tuple[dict[str, str], list[EntityResult]]:
+        """Scan and redact an arbitrary mapping of named string fields.
+
+        Rail-agnostic generalisation of :meth:`scan_payment_fields` (v0.5.0
+        binding-layer refactor): bindings for rails whose metadata fields differ
+        from x402's ``(resource_url, description, reason)`` triple pass their
+        own field mapping. Returns ``(redacted_fields, all_entities)`` with the
+        same keys in the same order.
+        """
+        redacted: dict[str, str] = {}
+        all_entities: list[EntityResult] = []
+        for name, value in fields.items():
+            clean, entities = self.scan_and_redact(value)
+            redacted[name] = clean
+            all_entities.extend(entities)
+        if all_entities:
+            types = [e.entity_type for e in all_entities]
+            logger.warning(
+                "PII detected in payment metadata fields (%s): %s",
+                ", ".join(fields),
+                ", ".join(sorted(set(types))),
+            )
+        return redacted, all_entities
+
     def scan_dict(self, data: object) -> tuple[object, list[EntityResult]]:
         """Recursively scan and redact string values in arbitrary JSON-shaped data.
 

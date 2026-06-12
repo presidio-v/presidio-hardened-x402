@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml/badge.svg)](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml)
 
-> v0.4.0 — PII redaction, spending policy, replay detection, audit logging, multi-party authorization, Prometheus metrics, and opt-in remote screening for x402 payments
+> v0.5.0 — OEM embed kit: rail-agnostic screening core + x402 binding layer, partner conformance suite, semver guarantees; plus PII redaction, spending policy, replay detection, audit logging, multi-party authorization, Prometheus metrics, and opt-in remote screening
 
 Security middleware for the [x402 payment protocol](https://www.x402.org/).
 
@@ -20,6 +20,8 @@ Intercepts x402 payment requests **before transmission to servers and facilitato
 - **Prometheus metrics** — structured telemetry for every security control activation *(v0.3.0)*
 - **Remote screening** — opt-in `remote_screening=True` mode offloads PII analysis to the hosted [`screen.presidio-group.eu`](https://screen.presidio-group.eu) service via `ScreeningClient`; avoids the in-process spaCy dependency *(v0.4.0)*
 - **Per-origin wallet allowlist** — per-origin `pay_to` allowlist blocks payments to attacker-controlled addresses when a DNS-poisoned 402 response substitutes the recipient (chain-06 mitigation) *(v0.4.0)*
+- **Rail-agnostic core + binding layer** — the screening pipeline (`ScreeningPipeline`) is payment-protocol-independent; everything x402-specific lives in `bindings/x402`. Embed on a different rail by implementing `PaymentProtocolBinding` — the security guarantees travel with the core *(v0.5.0)*
+- **OEM embed kit** — [semver/stability guarantees](SEMVER.md), partner-runnable conformance suite (`python -m presidio_x402.conformance`, 7 end-to-end checks, no network), and integration quickstarts for [Coinbase CDP](docs/quickstarts/coinbase-cdp.md), [LangChain](docs/quickstarts/langchain.md), and [CrewAI](docs/quickstarts/crewai.md) *(v0.5.0)*
 
 Part of the [presidio-hardened-*](https://github.com/presidio-v) toolkit family.
 
@@ -357,9 +359,10 @@ All exceptions are importable from `presidio_x402`.
 | v0.2.0 | Synthetic corpus + 42-configuration precision/recall sweep, LangChain/CrewAI adapters, compliance report · [arXiv:2604.11430](https://arxiv.org/abs/2604.11430) |
 | v0.2.1 | Live ecosystem characterisation via Dune Analytics (20 projects, 96 wallets, 11 chains, ≥79M transactions); IEEE S&P magazine article submitted; IEEE TIFS paper under review · Corpus: [`v0.2.1/dataport/`](v0.2.1/dataport/), [Hugging Face](https://huggingface.co/datasets/vstantch/x402-pii-corpus), [IEEE DataPort (doi:10.21227/kpsz-nq73)](https://doi.org/10.21227/kpsz-nq73) |
 | v0.3.0 | **Multi-party authorization** (`mpa.py`: n-of-m, webhook + crypto modes) · **Policy-as-code** JSON Schema (IETF draft candidate) · **Prometheus metrics** exporter · Kubernetes Helm chart + Docker image · SOC2 reference architecture |
-| **v0.4.0** | **Screening API launch** — hosted [`screen.presidio-group.eu`](https://screen.presidio-group.eu) free tier (regex mode, 100 req/day) · `ScreeningClient` + `remote_screening=True` mode · per-origin `pay_to` allowlist (chain-06 mitigation) · audit-cycle hardening (F-A/B 2026-05-03, F-C/D/E 2026-05-10, F1/F2/F3 2026-05-17); see [`CHANGELOG.md`](CHANGELOG.md) — **current** |
-| v0.5.0 | Multi-tenant key scoping · enterprise-tier remote audit sinks (S3 / Splunk / Datadog) · third-party security audit · SLSA L3 hardened build worker · hard startup-gates for `PRESIDIO_X402_*_KEY` env vars |
-| v0.6.0 | **SLO payment broker** — x402 micropayments as runtime infrastructure bids; `presidio-hardened-arch-translucency` integration |
+| v0.4.0 | **Screening API launch** — hosted [`screen.presidio-group.eu`](https://screen.presidio-group.eu) free tier (regex mode, 100 req/day) · `ScreeningClient` + `remote_screening=True` mode · per-origin `pay_to` allowlist (chain-06 mitigation) · audit-cycle hardening (F-A/B 2026-05-03, F-C/D/E 2026-05-10, F1/F2/F3 2026-05-17); see [`CHANGELOG.md`](CHANGELOG.md) |
+| **v0.5.0** | **OEM embed kit** — rail-agnostic `ScreeningPipeline` core + `bindings/x402` layer (`PaymentProtocolBinding` protocol, hedge against rail fragmentation: ACP/Tempo, AP2) · [SEMVER.md](SEMVER.md) stability guarantees · partner conformance suite (`python -m presidio_x402.conformance`) · CDP/LangChain/CrewAI quickstarts · SBOM in CI · freshness-bound MPA countersignatures (F-8) — **current** |
+| v0.6.0 | Multi-tenant key scoping · enterprise-tier remote audit sinks (S3 / Splunk / Datadog) · third-party security audit · SLSA L3 hardened build worker · hard startup-gates for `PRESIDIO_X402_*_KEY` env vars |
+| v0.7.0 | **SLO payment broker** — x402 micropayments as runtime infrastructure bids; `presidio-hardened-arch-translucency` integration |
 
 See [PRESIDIO-REQ.md](PRESIDIO-REQ.md) for full deliberation and rationale.
 
