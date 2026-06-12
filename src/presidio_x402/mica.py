@@ -244,8 +244,6 @@ OBLIGATION_MAP: tuple[Obligation, ...] = (
     ),
 )
 
-_OBLIGATIONS_BY_ID = {o.item_id: o for o in OBLIGATION_MAP}
-
 
 # ---------------------------------------------------------------------------
 # Evidence emission
