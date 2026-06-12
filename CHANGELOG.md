@@ -6,7 +6,22 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-(nothing yet)
+### Added
+- **MiCA/EU evidence module** (`mica.py`, session-3 T3): emits Ed25519-signed
+  (or HMAC-SHA256) compliance-supporting evidence in the cross-repo
+  `presidio-hardened/evidence-ref@1` wire format over a verified audit window.
+  The obligation map is data with per-entry legal basis, verification status,
+  confidence, and deployment-flag conditions (MiCA Art. 68(8)/(9), DORA
+  Arts. 9/17, GDPR Art. 5(1)(c); opt-in MiCA Art. 92(1) PPAET input and DORA
+  Art. 9(4) MPA items). Honest-claims enforcement: attestations are emitted only
+  when the audit window evidences them; an explicit TFR Art. 14(4)
+  layer-separation record prevents redaction-vs-travel-rule overclaiming; AMLR
+  citations are absent until article-level verification (guarded by test).
+  Fail-closed throughout: broken audit chain, missing key, empty window, or
+  missing deployment flags refuse to sign. Research memo with per-claim
+  verification status: `docs/mica-obligations.md`. New optional extra
+  `[evidence]` (cryptography>=46.0.6); HMAC mode needs no extra. Public API:
+  `build_evidence`, `Obligation`, `OBLIGATION_MAP`, `EvidenceError`.
 
 ## [0.5.0] — 2026-06-12
 

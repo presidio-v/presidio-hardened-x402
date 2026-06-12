@@ -47,6 +47,11 @@ dependencies = [
 nlp = [
     "spacy>=3.7.0",
 ]
+evidence = [
+    # Ed25519 signing for the MiCA/EU evidence module (mica.py). Floor matches
+    # the _KNOWN_VULNERABLE minimum-safe version in __init__.py.
+    "cryptography>=46.0.6",
+]
 redis = [
     "redis>=5.0.0",
 ]
