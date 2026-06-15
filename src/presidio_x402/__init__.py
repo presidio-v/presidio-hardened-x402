@@ -47,6 +47,7 @@ from .exceptions import (
 from .gateway import HardenedX402Client
 from .log_redaction import RedactingFilter, SecretRedactor, install_log_redaction
 from .metrics import MetricsCollector
+from .mica import OBLIGATION_MAP, EvidenceError, Obligation, build_evidence
 from .mpa import MPAApproverConfig, MPAConfig, MPAEngine, build_countersignature
 from .pii_filter import PIIFilter
 from .policy_engine import PolicyConfig, PolicyEngine
@@ -63,6 +64,11 @@ __all__ = [
     "ScreeningPipeline",
     "PaymentProtocolBinding",
     "X402Binding",
+    # MiCA/EU signed evidence (evidence-ref@1 wire format)
+    "build_evidence",
+    "Obligation",
+    "OBLIGATION_MAP",
+    "EvidenceError",
     # Multi-party authorization
     "MPAConfig",
     "MPAApproverConfig",

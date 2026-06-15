@@ -41,11 +41,22 @@ dependencies = [
     # floor is defense-in-depth so a fresh resolve cannot regress below the fix.
     # Family audit rec R3 (Grok 4.3, 2026-06-06); audit 2026-06-07.
     "idna>=3.15",
+    # Transitive of presidio-analyzer (-> requests -> urllib3); pin minimum to
+    # evict PYSEC-2026-141 and PYSEC-2026-142 (urllib3 < 2.7.0 vulnerable).
+    # Explicit floor is defense-in-depth so a fresh resolve cannot regress below
+    # the fix; requests allows urllib3<3,>=1.26 so 2.7.0 resolves cleanly against
+    # httpx>=0.27.0. Audit 2026-06-14 (F1).
+    "urllib3>=2.7.0",
 ]
 
 [project.optional-dependencies]
 nlp = [
     "spacy>=3.7.0",
+]
+evidence = [
+    # Ed25519 signing for the MiCA/EU evidence module (mica.py). Floor matches
+    # the _KNOWN_VULNERABLE minimum-safe version in __init__.py.
+    "cryptography>=46.0.6",
 ]
 redis = [
     "redis>=5.0.0",
@@ -59,6 +70,11 @@ langchain = [
 ]
 crewai = [
     "crewai>=0.28.0",
+    # crewai pulls pyjwt (pyjwt<3,>=2.9.0). Pin minimum to 2.13.0 to evict 5 CVEs
+    # in 2.7.0 (PYSEC-2026-120 crit-header bypass, PYSEC-2025-183, PYSEC-2026-175,
+    # PYSEC-2026-177, PYSEC-2026-179). 2.13.0 satisfies crewai's <3 cap. Audit
+    # 2026-06-14 (F2).
+    "pyjwt>=2.13.0",
 ]
 prometheus = [
     "prometheus-client>=0.20.0",
