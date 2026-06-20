@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 
 from ._types import PaymentProtocolBinding
+from .action_ref import compute_action_ref, format_action_ref_timestamp
 from .audit_log import AuditLog, FileAuditWriter, NullAuditWriter, StreamAuditWriter
 from .bindings.x402 import X402Binding
 from .compliance_report import ComplianceReport
@@ -95,6 +96,8 @@ __all__ = [
     "PolicyEngine",
     "ReplayGuard",
     "compute_fingerprint",
+    "compute_action_ref",
+    "format_action_ref_timestamp",
     "AuditLog",
     "NullAuditWriter",
     "StreamAuditWriter",
