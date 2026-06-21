@@ -8,12 +8,15 @@ matching, identical to Presidio runs.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
 
 from .label_mapping import PIIRANHA_TO_X402
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 @dataclass

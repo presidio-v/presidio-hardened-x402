@@ -4,7 +4,7 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.5.x   | ✓ (current) |
+| 0.5.x   | ✓ (latest release) |
 | 0.4.x   | ✓ |
 | 0.3.x   | security fixes only |
 
@@ -95,6 +95,9 @@ See `PRESIDIO-REQ.md` for the full threat model and security design rationale.
   only (emails, SSNs, credit cards, phone numbers) and may miss free-text PII
 - The in-memory replay guard does not persist across process restarts; use the Redis
   backend for production deployments requiring cross-process deduplication
+- The CrewAI adapter remains importable, but the `crewai` extra is intentionally
+  empty until CrewAI's `chromadb` dependency has a fixed release for CVE-2026-45829.
+  Install CrewAI separately only after your own dependency audit and risk acceptance.
 
 ## Software Development Lifecycle
 

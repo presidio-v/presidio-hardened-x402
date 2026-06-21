@@ -11,6 +11,7 @@ import httpx
 import pytest
 import respx
 
+import presidio_x402.mpa as mpa_mod
 from presidio_x402._types import PaymentDetails
 from presidio_x402.exceptions import MPADeniedError, MPAWebhookURLError
 from presidio_x402.mpa import (
@@ -33,6 +34,49 @@ class TestResolveAndCheckHost:
         # and offline. Exercises the async loop.getaddrinfo path.
         with pytest.raises(MPAWebhookURLError, match="blocked address"):
             await _resolve_and_check_host("localhost")
+
+    @pytest.mark.asyncio
+    async def test_dns_protection_uses_checked_ip_for_request(self, monkeypatch):
+        calls: dict[str, object] = {}
+
+        async def _fake_resolve(host: str, port: int = 443) -> tuple[str, ...]:
+            calls["resolved"] = (host, port)
+            return ("203.0.113.10",)
+
+        async def _fake_post(
+            url: str,
+            *,
+            resolved_ips: tuple[str, ...],
+            content: bytes,
+            headers: dict[str, str],
+        ) -> httpx.Response:
+            calls["posted"] = (url, resolved_ips, json.loads(content), headers)
+            return httpx.Response(
+                200,
+                json={"approved": True, "approver_id": "alice"},
+                request=httpx.Request("POST", url),
+            )
+
+        monkeypatch.setattr(mpa_mod, "_resolve_and_check_host", _fake_resolve)
+        monkeypatch.setattr(mpa_mod, "_post_pinned_https", _fake_post)
+        engine = MPAEngine(
+            MPAConfig(
+                threshold=1,
+                approvers=[
+                    MPAApproverConfig(
+                        "alice",
+                        mode="webhook",
+                        webhook_url="https://approvals.example.com/alice",
+                    )
+                ],
+            )
+        )
+        await engine.request_approval(_make_details(), amount_usd=1.0)
+
+        assert calls["resolved"] == ("approvals.example.com", 443)
+        posted = calls["posted"]
+        assert isinstance(posted, tuple)
+        assert posted[1] == ("203.0.113.10",)
 
 
 # ---------------------------------------------------------------------------

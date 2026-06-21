@@ -1,0 +1,18 @@
+{
+  "_reason": "content_hash must be lowercase hex",
+  "document": {
+    "schema": "presidio-hardened/evidence-ref@1",
+    "evidence": [
+      {
+        "item_id": "D1",
+        "source": "presidio-hardened-ai",
+        "source_version": "0.30.0",
+        "ledger_ref": "pai-ledger:seq/1",
+        "content_hash": "3907DD429AB81335AC6FC24321D34CB367CC5A0C64FFFA7AE69C55FF642B88FE",
+        "signer": "presidio-hardened-ai",
+        "signature": "866e2f70bf679b7aa7d4c127c5d73710ad218a371abb6f5aeca37e32f15cf007373cf0534f4b9c45deeca1635ca33b05f8a591564feed6b1f7b6e73c3575d90b",
+        "claimed_at": "2026-06-12T00:00:00+00:00"
+      }
+    ]
+  }
+}

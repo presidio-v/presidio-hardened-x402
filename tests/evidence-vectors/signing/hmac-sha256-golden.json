@@ -1,0 +1,27 @@
+{
+  "description": "Cross-repo HMAC-SHA256 golden vector (back-compat algorithm). Matches ikigov-assess tests/test_evidence.py GOLDEN_SIG.",
+  "algorithm": "hmac-sha256",
+  "key": "shared-key",
+  "content_hash": "abc123def456",
+  "signer": "presidio-hardened-ai",
+  "message_canonical": "{\"content_hash\":\"abc123def456\",\"signer\":\"presidio-hardened-ai\"}",
+  "signature_hex": "2e7af6d2882dd53847dcf3032e1fe36e58c5a879c224ea97b505b3e3b626b87a",
+  "tamper_cases": [
+    {
+      "reason": "wrong key",
+      "key": "wrong",
+      "content_hash": "abc123def456",
+      "signer": "presidio-hardened-ai",
+      "signature_hex": "2e7af6d2882dd53847dcf3032e1fe36e58c5a879c224ea97b505b3e3b626b87a",
+      "verifies": false
+    },
+    {
+      "reason": "tampered signer",
+      "key": "shared-key",
+      "content_hash": "abc123def456",
+      "signer": "evil-signer",
+      "signature_hex": "2e7af6d2882dd53847dcf3032e1fe36e58c5a879c224ea97b505b3e3b626b87a",
+      "verifies": false
+    }
+  ]
+}

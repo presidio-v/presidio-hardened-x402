@@ -5,8 +5,14 @@ Let CrewAI agents purchase x402-gated resources under centrally enforced spendin
 ## Install
 
 ```bash
-pip install "presidio-hardened-x402[crewai]>=0.5,<0.6"
+pip install "presidio-hardened-x402>=0.5,<0.6"
+# Install CrewAI separately only after your own dependency audit/risk acceptance.
+pip install "crewai>=1.14.7"
 ```
+
+The `presidio-hardened-x402[crewai]` extra is intentionally empty while CrewAI's
+current dependency graph pulls `chromadb==1.1.1` with CVE-2026-45829 and no fixed
+version reported by `pip-audit`.
 
 ## Use
 

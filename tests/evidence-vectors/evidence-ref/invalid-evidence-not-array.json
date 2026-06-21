@@ -1,0 +1,7 @@
+{
+  "_reason": "'evidence' must be an array",
+  "document": {
+    "schema": "presidio-hardened/evidence-ref@1",
+    "evidence": {}
+  }
+}

@@ -41,6 +41,7 @@ CORPUS_DIR = Path(__file__).parent
 # Entity surface-form libraries
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SurfaceForm:
     name: str
@@ -151,6 +152,7 @@ ENTITY_TYPE_WEIGHTS: dict[str, float] = {
 # Templates without {SLOT} are clean baselines.
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Template:
     text: str
@@ -164,7 +166,7 @@ def _inject(template_text: str, entity_text: str) -> tuple[str, int, int]:
     Returns (result_string, start_offset, end_offset).
     """
     idx = template_text.index("{SLOT}")
-    result = template_text[:idx] + entity_text + template_text[idx + 6:]
+    result = template_text[:idx] + entity_text + template_text[idx + 6 :]
     return result, idx, idx + len(entity_text)
 
 
@@ -172,79 +174,100 @@ def _inject(template_text: str, entity_text: str) -> tuple[str, int, int]:
 
 _URL_TEMPLATES: dict[str, list[Template]] = {
     "ai_inference": [
-        Template("https://api.openai-compat.com/v1/completions?user={SLOT}", "resource_url",
-                 ["EMAIL_ADDRESS"]),
-        Template("https://inference.example.com/v1/chat?session=abc&for={SLOT}", "resource_url",
-                 ["EMAIL_ADDRESS"]),
-        Template("https://ai.example.com/v1/models/llm-7b/invoke?user={SLOT}", "resource_url",
-                 ["PERSON", "EMAIL_ADDRESS"]),
-        Template("https://llm.example.com/v1/generate?requester={SLOT}", "resource_url",
-                 ["PERSON"]),
+        Template(
+            "https://api.openai-compat.com/v1/completions?user={SLOT}",
+            "resource_url",
+            ["EMAIL_ADDRESS"],
+        ),
+        Template(
+            "https://inference.example.com/v1/chat?session=abc&for={SLOT}",
+            "resource_url",
+            ["EMAIL_ADDRESS"],
+        ),
+        Template(
+            "https://ai.example.com/v1/models/llm-7b/invoke?user={SLOT}",
+            "resource_url",
+            ["PERSON", "EMAIL_ADDRESS"],
+        ),
+        Template(
+            "https://llm.example.com/v1/generate?requester={SLOT}", "resource_url", ["PERSON"]
+        ),
         Template("https://inference.example.com/v1/embed", None),
         Template("https://api.example.com/v1/completions", None),
         Template("https://ai.example.com/v1/models/gpt-4", None),
         Template("https://api.example.com/v1/tokenize", None),
     ],
     "data_access": [
-        Template("https://data.example.com/datasets/{SLOT}/private", "resource_url",
-                 ["PERSON"]),
-        Template("https://api.example.com/v1/records?ssn={SLOT}", "resource_url",
-                 ["US_SSN"]),
-        Template("https://storage.example.com/users/{SLOT}/exports", "resource_url",
-                 ["EMAIL_ADDRESS"]),
-        Template("https://api.example.com/v1/users/{SLOT}/profile", "resource_url",
-                 ["PERSON"]),
+        Template("https://data.example.com/datasets/{SLOT}/private", "resource_url", ["PERSON"]),
+        Template("https://api.example.com/v1/records?ssn={SLOT}", "resource_url", ["US_SSN"]),
+        Template(
+            "https://storage.example.com/users/{SLOT}/exports", "resource_url", ["EMAIL_ADDRESS"]
+        ),
+        Template("https://api.example.com/v1/users/{SLOT}/profile", "resource_url", ["PERSON"]),
         Template("https://api.example.com/v2/items/42", None),
         Template("https://data.example.com/public/datasets/open-data", None),
         Template("https://storage.example.com/v1/buckets/public/objects/file.csv", None),
     ],
     "medical": [
-        Template("https://health.example.com/patient/{SLOT}/records", "resource_url",
-                 ["PERSON"]),
-        Template("https://labs.example.com/results?patient_phone={SLOT}", "resource_url",
-                 ["PHONE_NUMBER"]),
-        Template("https://ehr.example.com/records/{SLOT}/history", "resource_url",
-                 ["US_SSN"]),
-        Template("https://health.example.com/patient/{SLOT}/prescriptions", "resource_url",
-                 ["PERSON"]),
+        Template("https://health.example.com/patient/{SLOT}/records", "resource_url", ["PERSON"]),
+        Template(
+            "https://labs.example.com/results?patient_phone={SLOT}",
+            "resource_url",
+            ["PHONE_NUMBER"],
+        ),
+        Template("https://ehr.example.com/records/{SLOT}/history", "resource_url", ["US_SSN"]),
+        Template(
+            "https://health.example.com/patient/{SLOT}/prescriptions", "resource_url", ["PERSON"]
+        ),
         Template("https://health.example.com/api/appointments", None),
         Template("https://ehr.example.com/api/v1/schedules", None),
         Template("https://labs.example.com/api/v1/panels/lipid", None),
     ],
     "compute": [
-        Template("https://compute.example.com/gpu/allocate?user={SLOT}", "resource_url",
-                 ["EMAIL_ADDRESS"]),
-        Template("https://compute.example.com/quota/{SLOT}", "resource_url",
-                 ["PERSON"]),
-        Template("https://hpc.example.com/v1/jobs/submit?owner={SLOT}", "resource_url",
-                 ["EMAIL_ADDRESS"]),
+        Template(
+            "https://compute.example.com/gpu/allocate?user={SLOT}",
+            "resource_url",
+            ["EMAIL_ADDRESS"],
+        ),
+        Template("https://compute.example.com/quota/{SLOT}", "resource_url", ["PERSON"]),
+        Template(
+            "https://hpc.example.com/v1/jobs/submit?owner={SLOT}",
+            "resource_url",
+            ["EMAIL_ADDRESS"],
+        ),
         Template("https://jobs.example.com/v1/jobs/job-7a3f2c/status", None),
         Template("https://compute.example.com/v1/instances/inst-abc123", None),
         Template("https://hpc.example.com/v1/queue/default", None),
         Template("https://compute.example.com/v1/gpu/inventory", None),
     ],
     "media": [
-        Template("https://cdn.example.com/users/{SLOT}/photos/album1", "resource_url",
-                 ["EMAIL_ADDRESS"]),
-        Template("https://media.example.com/content/{SLOT}/feed", "resource_url",
-                 ["PERSON"]),
-        Template("https://assets.example.com/private/{SLOT}/gallery", "resource_url",
-                 ["PERSON"]),
-        Template("https://cdn.example.com/media/{SLOT}/videos/latest", "resource_url",
-                 ["EMAIL_ADDRESS"]),
+        Template(
+            "https://cdn.example.com/users/{SLOT}/photos/album1", "resource_url", ["EMAIL_ADDRESS"]
+        ),
+        Template("https://media.example.com/content/{SLOT}/feed", "resource_url", ["PERSON"]),
+        Template("https://assets.example.com/private/{SLOT}/gallery", "resource_url", ["PERSON"]),
+        Template(
+            "https://cdn.example.com/media/{SLOT}/videos/latest", "resource_url", ["EMAIL_ADDRESS"]
+        ),
         Template("https://assets.example.com/images/public/landscape.jpg", None),
         Template("https://cdn.example.com/v1/stream/public/video123", None),
         Template("https://media.example.com/public/feed/trending", None),
     ],
     "financial": [
-        Template("https://banking.example.com/accounts/{SLOT}/balance", "resource_url",
-                 ["IBAN_CODE"]),
-        Template("https://payments.example.com/cards/{SLOT}/limit", "resource_url",
-                 ["CREDIT_CARD"]),
-        Template("https://finance.example.com/transfers?from={SLOT}&amount=100", "resource_url",
-                 ["IBAN_CODE"]),
-        Template("https://banking.example.com/statements?account={SLOT}", "resource_url",
-                 ["IBAN_CODE"]),
+        Template(
+            "https://banking.example.com/accounts/{SLOT}/balance", "resource_url", ["IBAN_CODE"]
+        ),
+        Template(
+            "https://payments.example.com/cards/{SLOT}/limit", "resource_url", ["CREDIT_CARD"]
+        ),
+        Template(
+            "https://finance.example.com/transfers?from={SLOT}&amount=100",
+            "resource_url",
+            ["IBAN_CODE"],
+        ),
+        Template(
+            "https://banking.example.com/statements?account={SLOT}", "resource_url", ["IBAN_CODE"]
+        ),
         Template("https://api.example.com/v1/fx/rates", None),
         Template("https://payments.example.com/v1/fees/schedule", None),
         Template("https://finance.example.com/v1/instruments/public", None),
@@ -264,7 +287,11 @@ _URL_TEMPLATES: dict[str, list[Template]] = {
 
 _DESC_TEMPLATES: dict[str, list[Template]] = {
     "ai_inference": [
-        Template("AI inference request for user {SLOT}", "description", ["EMAIL_ADDRESS", "PERSON"]),
+        Template(
+            "AI inference request for user {SLOT}",
+            "description",
+            ["EMAIL_ADDRESS", "PERSON"],
+        ),
         Template("Model invocation on behalf of {SLOT}", "description", ["PERSON"]),
         Template("LLM completion task", None),
         Template("Embedding generation", None),
@@ -364,9 +391,9 @@ def _pick_entity_type(rng: random.Random, compatible: list[str] | None) -> str:
     types = list(ENTITY_TYPE_WEIGHTS.keys())
     weights = list(ENTITY_TYPE_WEIGHTS.values())
     if compatible:
-        filtered = [(t, w) for t, w in zip(types, weights) if t in compatible]
+        filtered = [(t, w) for t, w in zip(types, weights, strict=True) if t in compatible]
         if filtered:
-            types, weights = zip(*filtered)
+            types, weights = zip(*filtered, strict=True)
             types, weights = list(types), list(weights)
     return rng.choices(types, weights=weights, k=1)[0]
 
@@ -431,12 +458,9 @@ def _generate_sample(
 
     # --- Build URL ---
     url_templates_pii = [
-        t for t in _URL_TEMPLATES[category]
-        if t.slot == "resource_url" and t.compatible_types
+        t for t in _URL_TEMPLATES[category] if t.slot == "resource_url" and t.compatible_types
     ]
-    url_templates_clean = [
-        t for t in _URL_TEMPLATES[category] if t.slot is None
-    ]
+    url_templates_clean = [t for t in _URL_TEMPLATES[category] if t.slot is None]
 
     if pii_positive and inject_url and url_templates_pii:
         url_tmpl = rng.choice(url_templates_pii)
@@ -451,12 +475,9 @@ def _generate_sample(
 
     # --- Build description ---
     desc_templates_pii = [
-        t for t in _DESC_TEMPLATES[category]
-        if t.slot == "description" and t.compatible_types
+        t for t in _DESC_TEMPLATES[category] if t.slot == "description" and t.compatible_types
     ]
-    desc_templates_clean = [
-        t for t in _DESC_TEMPLATES[category] if t.slot is None
-    ]
+    desc_templates_clean = [t for t in _DESC_TEMPLATES[category] if t.slot is None]
 
     if pii_positive and inject_desc and desc_templates_pii:
         desc_tmpl = rng.choice(desc_templates_pii)
@@ -471,12 +492,9 @@ def _generate_sample(
 
     # --- Build reason ---
     reason_templates_pii = [
-        t for t in _REASON_TEMPLATES[category]
-        if t.slot == "reason" and t.compatible_types
+        t for t in _REASON_TEMPLATES[category] if t.slot == "reason" and t.compatible_types
     ]
-    reason_templates_clean = [
-        t for t in _REASON_TEMPLATES[category] if t.slot is None
-    ]
+    reason_templates_clean = [t for t in _REASON_TEMPLATES[category] if t.slot is None]
 
     if pii_positive and inject_reason and reason_templates_pii:
         reason_tmpl = rng.choice(reason_templates_pii)
@@ -507,6 +525,7 @@ def _generate_sample(
 # Main generator
 # ---------------------------------------------------------------------------
 
+
 def generate_corpus(
     n: int = DEFAULT_N,
     pii_rate: float = DEFAULT_PII_RATE,
@@ -528,7 +547,7 @@ def generate_corpus(
     list[CorpusSample]
         The generated corpus; PII-positive and clean samples are shuffled together.
     """
-    rng = random.Random(seed)
+    rng = random.Random(seed)  # noqa: S311 - deterministic synthetic corpus generation
 
     # Determine per-category counts
     category_counts: dict[str, int] = {}
@@ -633,11 +652,16 @@ def load_corpus(path: Path) -> list[CorpusSample]:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate synthetic x402 PII corpus")
     parser.add_argument("--n", type=int, default=DEFAULT_N, help="Number of samples")
-    parser.add_argument("--pii-rate", type=float, default=DEFAULT_PII_RATE,
-                        help="Fraction of PII-positive samples (0–1)")
+    parser.add_argument(
+        "--pii-rate",
+        type=float,
+        default=DEFAULT_PII_RATE,
+        help="Fraction of PII-positive samples (0–1)",
+    )
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--out", type=Path, default=CORPUS_DIR / "corpus.jsonl")
     parser.add_argument("--meta", type=Path, default=CORPUS_DIR / "corpus_meta.json")
@@ -654,8 +678,7 @@ def main() -> None:
     print(f"  PII-negative: {meta['n_pii_negative']}")
     print(f"  Total entities: {meta['total_pii_entities']}")
     print("  Entity type distribution:")
-    for etype, rate in sorted(meta["entity_type_rates"].items(),
-                               key=lambda x: -x[1]):
+    for etype, rate in sorted(meta["entity_type_rates"].items(), key=lambda x: -x[1]):
         print(f"    {etype:<20} {rate:.1%}  ({meta['entity_type_counts'][etype]})")
     print(f"Wrote metadata to {args.meta}")
 

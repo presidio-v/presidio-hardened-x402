@@ -11,6 +11,15 @@ class X402PaymentError(X402Error):
     """Raised when the upstream payment signing or network call fails."""
 
 
+class ConfigurationError(X402Error):
+    """Raised at import/startup when a hard security gate is unmet.
+
+    Used by the ``PRESIDIO_X402_REQUIRE_*_KEY`` opt-ins to convert a silently
+    insecure default (per-process key fallback) into a fail-closed startup error,
+    so a misconfigured production deployment never starts.
+    """
+
+
 class PIIBlockedError(X402Error):
     """Raised when PII is detected in payment metadata and ``pii_action='block'``."""
 

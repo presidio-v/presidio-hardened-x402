@@ -19,7 +19,10 @@ class EntityLabel:
     """
 
     field: str
-    """Which metadata field contains this entity: ``resource_url``, ``description``, or ``reason``."""
+    """Metadata field containing this entity.
+
+    One of ``resource_url``, ``description``, or ``reason``.
+    """
 
     entity_type: str
     """Presidio entity type string, e.g. ``EMAIL_ADDRESS``, ``PERSON``, ``US_SSN``."""

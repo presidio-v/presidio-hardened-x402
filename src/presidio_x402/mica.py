@@ -41,11 +41,14 @@ from __future__ import annotations
 import hashlib
 import hmac as hmaclib
 import json
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from .exceptions import X402Error
+from .telemetry import security_control_span, set_span_attribute
 
 if TYPE_CHECKING:
     from .compliance_report import ComplianceReport
@@ -65,8 +68,32 @@ class EvidenceError(X402Error):
 # ---------------------------------------------------------------------------
 
 
+def _reject_floats(payload: object) -> None:
+    """Strict-profile guard (ADR-0001 D1): floats are non-deterministic across
+    encoders, so a hash over them is not portable between the family producers.
+    Reject any float anywhere in the structure rather than emit an unverifiable
+    ``content_hash``. ``bool`` is an ``int`` subclass and is allowed."""
+    if isinstance(payload, float):
+        raise EvidenceError(
+            "canonical encoding rejects floats (treasury-strict profile); use "
+            "integers or pre-formatted decimal strings so the hash stays portable"
+        )
+    if isinstance(payload, Mapping):
+        for value in payload.values():
+            _reject_floats(value)
+    elif isinstance(payload, (list, tuple)):
+        for value in payload:
+            _reject_floats(value)
+
+
 def canonical_bytes(payload: object) -> bytes:
-    """Deterministic canonical JSON — must byte-match every family producer."""
+    """Deterministic canonical JSON — must byte-match every family producer.
+
+    Strict profile (ADR-0001 D1): sorted keys, ``(",", ":")`` separators, UTF-8,
+    ``ensure_ascii=False``, **floats rejected**. Conformance-pinned to the vendored
+    golden vectors in ``tests/evidence-vectors/canonical-json/``.
+    """
+    _reject_floats(payload)
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
         "utf-8"
     )
@@ -113,6 +140,221 @@ def sign_evidence(
     if algorithm == "hmac-sha256":
         return hmaclib.new(key.encode("utf-8"), message, hashlib.sha256).hexdigest()
     raise EvidenceError(f"unknown signing algorithm {algorithm!r} (use ed25519 | hmac-sha256)")
+
+
+# ---------------------------------------------------------------------------
+# Verification (read-path) — fail-closed, trust-store backed. The half mica.py
+# previously lacked: it could sign evidence but not verify a counterparty's. The
+# v0.7.0 SLO broker depends on this to verify a signed degradation trigger from
+# presidio-hardened-arch-translucency *before* releasing a payment. Semantics and
+# wire shape are conformance-pinned to the vendored vectors in
+# ``tests/evidence-vectors/`` (signing/, trust-store/, evidence-ref/).
+# ---------------------------------------------------------------------------
+
+#: The 8 frozen contract fields of one evidence ref, in producer emission order.
+EVIDENCE_REF_FIELDS = (
+    "item_id",
+    "source",
+    "source_version",
+    "ledger_ref",
+    "content_hash",
+    "signer",
+    "signature",
+    "claimed_at",
+)
+
+_HEX_RE = re.compile(r"^[0-9a-f]{8,128}$")
+_MAX_STR = 512
+
+
+def signing_message(content_hash: str, signer: str) -> bytes:
+    """The canonical bytes a detached signature is computed over (signer-bound)."""
+    return canonical_bytes({"content_hash": content_hash, "signer": signer})
+
+
+def verify_hmac(content_hash: str, signer: str, signature: str, key: str) -> bool:
+    """Timing-safe HMAC-SHA256 verification (fail-closed)."""
+    expected = hmaclib.new(
+        key.encode("utf-8"), signing_message(content_hash, signer), hashlib.sha256
+    ).hexdigest()
+    return hmaclib.compare_digest(expected, signature)
+
+
+def verify_ed25519(content_hash: str, signer: str, signature: str, public_key_hex: str) -> bool:
+    """Ed25519 verification (fail-closed: bad key/sig/hex returns ``False``)."""
+    from cryptography.exceptions import InvalidSignature
+
+    ed25519 = _require_crypto()
+    try:
+        pk = ed25519.Ed25519PublicKey.from_public_bytes(bytes.fromhex(public_key_hex))
+        pk.verify(bytes.fromhex(signature), signing_message(content_hash, signer))
+        return True
+    except (InvalidSignature, ValueError):
+        return False
+
+
+@dataclass(frozen=True)
+class EvidenceRef:
+    """One signed evidence reference (the 8 frozen contract fields, in order)."""
+
+    item_id: str
+    source: str
+    source_version: str
+    ledger_ref: str
+    content_hash: str
+    signer: str
+    signature: str
+    claimed_at: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {name: getattr(self, name) for name in EVIDENCE_REF_FIELDS}
+
+
+def _str_field(raw: Mapping[str, object], name: str) -> str:
+    value = raw.get(name)
+    if not isinstance(value, str) or not value or len(value) > _MAX_STR:
+        raise EvidenceError(f"evidence ref field {name!r} must be a non-empty string <={_MAX_STR}")
+    if "\x00" in value:
+        raise EvidenceError(f"evidence ref field {name!r} contains a null byte")
+    return value
+
+
+def _parse_ref(raw: object) -> EvidenceRef:
+    if not isinstance(raw, Mapping):
+        raise EvidenceError("each evidence entry must be an object")
+    missing = [f for f in EVIDENCE_REF_FIELDS if f not in raw]
+    if missing:
+        raise EvidenceError(f"evidence ref missing field(s): {', '.join(missing)}")
+    fields = {name: _str_field(raw, name) for name in EVIDENCE_REF_FIELDS}
+    for hex_field in ("content_hash", "signature"):
+        if not _HEX_RE.match(fields[hex_field]):
+            raise EvidenceError(f"evidence ref {hex_field} must be lowercase hex (8-128 chars)")
+    return EvidenceRef(**fields)
+
+
+def parse_document(doc: object) -> list[EvidenceRef]:
+    """Validate an evidence envelope and return its refs (fail-closed).
+
+    Enforces the wire contract (8 fields, bounded non-empty strings, no null
+    bytes, lowercase-hex hash/signature, optional but exact ``schema`` id). Does
+    **not** validate ``item_id`` domain membership — that stays consumer-side.
+    """
+    if not isinstance(doc, Mapping) or "evidence" not in doc:
+        raise EvidenceError("evidence document must be an object with an 'evidence' array")
+    schema = doc.get("schema")
+    if schema is not None and schema != EVIDENCE_SCHEMA_ID:
+        raise EvidenceError(
+            f"unsupported evidence schema: {schema!r} (expected {EVIDENCE_SCHEMA_ID!r})"
+        )
+    entries = doc.get("evidence")
+    if not isinstance(entries, list):
+        raise EvidenceError("'evidence' must be an array")
+    return [_parse_ref(entry) for entry in entries]
+
+
+def _normalise_trust_entry(signer: str, value: object) -> dict[str, object]:
+    """Normalise a trust-store entry to ``{'alg', 'keys'}`` (``keys`` a list).
+
+    A bare string is an HMAC secret (back-compat); an object declares ``alg`` and
+    key material (``public_key``/``key``, single value or list for rotation).
+    """
+    if isinstance(value, str):
+        if not value:
+            raise EvidenceError(f"trust entry {signer!r}: empty HMAC secret")
+        return {"alg": "hmac-sha256", "keys": [value]}
+    if isinstance(value, Mapping):
+        alg = value.get("alg", "hmac-sha256")
+        if alg not in SIGNING_ALGORITHMS:
+            raise EvidenceError(f"trust entry {signer!r}: unknown alg {alg!r}")
+        raw = value.get("public_key") if alg == "ed25519" else value.get("key")
+        raw = raw if raw is not None else (value.get("key") or value.get("public_key"))
+        keys = [raw] if isinstance(raw, str) else raw
+        if (
+            not isinstance(keys, list)
+            or not keys
+            or not all(isinstance(k, str) and k for k in keys)
+        ):
+            raise EvidenceError(f"trust entry {signer!r}: missing or invalid key material")
+        return {"alg": alg, "keys": list(keys)}
+    raise EvidenceError(f"trust entry {signer!r}: must be a string or an object")
+
+
+def load_trust_store(source: str | Mapping[str, object]) -> dict[str, dict[str, object]]:
+    """Parse a trust store (JSON text or mapping) into normalised entries.
+
+    Conformance-pinned to ``tests/evidence-vectors/trust-store/``. Fails fast if an
+    Ed25519 entry is present without the ``cryptography`` extra; key well-formedness
+    is otherwise checked fail-closed at verification time.
+    """
+    if isinstance(source, str):
+        try:
+            data = json.loads(source)
+        except json.JSONDecodeError as exc:
+            raise EvidenceError(f"invalid trust-store JSON: {exc.msg}") from exc
+    elif isinstance(source, Mapping):
+        data = source
+    else:
+        raise EvidenceError("trust store must be a JSON string or mapping")
+    if not isinstance(data, Mapping):
+        raise EvidenceError("trust store must be a JSON object keyed by signer id")
+    normalised = {signer: _normalise_trust_entry(signer, value) for signer, value in data.items()}
+    if any(entry["alg"] == "ed25519" for entry in normalised.values()):
+        _require_crypto()  # fail fast with a clear message before verification
+    return normalised
+
+
+def verify_ref(ref: EvidenceRef | Mapping[str, object], trust: Mapping[str, object]) -> bool:
+    """Verify a ref's signature against the trust store (fail-closed).
+
+    Succeeds if the signature matches **any** key listed for the signer (key
+    rotation). An unknown signer, malformed ref, alg mismatch, or bad key returns
+    ``False`` — never raises to the caller. Gate placement stays at the call site;
+    this guarantees only that verification itself can never fail open.
+    """
+    signer_attr = ref.signer if isinstance(ref, EvidenceRef) else ""
+    with security_control_span("evidence_verify", signer=signer_attr) as span:
+        if isinstance(ref, EvidenceRef):
+            content_hash, signer, signature = ref.content_hash, ref.signer, ref.signature
+        elif isinstance(ref, Mapping):
+            content_hash = ref.get("content_hash")
+            signer = ref.get("signer")
+            signature = ref.get("signature")
+        else:
+            set_span_attribute(span, "presidio_x402.outcome", "invalid")
+            return False
+        if not (
+            isinstance(content_hash, str)
+            and isinstance(signer, str)
+            and isinstance(signature, str)
+        ):
+            set_span_attribute(span, "presidio_x402.outcome", "invalid")
+            return False
+        set_span_attribute(span, "presidio_x402.signer", signer)
+        entry = trust.get(signer)
+        if entry is None:
+            set_span_attribute(span, "presidio_x402.outcome", "unknown_signer")
+            return False
+        try:
+            norm = (
+                entry
+                if isinstance(entry, Mapping) and "keys" in entry
+                else _normalise_trust_entry(signer, entry)
+            )
+            alg = norm["alg"]
+            keys = norm["keys"]
+            if alg not in SIGNING_ALGORITHMS or not isinstance(keys, list):
+                raise EvidenceError(f"trust entry {signer!r}: invalid normalised trust entry")
+            set_span_attribute(span, "presidio_x402.evidence.algorithm", alg)
+            verify = verify_ed25519 if alg == "ed25519" else verify_hmac
+            verified = any(
+                isinstance(key, str) and verify(content_hash, signer, signature, key)
+                for key in keys
+            )
+        except EvidenceError:
+            set_span_attribute(span, "presidio_x402.outcome", "invalid_trust")
+            return False
+        set_span_attribute(span, "presidio_x402.outcome", "verified" if verified else "failed")
+        return verified
 
 
 # ---------------------------------------------------------------------------

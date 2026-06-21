@@ -3,7 +3,8 @@
 Sweeps the following axes (from explore/hypothesis-rq.md):
   - pii_mode:      regex | nlp
   - pii_entities:  combinations of entity type subsets
-  - min_score:     0.30, 0.40, 0.50, 0.60, 0.70 (regex mode always returns 1.0; only meaningful for nlp)
+  - min_score:     0.30, 0.40, 0.50, 0.60, 0.70
+                   (regex mode always returns 1.0; only meaningful for nlp)
 
 For each configuration, runs ``evaluate_corpus`` against the synthetic corpus
 and writes one JSON result row to ``experiments/results/sweep_results.jsonl``.
@@ -33,8 +34,8 @@ _ROOT = Path(__file__).parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from corpus.generate import CORPUS_DIR, load_corpus
-from experiments.evaluate import evaluate_corpus
+from corpus.generate import CORPUS_DIR, load_corpus  # noqa: E402
+from experiments.evaluate import evaluate_corpus  # noqa: E402
 
 RESULTS_DIR = Path(__file__).parent / "results"
 
@@ -69,17 +70,20 @@ def _build_configs(modes: list[str]) -> list[dict[str, Any]]:
         scores = _MIN_SCORES if mode == "nlp" else _REGEX_MIN_SCORES
         for entities in _ENTITY_SUBSETS:
             for min_score in scores:
-                configs.append({
-                    "mode": mode,
-                    "entities": sorted(entities),
-                    "min_score": min_score,
-                })
+                configs.append(
+                    {
+                        "mode": mode,
+                        "entities": sorted(entities),
+                        "min_score": min_score,
+                    }
+                )
     return configs
 
 
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
+
 
 def run_sweep(
     modes: list[str],
@@ -95,7 +99,8 @@ def run_sweep(
     samples = load_corpus(corpus_path)
     if sample_n is not None and sample_n < len(samples):
         import random
-        rng = random.Random(42)
+
+        rng = random.Random(42)  # noqa: S311 - deterministic experiment sampling
         samples = rng.sample(samples, sample_n)
         print(f"  Downsampled to {len(samples)} samples.")
     else:
@@ -119,8 +124,10 @@ def run_sweep(
                 else:
                     pii_filter = PIIFilter(mode="regex", entities=entities)
             except Exception as exc:
-                print(f"  [{i}/{len(configs)}] SKIP mode={mode} entities={entities} "
-                      f"min_score={min_score}: {exc}")
+                print(
+                    f"  [{i}/{len(configs)}] SKIP mode={mode} entities={entities} "
+                    f"min_score={min_score}: {exc}"
+                )
                 continue
 
             t0 = time.perf_counter()
@@ -153,23 +160,33 @@ def run_sweep(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Precision/recall sweep over PIIFilter configs")
     parser.add_argument(
-        "--mode", choices=["regex", "nlp", "both"], default="regex",
+        "--mode",
+        choices=["regex", "nlp", "both"],
+        default="regex",
         help="PIIFilter mode(s) to sweep (default: regex)",
     )
     parser.add_argument(
-        "--corpus", type=Path, default=CORPUS_DIR / "corpus.jsonl",
+        "--corpus",
+        type=Path,
+        default=CORPUS_DIR / "corpus.jsonl",
         help="Path to corpus JSONL file",
     )
     parser.add_argument(
-        "--out", type=Path, default=RESULTS_DIR / "sweep_results.jsonl",
+        "--out",
+        type=Path,
+        default=RESULTS_DIR / "sweep_results.jsonl",
         help="Output JSONL path",
     )
     parser.add_argument(
-        "--sample", type=int, default=None,
+        "--sample",
+        type=int,
+        default=None,
         help="Downsample corpus to N samples for quick runs",
     )
     parser.add_argument(
-        "--overlap", choices=["partial", "exact"], default="partial",
+        "--overlap",
+        choices=["partial", "exact"],
+        default="partial",
         help="Span matching mode (default: partial)",
     )
     args = parser.parse_args()

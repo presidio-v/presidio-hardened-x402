@@ -61,6 +61,11 @@ evidence = [
 redis = [
     "redis>=5.0.0",
 ]
+audit-s3 = [
+    # Enterprise S3AuditWriter (audit_sinks.py). Splunk/Datadog sinks reuse the
+    # core httpx dependency; only S3 needs boto3.
+    "boto3>=1.34",
+]
 langchain = [
     # >=1.3.3 closes CVE-2026-44843 (GHSA-pjwx-r37v-7724) — unsafe broad-allowlist
     # deserialization in older runtime paths (RunnableWithMessageHistory,
@@ -69,15 +74,16 @@ langchain = [
     "langchain-core>=1.3.3",
 ]
 crewai = [
-    "crewai>=0.28.0",
-    # crewai pulls pyjwt (pyjwt<3,>=2.9.0). Pin minimum to 2.13.0 to evict 5 CVEs
-    # in 2.7.0 (PYSEC-2026-120 crit-header bypass, PYSEC-2025-183, PYSEC-2026-175,
-    # PYSEC-2026-177, PYSEC-2026-179). 2.13.0 satisfies crewai's <3 cap. Audit
-    # 2026-06-14 (F2).
-    "pyjwt>=2.13.0",
+    # Intentionally empty: CrewAI 1.14.x currently pulls chromadb==1.1.1, which
+    # carries CVE-2026-45829 with no fixed version reported by pip-audit. Keep the
+    # adapter importable, but require integrators to install and audit CrewAI in
+    # their own environment until that transitive graph is fixed.
 ]
 prometheus = [
     "prometheus-client>=0.20.0",
+]
+otel = [
+    "opentelemetry-api>=1.28.0",
 ]
 schema = [
     "jsonschema>=4.21.0",
@@ -90,6 +96,7 @@ dev = [
     "respx>=0.21.0",
     "fakeredis>=2.23",
     "prometheus-client>=0.20.0",
+    "opentelemetry-sdk>=1.28.0",
     "jsonschema>=4.21.0",
 ]
 

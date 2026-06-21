@@ -119,4 +119,9 @@ except ImportError:
         """Stub raised when crewai is not installed."""
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            raise ImportError("CrewAI adapter requires: pip install crewai>=0.28.0")
+            raise ImportError(
+                "CrewAI adapter requires CrewAI installed separately. The "
+                "presidio-hardened-x402[crewai] extra is intentionally empty "
+                "while CrewAI's chromadb dependency has an unfixed advisory; "
+                "install crewai only after your own dependency audit."
+            )

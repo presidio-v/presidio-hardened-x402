@@ -221,7 +221,8 @@ on controlled data with known ground truth, then confirm the threat model on liv
 [ADR-0006](../sdlc/adr/0006-v040-scope-redefinition.md).** v0.4.0 now pairs the
 library release with the hosted `screen.presidio-group.eu` screening service
 that acts as its authoritative remote backend. The 2027-hardening umbrella is
-redistributed across v0.5.0+ (see below).
+redistributed across v0.5.0+; production-hardening items now land in v0.6.0
+(see below).
 
 ### Hosted screening service
 
@@ -278,7 +279,7 @@ parent repo's `adversary-attack/README.md`: 3 CLOSED (04 Unicode evasion,
 `PRESIDIO_X402_FINGERPRINT_KEY` + `PRESIDIO_X402_CHAIN_KEY` and populate the
 wallet allowlist at deploy), 2 PARTIAL (01 spaCy model not yet wheel-pinned,
 08 tools/ sidecar Dockerfile not digest-pinned — residual scope deferred to
-v0.5.0). No CRITICAL/HIGH chain remains OPEN with zero in-tree control.
+v0.6.0). No CRITICAL/HIGH chain remains OPEN with zero in-tree control.
 
 ### Out of v0.4.0 (moved to later milestones per ADR-0006)
 
@@ -286,15 +287,15 @@ v0.5.0). No CRITICAL/HIGH chain remains OPEN with zero in-tree control.
   review performed by Grok 4.3 (xAI) across the published `tools/` package and research
   tree (report in `presidio-third-party-audits/`). No Critical/High; advisory-only
   family-lens findings. Mitigates RSK-019. Residual: a commissioned human penetration
-  test before paid tiers go live remains tracked under v0.5.0 (see below).
-- Multi-tenant key scoping + remote audit sinks (S3 / Splunk / Datadog) → v0.5.0
-- Email-hash per-install salt → v0.5.0 (closes RSK-002)
+  test before paid tiers go live remains tracked under v0.6.0 (see below).
+- Multi-tenant key scoping + remote audit sinks (S3 / Splunk / Datadog) → v0.6.0
+- Email-hash per-install salt → v0.6.0 (closes RSK-002)
 - `/v1/revoke` endpoint → v0.4.1
 - Prometheus `/metrics` on the hosted service → v0.4.1
-- SLSA L3 hardened build worker → v0.5.0+
-- Hard startup-gates for `PRESIDIO_X402_*_KEY` env vars → v0.5.0
+- SLSA L3 hardened build worker → v0.6.0
+- Hard startup-gates for `PRESIDIO_X402_*_KEY` env vars → v0.6.0
 - Policy hot-reload, OpenTelemetry span export, performance regression CI →
-  v0.5.0
+  v0.6.0
 
 ---
 
@@ -392,17 +393,17 @@ built in v0.1.0.
   Infrastructure provisioning requests carry sensitive workload context that must not
   reach third-party compute providers.
 
-### Scoping decisions for v0.5.0
+### Scoping decisions for v0.7.0
 
 - **Provider-side x402 support**: A compute provider exposing capacity tiers via x402 402
   responses may need to be prototyped for empirical evaluation. Coinbase-compatible
   facilitator reuse expected; no new blockchain integration required.
 
-- **SLO signal types**: v0.5.0 covers latency-based triggers only (p99 threshold).
-  Throughput and error-rate triggers deferred to v0.6.0 to keep the empirical evaluation
+- **SLO signal types**: v0.7.0 covers latency-based triggers only (p99 threshold).
+  Throughput and error-rate triggers deferred until after v0.7.0 to keep the empirical evaluation
   tractable.
 
-- **Multi-provider bidding**: Deferred to v0.6.0.
+- **Multi-provider bidding**: Deferred until after v0.7.0.
   *Rationale: Single-provider SLO payment is the minimal falsifiable experiment.
   Multi-provider auction adds significant complexity without changing the core claim.*
 

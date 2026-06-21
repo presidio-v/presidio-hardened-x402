@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -49,6 +50,13 @@ class TestPolicyEngineDailyLimit:
             self.engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.09)
         with pytest.raises(PolicyViolationError):
             self.engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.09)
+
+    def test_decimal_boundary_does_not_trip_float_drift(self):
+        engine = PolicyEngine(PolicyConfig(daily_limit_usd=0.30))
+        engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.10)
+        engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.20)
+        with pytest.raises(PolicyViolationError):
+            engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.01)
 
 
 class TestPolicyEnginePerEndpointLimit:
@@ -189,3 +197,45 @@ class TestPolicyEngineRefund:
     def test_refund_without_matching_entry_is_noop(self):
         engine = PolicyEngine(PolicyConfig(daily_limit_usd=0.10))
         engine.refund(resource_url="https://api.example.com", amount_usd=0.05)  # must not raise
+
+
+class TestPolicyEngineHotReload:
+    def test_update_config_applies_new_per_call_limit(self):
+        engine = PolicyEngine(PolicyConfig(max_per_call_usd=1.00))
+        engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.50)
+
+        active = engine.update_config(PolicyConfig(max_per_call_usd=0.10))
+
+        assert active.max_per_call_usd == pytest.approx(0.10)
+        with pytest.raises(PolicyViolationError, match="per-call limit"):
+            engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.50)
+
+    def test_update_config_preserves_aggregate_spend_window(self):
+        engine = PolicyEngine(PolicyConfig(daily_limit_usd=1.00))
+        engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.75)
+
+        engine.update_config({"daily_limit_usd": 0.80})
+
+        with pytest.raises(PolicyViolationError, match="aggregate spend"):
+            engine.check_and_record(resource_url="https://api.example.com", amount_usd=0.10)
+
+    def test_update_config_is_safe_during_concurrent_checks(self):
+        engine = PolicyEngine(PolicyConfig(max_per_call_usd=1.00))
+
+        def check_many() -> None:
+            for _ in range(50):
+                engine.check_and_record(
+                    resource_url="https://api.example.com/resource", amount_usd=0.01
+                )
+
+        def update_many() -> None:
+            for i in range(50):
+                engine.update_config({"max_per_call_usd": 1.00 + (i % 2)})
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(check_many) for _ in range(4)]
+            futures.extend(pool.submit(update_many) for _ in range(4))
+            for future in futures:
+                future.result()
+
+        engine.check_and_record(resource_url="https://api.example.com/resource", amount_usd=0.50)

@@ -1,0 +1,8 @@
+{
+  "_reason": "key material required",
+  "document": {
+    "s": {
+      "alg": "ed25519"
+    }
+  }
+}

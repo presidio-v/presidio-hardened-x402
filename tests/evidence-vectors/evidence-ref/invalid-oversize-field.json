@@ -1,0 +1,18 @@
+{
+  "_reason": "fields must be ≤512 chars",
+  "document": {
+    "schema": "presidio-hardened/evidence-ref@1",
+    "evidence": [
+      {
+        "item_id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "source": "presidio-hardened-ai",
+        "source_version": "0.30.0",
+        "ledger_ref": "pai-ledger:seq/1",
+        "content_hash": "3907dd429ab81335ac6fc24321d34cb367cc5a0c64fffa7ae69c55ff642b88fe",
+        "signer": "presidio-hardened-ai",
+        "signature": "866e2f70bf679b7aa7d4c127c5d73710ad218a371abb6f5aeca37e32f15cf007373cf0534f4b9c45deeca1635ca33b05f8a591564feed6b1f7b6e73c3575d90b",
+        "claimed_at": "2026-06-12T00:00:00+00:00"
+      }
+    ]
+  }
+}

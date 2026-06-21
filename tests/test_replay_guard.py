@@ -36,6 +36,30 @@ class TestComputeFingerprint:
         fp2 = compute_fingerprint("https://api.example.com", "0xabc", "0.01", "USDC", 600)
         assert fp1 != fp2
 
+    def test_equivalent_decimal_amounts_produce_same_fingerprint(self):
+        fp1 = compute_fingerprint("https://api.example.com", "0xabc", "1.0", "USDC", 300)
+        fp2 = compute_fingerprint("https://api.example.com", "0xabc", "1.00", "USDC", 300)
+        assert fp1 == fp2
+
+    def test_different_network_produces_different_fingerprint(self):
+        fp1 = compute_fingerprint(
+            "https://api.example.com",
+            "0xabc",
+            "0.01",
+            "USDC",
+            300,
+            network="base-mainnet",
+        )
+        fp2 = compute_fingerprint(
+            "https://api.example.com",
+            "0xabc",
+            "0.01",
+            "USDC",
+            300,
+            network="base-sepolia",
+        )
+        assert fp1 != fp2
+
     def test_fingerprint_is_hex_string(self):
         fp = compute_fingerprint("https://api.example.com", "0xabc", "0.01", "USDC", 300)
         assert isinstance(fp, str)

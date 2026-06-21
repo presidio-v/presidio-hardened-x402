@@ -192,19 +192,17 @@ class TestFileAuditWriter:
 
 
 class TestAuditLogWriterFailure:
-    def test_writer_exception_is_caught_and_chain_advances(self):
-        """A failing writer must not break the HMAC chain."""
+    def test_writer_exception_fails_closed_and_preserves_chain(self):
+        """A failing writer must stop emission and leave the chain unchanged."""
 
         class _FailingWriter:
             def write(self, event: AuditEvent) -> None:
                 raise RuntimeError("disk full")
 
         log = AuditLog(writer=_FailingWriter())
-        # Should not raise despite writer failure
-        log.emit("PAYMENT_ALLOWED", resource_url="https://api.example.com", outcome="allowed")
-        # Chain advances — second emit also runs without error
-        log.emit("PAYMENT_ALLOWED", resource_url="https://api.example.com", outcome="allowed")
-        assert log._prev_hmac is not None
+        with pytest.raises(RuntimeError, match="disk full"):
+            log.emit("PAYMENT_ALLOWED", resource_url="https://api.example.com", outcome="allowed")
+        assert log._prev_hmac is None
 
 
 class TestChainKeyFromEnv:
