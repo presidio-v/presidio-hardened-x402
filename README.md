@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml/badge.svg)](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml)
 
-> v0.6.0 — production hardening: multi-tenant replay namespaces, enterprise audit sinks, SLSA/OIDC release provenance, signed evidence-ref verification, OpenTelemetry spans, policy hot-reload, startup key gates, and human-pentest retest closure; plus the v0.5 OEM embed kit and the core PII/policy/replay/audit controls.
+> v0.7.0 — market-based SLO enforcement: signed arch-translucency degradation evidence becomes a verified x402 capacity-payment trigger, with cooldowns, spend caps, provisioning redaction, and pluggable capacity providers.
 
 Security middleware for the [x402 payment protocol](https://www.x402.org/).
 
@@ -327,6 +327,69 @@ SOC 2 TSC mapping, GDPR obligations, and deployment patterns.
 
 ---
 
+## SLO Payment Broker (v0.7.0)
+
+Market-based SLO enforcement: when infrastructure degrades, the agent autonomously pays for
+a capacity upgrade via x402 micropayments instead of relying on pre-provisioned autoscaling.
+The broker acts only on a **verified** degradation signal — a signed
+`evidence-ref@1` from a trusted `presidio-hardened-arch-translucency` signer — so a spoofed or
+misconfigured signal cannot trigger a payment (authorization, not metric).
+
+```python
+from presidio_x402 import (
+    HardenedX402Client, SLOPaymentBroker, SLOPaymentPolicy,
+    X402CapacityProvider, ArchTranslucencyAdapter,
+)
+
+# arch-translucency's signed degradation feed → verified trigger (fail-closed).
+adapter = ArchTranslucencyAdapter(
+    {"presidio-hardened-arch-translucency": {"alg": "ed25519", "public_key": ARCH_PUB}},
+    expected_signers=["presidio-hardened-arch-translucency"],
+)
+client = HardenedX402Client(payment_signer=signer)
+broker = SLOPaymentBroker(
+    client=client,
+    slo_policy=SLOPaymentPolicy(
+        cooldown_seconds=300,            # anti-drain
+        max_per_slo_event_usd=0.50,
+        max_daily_slo_usd=10.00,
+        tier_escalation_rules=(1.0, 2.0, 4.0),  # step-up pricing for repeated degradation
+    ),
+    provider=X402CapacityProvider("compute", "https://compute.example/v1/capacity", client),
+    base_event_usd=0.10,
+)
+
+for trigger in adapter.build_triggers(signed_envelope):  # verified or skipped
+    await broker.handle_trigger(trigger)   # → paid / blocked / skipped, with audit event
+```
+
+The signing key lives in a separate bridge sidecar (arch-translucency stays key-less); x402
+holds only the public key. The wire contract is pinned by the `evidence-ref@1`
+golden-vector tests shared with arch-translucency.
+
+### Provisioning Metadata Redaction
+
+Capacity-upgrade requests can reveal workload type, data classification, or access pattern.
+Those heuristics are intentionally opt-in so ordinary payment metadata keeps the v0.6
+false-positive profile.
+
+```python
+from presidio_x402 import PIIFilter, PROVISIONING_ENTITIES
+
+filt = PIIFilter(
+    entities=list(PROVISIONING_ENTITIES),
+    redaction_template="<{entity_type}>",
+)
+
+clean, entities = filt.scan_and_redact(
+    "ml training workload over CONFIDENTIAL data: SELECT email FROM customers"
+)
+# clean:
+# "<WORKLOAD_CLASS> workload over <DATA_CLASSIFICATION> data: <QUERY_PATTERN>"
+```
+
+---
+
 ## Exceptions
 
 | Exception | Raised when |
@@ -362,9 +425,9 @@ All exceptions are importable from `presidio_x402`.
 | v0.3.0 | **Multi-party authorization** (`mpa.py`: n-of-m, webhook + crypto modes) · **Policy-as-code** JSON Schema (IETF draft candidate) · **Prometheus metrics** exporter · Kubernetes Helm chart + Docker image · SOC2 reference architecture |
 | v0.4.0 | **Screening API launch** — hosted [`screen.presidio-group.eu`](https://screen.presidio-group.eu) free tier (regex mode, 100 req/day) · `ScreeningClient` + `remote_screening=True` mode · per-origin `pay_to` allowlist (chain-06 mitigation) · audit-cycle hardening (F-A/B 2026-05-03, F-C/D/E 2026-05-10, F1/F2/F3 2026-05-17); see [`CHANGELOG.md`](CHANGELOG.md) |
 | v0.5.0 | **OEM embed kit** — rail-agnostic `ScreeningPipeline` core + `bindings/x402` layer (`PaymentProtocolBinding` protocol, hedge against rail fragmentation: ACP/Tempo, AP2) · [SEMVER.md](SEMVER.md) stability guarantees · partner conformance suite (`python -m presidio_x402.conformance`) · CDP/LangChain/CrewAI quickstarts · SBOM in CI · freshness-bound MPA countersignatures (F-8) |
-| **v0.6.0** | **Production hardening + evidence substrate** — multi-tenant replay namespaces · enterprise audit sinks (S3 / Splunk / Datadog) · signed `evidence-ref@1` verification · SLSA/OIDC release provenance · digest-pinned Docker base + hash-pinned spaCy model · latency SLO and all-matrix coverage CI gates · OTel spans · policy hot-reload · startup key gates · human-pentest retest closure — **latest release** |
+| v0.6.0 | **Production hardening + evidence substrate** — multi-tenant replay namespaces · enterprise audit sinks (S3 / Splunk / Datadog) · signed `evidence-ref@1` verification · SLSA/OIDC release provenance · digest-pinned Docker base + hash-pinned spaCy model · latency SLO and all-matrix coverage CI gates · OTel spans · policy hot-reload · startup key gates · human-pentest retest closure |
+| **v0.7.0** | **SLO payment broker (library)** — x402 micropayments as runtime infrastructure bids: `SLOPaymentBroker` + `SLOPaymentPolicy` + evidence-anchored `ArchTranslucencyAdapter` + provisioning PII entities; cross-repo validated against `presidio-hardened-arch-translucency`. cs.DC preprint + empirical eval tracked separately — **latest release** |
 | Unreleased on `main` | Deferred #23 prompt-injection / agent-bound response scanning threat-model work |
-| v0.7.0 | **SLO payment broker** — x402 micropayments as runtime infrastructure bids; `presidio-hardened-arch-translucency` integration |
 
 See [PRESIDIO-REQ.md](PRESIDIO-REQ.md) for full deliberation and rationale.
 

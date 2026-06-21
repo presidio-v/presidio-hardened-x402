@@ -8,6 +8,48 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No unreleased changes.
 
+## [0.7.0] — 2026-06-21
+
+Market-based SLO enforcement (library). The agent becomes an economic actor that
+pays for capacity upgrades when infrastructure degrades — but only on a
+cryptographically **verified** degradation signal. The empirical evaluation,
+cs.DC preprint, and a real/mock capacity provider are tracked separately on the
+publication track and are not part of this library release.
+
+### Added
+- **`slo_broker.py`** — `SLOPaymentBroker`: wraps `HardenedX402Client`; on a
+  verified `SLOTrigger` applies cooldown + tier escalation + per-event/daily caps,
+  buys capacity via a pluggable `CapacityProvider` (default `X402CapacityProvider`),
+  and emits `SLO_PAYMENT_TRIGGERED` / `SLO_PAYMENT_BLOCKED` audit events. Decisions
+  are serialized (`asyncio.Lock`) so concurrent triggers cannot both pass cooldown.
+- **`slo_policy.py`** — `SLOPaymentPolicy(PolicyConfig)`: `latency_threshold_ms`,
+  `max_per_slo_event_usd`, `cooldown_seconds`, `max_daily_slo_usd`,
+  `tier_escalation_rules`. As a `PolicyConfig` subclass, SLO spend also counts
+  against the ordinary budgets (shared ledger).
+- **`arch_translucency_adapter.py`** — `ArchTranslucencyAdapter` + `SLOTrigger`:
+  fail-closed gate that accepts a degradation signal only when content↔hash and
+  signature↔trusted-signer both verify (`mica.verify_ref`), with an optional signer
+  allow-list and an overridable `field_map`.
+- **Provisioning PII entities** — opt-in `WORKLOAD_CLASS`, `DATA_CLASSIFICATION`,
+  `QUERY_PATTERN` (`PROVISIONING_ENTITIES`) redact workload context before it reaches
+  a third-party compute provider. Default PII behaviour is unchanged.
+
+### Security
+- **T-SLO-1 (spending drain):** the SLO trigger is an *authorization, not a metric* —
+  a spoofed or misconfigured degradation signal cannot trigger a payment because it
+  carries no valid signature. Cooldown + caps are defence-in-depth.
+- **T-SLO-2 (workload-metadata leakage):** provisioning PII entities (above).
+- **T-SLO-3 (vendor lock-in):** pluggable `CapacityProvider` registry.
+- **Third-party audit remediation:** production-tree conformance checks no longer use
+  bare `assert`, CI now runs `pip-audit` across release extras, and the v0.7.0 audit
+  remediation record is included in the source tree.
+
+### Notes
+- Validated end-to-end against the real `presidio-hardened-arch-translucency`
+  evidence producer + signing-bridge sidecar (degrade → sign → verify → pay; wrong
+  key rejected). The public wire contract remains pinned by the vendored
+  `evidence-ref@1` vectors and the v0.7.0 audit remediation record.
+
 ## [0.6.0] — 2026-06-21
 
 The production-hardening and evidence-substrate release. v0.6.0 closes the
