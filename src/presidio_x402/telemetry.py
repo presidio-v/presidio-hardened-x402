@@ -5,8 +5,6 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Any
 
-_TRACE_API: Any | None | bool = None
-
 
 class _NoopSpan:
     def set_attribute(self, key: str, value: object) -> None:
@@ -17,17 +15,11 @@ _NOOP_SPAN = _NoopSpan()
 
 
 def _trace_api() -> Any | None:
-    global _TRACE_API
-    if _TRACE_API is False:
+    try:
+        from opentelemetry import trace
+    except ImportError:
         return None
-    if _TRACE_API is None:
-        try:
-            from opentelemetry import trace
-        except ImportError:
-            _TRACE_API = False
-            return None
-        _TRACE_API = trace
-    return _TRACE_API
+    return trace
 
 
 def _tracer() -> Any | None:

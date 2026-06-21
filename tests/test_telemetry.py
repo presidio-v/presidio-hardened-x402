@@ -77,7 +77,7 @@ def test_security_control_span_noops_when_trace_api_disabled(monkeypatch):
         def set_attribute(self, key: str, value: object) -> None:
             calls.append((key, value))
 
-    monkeypatch.setattr(telemetry, "_TRACE_API", False)
+    monkeypatch.setattr(telemetry, "_trace_api", lambda: None)
 
     assert telemetry._trace_api() is None
     assert telemetry._tracer() is None

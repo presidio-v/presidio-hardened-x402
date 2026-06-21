@@ -71,7 +71,8 @@ def _require_hostname_component(value: str, *, field_name: str) -> None:
 class _HttpClient(Protocol):
     """Minimal structural type for the injectable HTTP transport (httpx-compatible)."""
 
-    def post(self, url: str, **kwargs: Any) -> Any: ...
+    def post(self, url: str, **kwargs: Any) -> Any:
+        pass
 
 
 class _BatchingSink:
