@@ -107,6 +107,14 @@ def _normalise(text: str) -> str:
 # All digit classes are ASCII-only ([0-9]) to avoid false positives on
 # Unicode decimal-digit codepoints (Arabic-Indic, Devanagari, etc.).
 # ---------------------------------------------------------------------------
+_CC_SEP = r"[-\s]?"
+
+
+def _cc_tail(n: int) -> str:
+    """Match *n* ASCII card digits, each optionally preceded by a common separator."""
+    return rf"(?:{_CC_SEP}[0-9]){{{n}}}"
+
+
 _REGEX_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # Structural: emails
     (
@@ -122,9 +130,21 @@ _REGEX_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "CREDIT_CARD",
         re.compile(
-            r"\b(?:4[0-9]{12}(?:[0-9]{3,6})?|5[1-5][0-9]{14}|3[47][0-9]{13}"
-            r"|3(?:0[0-5]|[68][0-9])[0-9]{11}|6(?:011|5[0-9]{2})[0-9]{12}"
-            r"|(?:2131|1800|35[0-9]{3})[0-9]{11})\b"
+            r"(?<![0-9])(?:"
+            r"4"
+            + _cc_tail(12)
+            + rf"(?:{_CC_SEP}[0-9]){{0,6}}"
+            + r"|5[1-5]"
+            + _cc_tail(14)
+            + r"|3[47]"
+            + _cc_tail(13)
+            + r"|3(?:0[0-5]|[68][0-9])"
+            + _cc_tail(11)
+            + r"|6(?:011|5[0-9]{2})"
+            + _cc_tail(12)
+            + r"|(?:2131|1800|35[0-9]{3})"
+            + _cc_tail(11)
+            + r")(?![-\s]?[0-9])"
         ),
     ),
     # Structural: US phone numbers

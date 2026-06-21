@@ -57,6 +57,24 @@ class TestPIIFilterRegexMode:
         _, entities = self.filt.scan_and_redact("card=4111111111111111")
         assert any(e.entity_type == "CREDIT_CARD" for e in entities)
 
+    def test_detects_visa_card_number_with_dashes_in_url(self):
+        redacted, entities = self.filt.scan_and_redact(
+            "https://pay.example/checkout?card=4111-1111-1111-1111"
+        )
+        assert "4111-1111-1111-1111" not in redacted
+        assert "<REDACTED>" in redacted
+        assert any(e.entity_type == "CREDIT_CARD" for e in entities)
+
+    def test_detects_card_number_with_spaces(self):
+        redacted, entities = self.filt.scan_and_redact("card 5500 0055 5555 5559")
+        assert "5500 0055 5555 5559" not in redacted
+        assert any(e.entity_type == "CREDIT_CARD" for e in entities)
+
+    def test_detects_card_number_with_unicode_hyphens_after_normalisation(self):
+        redacted, entities = self.filt.scan_and_redact("card=4111\u20111111\u20111111\u20111111")
+        assert "4111-1111-1111-1111" not in redacted
+        assert any(e.entity_type == "CREDIT_CARD" for e in entities)
+
     def test_detects_mastercard_number(self):
         _, entities = self.filt.scan_and_redact("5500005555555559")
         assert any(e.entity_type == "CREDIT_CARD" for e in entities)
@@ -128,6 +146,17 @@ class TestPIIFilterRegexMode:
         assert "alice@example.com" not in clean_desc
         assert "alice@example.com" not in clean_reason
         assert len(all_entities) == 3
+
+    def test_scan_payment_fields_redacts_separated_cards_in_all_primary_fields(self):
+        clean_url, clean_desc, clean_reason, entities = self.filt.scan_payment_fields(
+            resource_url="https://pay.example?card=4111-1111-1111-1111",
+            description="use 5500 0055 5555 5559",
+            reason="fallback card 3714-496353-98431",
+        )
+        assert "4111-1111-1111-1111" not in clean_url
+        assert "5500 0055 5555 5559" not in clean_desc
+        assert "3714-496353-98431" not in clean_reason
+        assert sum(1 for e in entities if e.entity_type == "CREDIT_CARD") == 3
 
     def test_scan_payment_fields_clean_input_unchanged(self):
         clean_url, clean_desc, clean_reason, entities = self.filt.scan_payment_fields(
