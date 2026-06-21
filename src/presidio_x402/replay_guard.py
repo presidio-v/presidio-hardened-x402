@@ -23,15 +23,40 @@ import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
+from decimal import Decimal, InvalidOperation
 
-from .exceptions import ReplayDetectedError
+from .exceptions import ConfigurationError, ReplayDetectedError
 
 logger = logging.getLogger("presidio_x402.replay_guard")
 
 _FINGERPRINT_KEY_ENV = "PRESIDIO_X402_FINGERPRINT_KEY"
+#: Opt-in hard gate: when truthy, a missing/weak fingerprint key fails import
+#: (fail-closed) instead of silently falling back to a per-process key.
+_REQUIRE_FINGERPRINT_KEY_ENV = "PRESIDIO_X402_REQUIRE_FINGERPRINT_KEY"
+
+#: Redis namespace must be a Redis-key-safe token — no ``:`` (the prefix
+#: delimiter) and no glob metacharacters (``*?[]``) that the ``clear()`` KEYS
+#: scan would otherwise honour.
+_NAMESPACE_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _gate_or_fallback(reason: str) -> bytes:
+    """Raise (fail-closed) when the operator demanded a real key, else fall back."""
+    if _truthy(os.environ.get(_REQUIRE_FINGERPRINT_KEY_ENV)):
+        raise ConfigurationError(
+            f"{_FINGERPRINT_KEY_ENV} {reason}, but {_REQUIRE_FINGERPRINT_KEY_ENV} is set. "
+            "Refusing to start with a per-process fingerprint key (fail-closed): provide a "
+            "32-byte hex key shared across replicas, or unset the REQUIRE gate for dev."
+        )
+    return secrets.token_bytes(32)
 
 
 def _load_fingerprint_key() -> bytes:
@@ -45,13 +70,13 @@ def _load_fingerprint_key() -> bytes:
                 "Cross-process replay detection is disabled.",
                 _FINGERPRINT_KEY_ENV,
             )
-            return secrets.token_bytes(32)
+            return _gate_or_fallback("is set but not valid hex")
         if len(key) < 16:
             logger.error(
                 "%s is shorter than 16 bytes — falling back to per-process key.",
                 _FINGERPRINT_KEY_ENV,
             )
-            return secrets.token_bytes(32)
+            return _gate_or_fallback("is shorter than 16 bytes")
         return key
     logger.error(
         "%s not set — replay guard uses a per-process key and will NOT detect "
@@ -61,10 +86,23 @@ def _load_fingerprint_key() -> bytes:
         "in any horizontally-scaled deployment; treat as a deployment-time defect.",
         _FINGERPRINT_KEY_ENV,
     )
-    return secrets.token_bytes(32)
+    return _gate_or_fallback("is not set")
 
 
 _FINGERPRINT_KEY = _load_fingerprint_key()
+
+
+def _canonical_amount(amount: str) -> str:
+    """Return a stable decimal string for semantically equivalent amounts."""
+    try:
+        value = Decimal(amount)
+    except InvalidOperation as exc:
+        raise ValueError(f"Invalid payment amount {amount!r}: not a decimal value") from exc
+    if not value.is_finite() or value < 0:
+        raise ValueError(f"Invalid payment amount {amount!r}: must be finite and non-negative")
+    if value == 0:
+        return "0"
+    return format(value.normalize(), "f")
 
 
 def compute_fingerprint(
@@ -73,6 +111,7 @@ def compute_fingerprint(
     amount: str,
     currency: str,
     deadline_seconds: int,
+    network: str = "",
 ) -> str:
     """Compute a canonical HMAC-SHA256 fingerprint of the payment key fields.
 
@@ -93,14 +132,26 @@ def compute_fingerprint(
     deadline_seconds:
         Payment deadline (seconds). Payments with different deadlines are
         considered distinct to avoid false positives on retried expired payments.
+    network:
+        Blockchain network identifier. Included so identical payment tuples on
+        different rails/chains do not collide.
     """
     # Canonicalise case-insensitive fields before serialisation. EVM addresses
     # are case-insensitive (EIP-55 checksum is optional); a server that returns
     # the same `pay_to` in mixed case across retries would otherwise produce
-    # distinct fingerprints and bypass replay detection. Currency tickers are
-    # conventionally uppercase but not enforced by the 402 spec.
+    # distinct fingerprints and bypass replay detection. Currency tickers and
+    # network names are likewise normalised to prevent representation-level
+    # bypasses, and decimal amounts are canonicalised so "1.0" and "1.00" are
+    # treated as the same logical payment.
     canonical = json.dumps(
-        [resource_url, pay_to.lower(), amount, currency.upper(), deadline_seconds],
+        [
+            resource_url,
+            pay_to.lower(),
+            _canonical_amount(amount),
+            currency.upper(),
+            int(deadline_seconds),
+            network.lower(),
+        ],
         separators=(",", ":"),
         ensure_ascii=False,
     ).encode("utf-8")
@@ -142,7 +193,7 @@ class _MemoryStore:
 class _RedisStore:
     """Redis-backed TTL store for payment fingerprints."""
 
-    def __init__(self, redis_url: str) -> None:
+    def __init__(self, redis_url: str, *, namespace: str | None = None) -> None:
         try:
             import redis
 
@@ -151,7 +202,12 @@ class _RedisStore:
             raise ImportError(
                 "Redis backend requires: pip install presidio-hardened-x402[redis]"
             ) from exc
-        self._prefix = "presidio_x402:replay:"
+        # Per-tenant isolation: distinct tenants on a shared Redis must not see or
+        # evict each other's fingerprints. The namespace is folded into the key
+        # prefix; ``clear()`` therefore scopes its KEYS scan to one tenant only.
+        self._prefix = (
+            f"presidio_x402:replay:{namespace}:" if namespace else "presidio_x402:replay:"
+        )
 
     def check_and_set(self, key: str, ttl: int) -> bool:
         # SET NX EX is atomic on the Redis server — no TOCTOU window.
@@ -179,13 +235,32 @@ class ReplayGuard:
     redis_url:
         If provided, uses a Redis backend instead of in-memory storage.
         Example: ``"redis://localhost:6379/0"``.
+    namespace:
+        Optional per-tenant namespace folded into the Redis key prefix, isolating
+        one tenant's replay window from another's on a shared Redis. Must match
+        ``[A-Za-z0-9_.-]+`` (no ``:`` delimiter, no glob metacharacters). Ignored
+        by the in-memory backend, which is already per-process isolated.
     """
 
-    def __init__(self, ttl: int = 300, *, redis_url: str | None = None) -> None:
+    def __init__(
+        self,
+        ttl: int = 300,
+        *,
+        redis_url: str | None = None,
+        namespace: str | None = None,
+    ) -> None:
         self.ttl = ttl
+        if namespace is not None and not _NAMESPACE_RE.match(namespace):
+            raise ConfigurationError(
+                f"invalid replay namespace {namespace!r}: must match [A-Za-z0-9_.-]+ "
+                "(no ':' delimiter or glob metacharacters, which would break key "
+                "scoping and the clear() KEYS scan)"
+            )
         if redis_url:
-            self._store: _MemoryStore | _RedisStore = _RedisStore(redis_url)
-            logger.info("ReplayGuard initialized with Redis backend")
+            self._store: _MemoryStore | _RedisStore = _RedisStore(redis_url, namespace=namespace)
+            logger.info(
+                "ReplayGuard initialized with Redis backend (namespace=%s)", namespace or "<none>"
+            )
         else:
             self._store = _MemoryStore()
             logger.debug("ReplayGuard initialized with in-memory backend (TTL=%ds)", ttl)

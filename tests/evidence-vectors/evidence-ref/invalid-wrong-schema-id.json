@@ -1,0 +1,7 @@
+{
+  "_reason": "unknown schema major must be rejected (fail-closed)",
+  "document": {
+    "schema": "presidio-hardened/evidence-ref@2",
+    "evidence": []
+  }
+}

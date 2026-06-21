@@ -16,9 +16,15 @@ jobs:
   build:
     name: Build distribution
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC token for GitHub artifact attestations
+      attestations: write
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: Build sdist and wheel
@@ -29,10 +35,21 @@ jobs:
         run: |
           python -m pip install --upgrade twine
           twine check dist/*
-      - uses: actions/upload-artifact@v7
+      - name: Generate SBOM
+        run: |
+          python -m pip install --upgrade cyclonedx-bom
+          python -m pip install dist/*.whl
+          cyclonedx-py environment --output-format JSON --output-file sbom.cdx.json
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
         with:
-          name: dist
-          path: dist/
+          subject-path: dist/*
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-artifacts
+          path: |
+            dist/
+            sbom.cdx.json
 
   publish:
     name: Publish to PyPI (Trusted Publishing)
@@ -44,11 +61,35 @@ jobs:
       id-token: write # OIDC token for PyPI Trusted Publishing + sigstore
       attestations: write # PEP 740 provenance attestations
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: dist
-          path: dist/
+          name: release-artifacts
+          path: .
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
         with:
           attestations: true
+
+  release-assets:
+    name: Attach release assets
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-artifacts
+          path: .
+      - name: Publish GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* sbom.cdx.json --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* sbom.cdx.json \
+              --verify-tag \
+              --title "$GITHUB_REF_NAME" \
+              --notes "Release $GITHUB_REF_NAME"
+          fi

@@ -1,0 +1,18 @@
+{
+  "_reason": "signature must be lowercase hex",
+  "document": {
+    "schema": "presidio-hardened/evidence-ref@1",
+    "evidence": [
+      {
+        "item_id": "D1",
+        "source": "presidio-hardened-ai",
+        "source_version": "0.30.0",
+        "ledger_ref": "pai-ledger:seq/1",
+        "content_hash": "3907dd429ab81335ac6fc24321d34cb367cc5a0c64fffa7ae69c55ff642b88fe",
+        "signer": "presidio-hardened-ai",
+        "signature": "not-hex!",
+        "claimed_at": "2026-06-12T00:00:00+00:00"
+      }
+    ]
+  }
+}

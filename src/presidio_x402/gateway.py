@@ -266,6 +266,10 @@ class HardenedX402Client:
     async def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         return await self._request(method, url, **kwargs)
 
+    def update_policy(self, policy: PolicyConfig | dict | None) -> PolicyConfig:
+        """Hot-reload the spending policy used by this running client."""
+        return self._policy.update_config(policy)
+
     # ------------------------------------------------------------------
     # Internal: request + payment-required handling (rail via binding)
     # ------------------------------------------------------------------

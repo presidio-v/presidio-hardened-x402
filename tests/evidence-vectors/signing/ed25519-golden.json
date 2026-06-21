@@ -1,0 +1,44 @@
+{
+  "description": "Cross-repo Ed25519 golden vector. Pins the wire format: detached signature over canonical_json({content_hash, signer}). Matches the vectors committed in presidio-hardened-ai, x402, and ikigov-assess.",
+  "algorithm": "ed25519",
+  "private_key_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+  "public_key_hex": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+  "content_hash": "abc123def456",
+  "signer": "presidio-hardened-ai",
+  "message_canonical": "{\"content_hash\":\"abc123def456\",\"signer\":\"presidio-hardened-ai\"}",
+  "signature_hex": "a0dc8599958734457f194ebce15c60ec097754b59897ab5dc758f73abadafe3697874049d9f7736de4e3a9cc28b2fb4d76b15d8bce7fa0b26c8434bebbba590a",
+  "tamper_cases": [
+    {
+      "reason": "wrong public key",
+      "public_key_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "content_hash": "abc123def456",
+      "signer": "presidio-hardened-ai",
+      "signature_hex": "a0dc8599958734457f194ebce15c60ec097754b59897ab5dc758f73abadafe3697874049d9f7736de4e3a9cc28b2fb4d76b15d8bce7fa0b26c8434bebbba590a",
+      "verifies": false
+    },
+    {
+      "reason": "tampered content_hash",
+      "public_key_hex": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+      "content_hash": "tampered",
+      "signer": "presidio-hardened-ai",
+      "signature_hex": "a0dc8599958734457f194ebce15c60ec097754b59897ab5dc758f73abadafe3697874049d9f7736de4e3a9cc28b2fb4d76b15d8bce7fa0b26c8434bebbba590a",
+      "verifies": false
+    },
+    {
+      "reason": "tampered signer (cross-signer replay)",
+      "public_key_hex": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+      "content_hash": "abc123def456",
+      "signer": "evil-signer",
+      "signature_hex": "a0dc8599958734457f194ebce15c60ec097754b59897ab5dc758f73abadafe3697874049d9f7736de4e3a9cc28b2fb4d76b15d8bce7fa0b26c8434bebbba590a",
+      "verifies": false
+    },
+    {
+      "reason": "malformed signature hex",
+      "public_key_hex": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+      "content_hash": "abc123def456",
+      "signer": "presidio-hardened-ai",
+      "signature_hex": "zzdc8599958734457f194ebce15c60ec097754b59897ab5dc758f73abadafe3697874049d9f7736de4e3a9cc28b2fb4d76b15d8bce7fa0b26c8434bebbba590a",
+      "verifies": false
+    }
+  ]
+}

@@ -16,8 +16,8 @@ existing gateway test suite is the conformance proof.
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import replace
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Literal
 
 import httpx
@@ -31,6 +31,7 @@ from .exceptions import (
     X402PaymentError,
 )
 from .replay_guard import ReplayGuard, compute_fingerprint
+from .telemetry import security_control_span, set_span_attribute
 
 if TYPE_CHECKING:
     from ._types import PaymentDetails
@@ -74,13 +75,13 @@ def amount_to_usd(amount: str, currency: str) -> float:
     would allow policy limits to be bypassed.
     """
     try:
-        value = float(amount)
-    except ValueError as exc:
+        value = Decimal(amount)
+    except InvalidOperation as exc:
         raise X402PaymentError(f"Invalid payment amount {amount!r}: not a numeric value") from exc
-    if not math.isfinite(value) or value < 0:
+    if not value.is_finite() or value < 0:
         raise X402PaymentError(
             f"Invalid payment amount {amount!r}: must be a finite non-negative number. "
-            "Non-finite values (nan, inf, -inf) bypass IEEE 754 comparison-based limit checks "
+            "Non-finite values (nan, inf, -inf) bypass comparison-based limit checks "
             "and are rejected to preserve policy enforcement integrity."
         )
     if currency.upper() not in _USD_PEGGED:
@@ -89,7 +90,7 @@ def amount_to_usd(amount: str, currency: str) -> float:
             f"Supported stablecoins: {sorted(_USD_PEGGED)}. "
             "For non-stablecoin payments configure a custom price oracle."
         )
-    return value
+    return float(value)
 
 
 class ScreeningPipeline:
@@ -178,90 +179,106 @@ class ScreeningPipeline:
         # ------------------------------------------------------------------
         # 1. PII Filter (local regex/NLP or remote screening service)
         # ------------------------------------------------------------------
-        if self._remote_screening and self._screening_client is not None:
-            (
-                clean_url,
-                clean_desc,
-                clean_reason,
-                pii_entities,
-            ) = await self._screening_client.scan_payment_fields(
-                details.resource_url,
-                details.description,
-                details.reason,
-                entities=self._pii_entities,
-            )
-            # Defense-in-depth (F-06, 2026-06-03): the remote screener is the
-            # only scan of the three primary fields, so a mis-redacting, empty,
-            # or silently degraded response would pass PII through unredacted.
-            # Re-run the fast local regex filter over its output as a cheap
-            # backstop. On a correct remote response the fields are already
-            # masked, so this finds nothing; it only catches what the remote
-            # missed, and feeds those entities into the block/redact decision.
-            clean_url, url_ent = self._pii_filter.scan_and_redact(clean_url)
-            clean_desc, desc_ent = self._pii_filter.scan_and_redact(clean_desc)
-            clean_reason, reason_ent = self._pii_filter.scan_and_redact(clean_reason)
-            pii_entities = list(pii_entities) + url_ent + desc_ent + reason_ent
-        else:
-            clean_url, clean_desc, clean_reason, pii_entities = (
-                self._pii_filter.scan_payment_fields(
-                    details.resource_url, details.description, details.reason
+        with security_control_span(
+            "pii_filter",
+            amount_usd=amount_usd,
+            network=details.network,
+            pii_action=self._pii_action,
+            remote_screening=self._remote_screening,
+        ) as pii_span:
+            if self._remote_screening and self._screening_client is not None:
+                (
+                    clean_url,
+                    clean_desc,
+                    clean_reason,
+                    pii_entities,
+                ) = await self._screening_client.scan_payment_fields(
+                    details.resource_url,
+                    details.description,
+                    details.reason,
+                    entities=self._pii_entities,
                 )
-            )
+                # Defense-in-depth (F-06, 2026-06-03): the remote screener is the
+                # only scan of the three primary fields, so a mis-redacting, empty,
+                # or silently degraded response would pass PII through unredacted.
+                # Re-run the fast local regex filter over its output as a cheap
+                # backstop. On a correct remote response the fields are already
+                # masked, so this finds nothing; it only catches what the remote
+                # missed, and feeds those entities into the block/redact decision.
+                clean_url, url_ent = self._pii_filter.scan_and_redact(clean_url)
+                clean_desc, desc_ent = self._pii_filter.scan_and_redact(clean_desc)
+                clean_reason, reason_ent = self._pii_filter.scan_and_redact(clean_reason)
+                pii_entities = list(pii_entities) + url_ent + desc_ent + reason_ent
+            else:
+                clean_url, clean_desc, clean_reason, pii_entities = (
+                    self._pii_filter.scan_payment_fields(
+                        details.resource_url, details.description, details.reason
+                    )
+                )
 
-        # The remote screening API only covers the three primary string fields.
-        # The `extra` dict is arbitrary server-controlled JSON and must be
-        # scanned locally for defense-in-depth — this closes REQ-1 against
-        # malicious 402 servers that smuggle PII through the extra channel.
-        clean_extra, extra_entities = self._pii_filter.scan_dict(details.extra)
-        if extra_entities:
-            pii_entities = list(pii_entities) + list(extra_entities)
+            # The remote screening API only covers the three primary string fields.
+            # The `extra` dict is arbitrary server-controlled JSON and must be
+            # scanned locally for defense-in-depth — this closes REQ-1 against
+            # malicious 402 servers that smuggle PII through the extra channel.
+            clean_extra, extra_entities = self._pii_filter.scan_dict(details.extra)
+            if extra_entities:
+                pii_entities = list(pii_entities) + list(extra_entities)
 
-        if pii_entities:
-            entity_types = [e.entity_type for e in pii_entities]
-            if self._pii_action == "block":
-                self._audit.emit(
-                    "PII_BLOCKED",
-                    resource_url=clean_url,
-                    amount_usd=amount_usd,
-                    network=details.network,
-                    outcome="blocked",
-                    pii_entities_found=entity_types,
+            set_span_attribute(pii_span, "presidio_x402.pii.entity_count", len(pii_entities))
+            if pii_entities:
+                entity_types = [e.entity_type for e in pii_entities]
+                set_span_attribute(
+                    pii_span,
+                    "presidio_x402.pii.entity_types",
+                    sorted(set(entity_types)),
                 )
-                if self._metrics:
-                    self._metrics.record_pii_detection(entity_types, "block")
-                    self._metrics.record_payment_blocked("pii", amount_usd)
-                raise PIIBlockedError(
-                    f"PII detected in payment metadata: {', '.join(sorted(set(entity_types)))}",
-                    entities=entity_types,
-                )
-            elif self._pii_action == "redact":
-                self._audit.emit(
-                    "PII_REDACTED",
-                    resource_url=clean_url,
-                    amount_usd=amount_usd,
-                    network=details.network,
-                    outcome="allowed",
-                    pii_entities_found=entity_types,
-                )
-                if self._metrics:
-                    self._metrics.record_pii_detection(entity_types, "redact")
-                # Replace metadata fields with redacted versions.
-                # resource_url is replaced AFTER replay-fingerprint computation
-                # earlier in this function so the original URL still drives
-                # deduplication; from this point on every downstream consumer
-                # (signer, MPA webhooks, audit log post-event) sees clean_url.
-                # The `extra` dict is also redacted in-place when PII is found
-                # in any of its string values (REQ-1 — closes F-A 2026-05-03).
-                details = replace(
-                    details,
-                    resource_url=clean_url,
-                    description=clean_desc,
-                    reason=clean_reason,
-                    extra=clean_extra if extra_entities else details.extra,
-                )
-            elif self._metrics:
-                # pii_action == "warn": log already happened in PIIFilter
-                self._metrics.record_pii_detection(entity_types, "warn")
+                if self._pii_action == "block":
+                    set_span_attribute(pii_span, "presidio_x402.outcome", "blocked")
+                    self._audit.emit(
+                        "PII_BLOCKED",
+                        resource_url=clean_url,
+                        amount_usd=amount_usd,
+                        network=details.network,
+                        outcome="blocked",
+                        pii_entities_found=entity_types,
+                    )
+                    if self._metrics:
+                        self._metrics.record_pii_detection(entity_types, "block")
+                        self._metrics.record_payment_blocked("pii", amount_usd)
+                    raise PIIBlockedError(
+                        f"PII detected in payment metadata: "
+                        f"{', '.join(sorted(set(entity_types)))}",
+                        entities=entity_types,
+                    )
+                elif self._pii_action == "redact":
+                    self._audit.emit(
+                        "PII_REDACTED",
+                        resource_url=clean_url,
+                        amount_usd=amount_usd,
+                        network=details.network,
+                        outcome="allowed",
+                        pii_entities_found=entity_types,
+                    )
+                    if self._metrics:
+                        self._metrics.record_pii_detection(entity_types, "redact")
+                    # Replace metadata fields with redacted versions.
+                    # resource_url is replaced AFTER replay-fingerprint computation
+                    # earlier in this function so the original URL still drives
+                    # deduplication; from this point on every downstream consumer
+                    # (signer, MPA webhooks, audit log post-event) sees clean_url.
+                    # The `extra` dict is also redacted in-place when PII is found
+                    # in any of its string values (REQ-1 — closes F-A 2026-05-03).
+                    details = replace(
+                        details,
+                        resource_url=clean_url,
+                        description=clean_desc,
+                        reason=clean_reason,
+                        extra=clean_extra if extra_entities else details.extra,
+                    )
+                elif self._metrics:
+                    # pii_action == "warn": log already happened in PIIFilter
+                    self._metrics.record_pii_detection(entity_types, "warn")
+            set_span_attribute(pii_span, "presidio_x402.outcome", "allowed")
 
         # ------------------------------------------------------------------
         # 2. Trusted-wallet allowlist (pay_to substitution defence)
@@ -297,21 +314,35 @@ class ScreeningPipeline:
         # ------------------------------------------------------------------
         # 3. Policy Engine
         # ------------------------------------------------------------------
-        try:
-            self._policy.check_and_record(resource_url=details.resource_url, amount_usd=amount_usd)
-        except PolicyViolationError as exc:
-            self._audit.emit(
-                "POLICY_BLOCKED",
-                resource_url=clean_url,
-                amount_usd=amount_usd,
-                network=details.network,
-                outcome="blocked",
-                policy_limit_usd=exc.limit_usd,
-            )
-            if self._metrics:
-                self._metrics.record_policy_violation("limit_exceeded")
-                self._metrics.record_payment_blocked("policy", amount_usd)
-            raise
+        with security_control_span(
+            "policy",
+            amount_usd=amount_usd,
+            network=details.network,
+        ) as policy_span:
+            try:
+                self._policy.check_and_record(
+                    resource_url=details.resource_url, amount_usd=amount_usd
+                )
+                set_span_attribute(policy_span, "presidio_x402.outcome", "allowed")
+            except PolicyViolationError as exc:
+                set_span_attribute(policy_span, "presidio_x402.outcome", "blocked")
+                set_span_attribute(
+                    policy_span,
+                    "presidio_x402.policy.limit_usd",
+                    exc.limit_usd if exc.limit_usd is not None else 0.0,
+                )
+                self._audit.emit(
+                    "POLICY_BLOCKED",
+                    resource_url=clean_url,
+                    amount_usd=amount_usd,
+                    network=details.network,
+                    outcome="blocked",
+                    policy_limit_usd=exc.limit_usd,
+                )
+                if self._metrics:
+                    self._metrics.record_policy_violation("limit_exceeded")
+                    self._metrics.record_payment_blocked("policy", amount_usd)
+                raise
 
         # ------------------------------------------------------------------
         # 4. Replay Guard
@@ -322,56 +353,77 @@ class ScreeningPipeline:
             amount=details.amount,
             currency=details.currency,
             deadline_seconds=details.deadline_seconds,
+            network=details.network,
         )
-        try:
-            self._replay.check_and_record(fingerprint)
-        except ReplayDetectedError:
-            self._audit.emit(
-                "REPLAY_BLOCKED",
-                resource_url=clean_url,
-                amount_usd=amount_usd,
-                network=details.network,
-                outcome="blocked",
-                replay_fingerprint=fingerprint[:16],
-            )
-            if self._metrics:
-                self._metrics.record_replay_detection()
-                self._metrics.record_payment_blocked("replay", amount_usd)
-            raise
+        with security_control_span(
+            "replay",
+            amount_usd=amount_usd,
+            network=details.network,
+        ) as replay_span:
+            try:
+                self._replay.check_and_record(fingerprint)
+                set_span_attribute(replay_span, "presidio_x402.outcome", "allowed")
+            except ReplayDetectedError:
+                set_span_attribute(replay_span, "presidio_x402.outcome", "blocked")
+                set_span_attribute(
+                    replay_span,
+                    "presidio_x402.replay.fingerprint_prefix",
+                    fingerprint[:16],
+                )
+                self._audit.emit(
+                    "REPLAY_BLOCKED",
+                    resource_url=clean_url,
+                    amount_usd=amount_usd,
+                    network=details.network,
+                    outcome="blocked",
+                    replay_fingerprint=fingerprint[:16],
+                )
+                if self._metrics:
+                    self._metrics.record_replay_detection()
+                    self._metrics.record_payment_blocked("replay", amount_usd)
+                raise
 
         # ------------------------------------------------------------------
         # 5. Multi-Party Authorization (if configured)
         # ------------------------------------------------------------------
         if self._mpa is not None:
-            try:
-                await self._mpa.request_approval(
-                    details, amount_usd, provided_signatures=mpa_signatures
-                )
-                if self._metrics:
-                    self._metrics.record_mpa_event("approved")
-            except (MPADeniedError, MPATimeoutError) as exc:
-                # Roll back the spend + replay fingerprint committed at steps 3–4:
-                # an MPA-denied/timed-out payment was never signed, so it must not
-                # charge the budget or burn the fingerprint (which would block the
-                # legitimate crypto-mode retry that carries the countersignatures).
-                self.rollback(
-                    resource_url=details.resource_url,
-                    amount_usd=amount_usd,
-                    fingerprint=fingerprint,
-                )
-                outcome = "timeout" if isinstance(exc, MPATimeoutError) else "denied"
-                safe_msg, _ = self._pii_filter.scan_and_redact(safe_exc_message(exc))
-                self._audit.emit(
-                    "MPA_BLOCKED",
-                    resource_url=clean_url,
-                    amount_usd=amount_usd,
-                    network=details.network,
-                    outcome="blocked",
-                    error_message=safe_msg,
-                )
-                if self._metrics:
-                    self._metrics.record_mpa_event(outcome)
-                    self._metrics.record_payment_blocked(f"mpa_{outcome}", amount_usd)
-                raise
+            with security_control_span(
+                "mpa",
+                amount_usd=amount_usd,
+                network=details.network,
+                mpa_threshold=self._mpa.config.threshold,
+            ) as mpa_span:
+                try:
+                    await self._mpa.request_approval(
+                        details, amount_usd, provided_signatures=mpa_signatures
+                    )
+                    set_span_attribute(mpa_span, "presidio_x402.outcome", "approved")
+                    if self._metrics:
+                        self._metrics.record_mpa_event("approved")
+                except (MPADeniedError, MPATimeoutError) as exc:
+                    # Roll back the spend + replay fingerprint committed at steps 3–4:
+                    # an MPA-denied/timed-out payment was never signed, so it must not
+                    # charge the budget or burn the fingerprint (which would block the
+                    # legitimate crypto-mode retry that carries the countersignatures).
+                    self.rollback(
+                        resource_url=details.resource_url,
+                        amount_usd=amount_usd,
+                        fingerprint=fingerprint,
+                    )
+                    outcome = "timeout" if isinstance(exc, MPATimeoutError) else "denied"
+                    set_span_attribute(mpa_span, "presidio_x402.outcome", outcome)
+                    safe_msg, _ = self._pii_filter.scan_and_redact(safe_exc_message(exc))
+                    self._audit.emit(
+                        "MPA_BLOCKED",
+                        resource_url=clean_url,
+                        amount_usd=amount_usd,
+                        network=details.network,
+                        outcome="blocked",
+                        error_message=safe_msg,
+                    )
+                    if self._metrics:
+                        self._metrics.record_mpa_event(outcome)
+                        self._metrics.record_payment_blocked(f"mpa_{outcome}", amount_usd)
+                    raise
 
         return details, fingerprint

@@ -67,6 +67,7 @@ import ipaddress
 import json
 import logging
 import socket
+import ssl
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
@@ -81,6 +82,7 @@ if TYPE_CHECKING:
     from ._types import PaymentDetails
 
 logger = logging.getLogger("presidio_x402.mpa")
+_MPA_RESPONSE_MAX_BYTES = 1_048_576
 
 # Networks that must never be reachable by an MPA webhook — SSRF defense.
 # Covers loopback, RFC1918 private ranges, link-local (incl. IMDS 169.254.169.254),
@@ -130,11 +132,11 @@ def _validate_webhook_url(url: str) -> None:
         raise MPAWebhookURLError(f"MPA webhook URL host {host!r} is in a blocked network range")
 
 
-async def _resolve_and_check_host(host: str) -> None:
+async def _resolve_and_check_host(host: str, port: int = 443) -> tuple[str, ...]:
     """Resolve *host* and raise if any A/AAAA record falls in a blocked range.
 
-    Defeats DNS-rebinding attacks where a public hostname briefly resolves to
-    an internal IP between config time and request time.
+    Returns the checked address set so the caller can connect to one of those
+    exact IPs instead of letting the HTTP client perform a second DNS lookup.
 
     Resolution runs on the event loop's executor (``loop.getaddrinfo``) rather
     than the blocking ``socket.getaddrinfo``. A slow/hostile DNS authority would
@@ -144,13 +146,148 @@ async def _resolve_and_check_host(host: str) -> None:
     """
     loop = asyncio.get_running_loop()
     try:
-        infos = await loop.getaddrinfo(host, None)
+        infos = await loop.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
         raise MPAWebhookURLError(f"DNS resolution failed for {host!r}") from exc
+    addresses: list[str] = []
     for info in infos:
         addr = info[4][0]
         if _ip_is_blocked(addr):
             raise MPAWebhookURLError(f"Host {host!r} resolves to blocked address {addr!r}")
+        addresses.append(addr)
+    if not addresses:
+        raise MPAWebhookURLError(f"DNS resolution returned no addresses for {host!r}")
+    return tuple(dict.fromkeys(addresses))
+
+
+def _decode_chunked_body(body: bytes) -> bytes:
+    chunks: list[bytes] = []
+    pos = 0
+    while True:
+        line_end = body.find(b"\r\n", pos)
+        if line_end == -1:
+            raise httpx.ProtocolError("Invalid chunked MPA response")
+        size_line = body[pos:line_end].split(b";", 1)[0]
+        try:
+            size = int(size_line, 16)
+        except ValueError as exc:
+            raise httpx.ProtocolError("Invalid chunk size in MPA response") from exc
+        pos = line_end + 2
+        if size == 0:
+            return b"".join(chunks)
+        chunk = body[pos : pos + size]
+        if len(chunk) != size:
+            raise httpx.ProtocolError("Truncated chunked MPA response")
+        chunks.append(chunk)
+        pos += size
+        if body[pos : pos + 2] != b"\r\n":
+            raise httpx.ProtocolError("Invalid chunk terminator in MPA response")
+        pos += 2
+
+
+async def _post_pinned_https(
+    url: str,
+    *,
+    resolved_ips: tuple[str, ...],
+    content: bytes,
+    headers: dict[str, str],
+) -> httpx.Response:
+    """POST to an already checked IP while preserving Host/SNI identity."""
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if not host:
+        raise httpx.InvalidURL("MPA webhook URL must include a host")
+    port = parsed.port or 443
+    target = parsed.path or "/"
+    if parsed.query:
+        target = f"{target}?{parsed.query}"
+    request = httpx.Request("POST", url)
+    last_exc: BaseException | None = None
+    for ip in resolved_ips:
+        try:
+            return await _post_pinned_https_once(
+                ip=ip,
+                port=port,
+                server_hostname=host,
+                target=target,
+                request=request,
+                content=content,
+                headers=headers,
+            )
+        except Exception as exc:  # pragma: no cover - exercised by network failures
+            last_exc = exc
+    raise httpx.ConnectError(
+        f"Unable to connect to checked MPA webhook address for {host!r}",
+        request=request,
+    ) from last_exc
+
+
+async def _post_pinned_https_once(
+    *,
+    ip: str,
+    port: int,
+    server_hostname: str,
+    target: str,
+    request: httpx.Request,
+    content: bytes,
+    headers: dict[str, str],
+) -> httpx.Response:
+    context = ssl.create_default_context()
+    reader, writer = await asyncio.open_connection(
+        ip,
+        port,
+        ssl=context,
+        server_hostname=server_hostname,
+    )
+    try:
+        host_header = server_hostname if port == 443 else f"{server_hostname}:{port}"
+        wire_headers = {
+            "Host": host_header,
+            **headers,
+            "Content-Length": str(len(content)),
+            "Connection": "close",
+        }
+        head = "\r\n".join(
+            [f"POST {target} HTTP/1.1", *(f"{k}: {v}" for k, v in wire_headers.items()), "", ""]
+        ).encode("ascii")
+        writer.write(head + content)
+        await writer.drain()
+
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = await reader.read(65536)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > _MPA_RESPONSE_MAX_BYTES:
+                raise httpx.ProtocolError("MPA webhook response too large")
+            chunks.append(chunk)
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+    raw = b"".join(chunks)
+    header_bytes, sep, body = raw.partition(b"\r\n\r\n")
+    if not sep:
+        raise httpx.ProtocolError("Invalid MPA webhook response")
+    header_lines = header_bytes.split(b"\r\n")
+    status_parts = header_lines[0].decode("iso-8859-1").split(" ", 2)
+    if len(status_parts) < 2 or not status_parts[1].isdigit():
+        raise httpx.ProtocolError("Invalid MPA webhook status line")
+    status_code = int(status_parts[1])
+    response_headers: list[tuple[str, str]] = []
+    for raw_line in header_lines[1:]:
+        if not raw_line:
+            continue
+        name, sep, value = raw_line.decode("iso-8859-1").partition(":")
+        if not sep:
+            raise httpx.ProtocolError("Invalid MPA webhook header line")
+        response_headers.append((name.strip(), value.strip()))
+    parsed_headers = httpx.Headers(response_headers)
+    if "chunked" in parsed_headers.get("transfer-encoding", "").lower():
+        body = _decode_chunked_body(body)
+    return httpx.Response(status_code, headers=parsed_headers, content=body, request=request)
 
 
 @dataclass(frozen=True)
@@ -444,6 +581,7 @@ class MPAEngine:
                 amount=details.amount,
                 currency=details.currency,
                 deadline_seconds=details.deadline_seconds,
+                network=details.network,
             )[:16]
             request_data = ApprovalRequest(
                 request_id=request_id,
@@ -537,16 +675,6 @@ class MPAEngine:
             "amount_usd": request_data.amount_usd,
         }
         try:
-            # DNS-rebinding defense: if the URL host is a DNS name (not an IP
-            # literal), re-resolve it right before sending and refuse any
-            # resolved address that falls in a blocked network.
-            if self.config.dns_rebinding_protection:
-                host = urlparse(approver.webhook_url or "").hostname or ""
-                try:
-                    ipaddress.ip_address(host)
-                except ValueError:
-                    if host:
-                        await _resolve_and_check_host(host)
             # Outbound request authentication. When a shared_secret is
             # configured, sign the request body with HMAC-SHA256 so the
             # approver can verify the request originated from this MPA engine
@@ -566,11 +694,34 @@ class MPAEngine:
                     "internal network — set shared_secret in production.",
                     approver.approver_id,
                 )
-            resp = await self._httpx.post(
-                approver.webhook_url,  # type: ignore[arg-type]
-                content=request_body,
-                headers=headers,
-            )
+            resolved_ips: tuple[str, ...] | None = None
+            # DNS-rebinding defense: if the URL host is a DNS name (not an IP
+            # literal), resolve and validate once, then connect to one of those
+            # checked IPs with the original hostname preserved for SNI and Host.
+            if self.config.dns_rebinding_protection:
+                parsed_url = urlparse(approver.webhook_url or "")
+                host = parsed_url.hostname or ""
+                try:
+                    ipaddress.ip_address(host)
+                except ValueError:
+                    if host:
+                        resolved_ips = await _resolve_and_check_host(
+                            host,
+                            parsed_url.port or 443,
+                        )
+            if resolved_ips is not None:
+                resp = await _post_pinned_https(
+                    approver.webhook_url or "",
+                    resolved_ips=resolved_ips,
+                    content=request_body,
+                    headers=headers,
+                )
+            else:
+                resp = await self._httpx.post(
+                    approver.webhook_url,  # type: ignore[arg-type]
+                    content=request_body,
+                    headers=headers,
+                )
             resp.raise_for_status()
 
             # Verify response HMAC if the approver has a shared secret configured.

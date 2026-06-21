@@ -1,0 +1,9 @@
+{
+  "_reason": "key list must be non-empty",
+  "document": {
+    "s": {
+      "alg": "ed25519",
+      "public_key": []
+    }
+  }
+}

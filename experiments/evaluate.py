@@ -144,7 +144,7 @@ def _overlaps(pred_start: int, pred_end: int, gold_start: int, gold_end: int) ->
 
 
 def evaluate_corpus(
-    samples: list["CorpusSample"],
+    samples: list[CorpusSample],
     pii_filter,  # PIIFilter instance
     *,
     overlap_mode: str = "partial",

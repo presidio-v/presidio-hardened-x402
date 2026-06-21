@@ -32,8 +32,10 @@ Typical use — supplied to :class:`~presidio_x402.HardenedX402Client` via the
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -56,6 +58,40 @@ _RETRY_BACKOFF_SECONDS = 0.5
 # memory-heavy parsing in the agent process (F4 local audit, 2026-06-03). 1 MiB
 # is far above any legitimate screening result.
 _SCREENING_RESPONSE_MAX_BYTES = 1_048_576
+_SCREENING_MAX_ENTITY_RESULTS = 256
+_SCREENING_MAX_ENTITY_COUNT = 32
+_SCREENING_MAX_REDACTED_FIELD_BYTES = 16_384
+_SCREENING_MAX_ENTITY_TYPE_CHARS = 128
+
+
+def _is_loopback_host(host: str | None) -> bool:
+    if host is None:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _response_string(data: dict[str, Any], name: str, fallback: str) -> str:
+    value = data.get(name, fallback)
+    if not isinstance(value, str):
+        raise ScreeningUnavailableError(f"Screening response field {name} must be a string")
+    if len(value.encode("utf-8")) > _SCREENING_MAX_REDACTED_FIELD_BYTES:
+        raise ScreeningUnavailableError(f"Screening response field {name} is too large")
+    return value
+
+
+def _entity_type(value: object) -> str:
+    if value is None:
+        return "UNKNOWN"
+    if not isinstance(value, str) or not value:
+        raise ScreeningUnavailableError("Screening response has invalid entity_type")
+    if len(value) > _SCREENING_MAX_ENTITY_TYPE_CHARS or "\x00" in value:
+        raise ScreeningUnavailableError("Screening response has invalid entity_type")
+    return value
 
 
 class ScreeningClient:
@@ -95,7 +131,8 @@ class ScreeningClient:
             raise ValueError("ScreeningClient requires a non-empty base_url")
         if not api_key:
             raise ValueError("ScreeningClient requires a non-empty api_key")
-        scheme = base_url.split("://", 1)[0].lower() if "://" in base_url else ""
+        parsed = urlparse(base_url)
+        scheme = parsed.scheme.lower()
         if scheme == "http" and not allow_insecure:
             raise ValueError(
                 f"ScreeningClient base_url uses http:// ({base_url!r}); the X-API-Key "
@@ -103,6 +140,11 @@ class ScreeningClient:
                 "or pass allow_insecure=True to opt into plaintext for local development."
             )
         if scheme == "http" and allow_insecure:
+            if not _is_loopback_host(parsed.hostname):
+                raise ValueError(
+                    "allow_insecure=True is limited to localhost or loopback HTTP URLs; "
+                    f"got {base_url!r}"
+                )
             logger.warning(
                 "ScreeningClient configured with http:// base_url %r and allow_insecure=True. "
                 "X-API-Key is sent in cleartext. Use only for local development.",
@@ -147,9 +189,25 @@ class ScreeningClient:
         from .pii_filter import EntityResult
 
         results: list[EntityResult] = []
-        for item in data.get("entities_found", []):
-            entity_type = item.get("entity_type", "UNKNOWN")
-            count = int(item.get("count", 1))
+        entities_found = data.get("entities_found", [])
+        if not isinstance(entities_found, list):
+            raise ScreeningUnavailableError("Screening response has invalid entities_found shape")
+        for item in entities_found:
+            if not isinstance(item, dict):
+                raise ScreeningUnavailableError("Screening response has invalid entity item")
+            entity_type = _entity_type(item.get("entity_type", "UNKNOWN"))
+            try:
+                count = int(item.get("count", 1))
+            except (TypeError, ValueError) as exc:
+                raise ScreeningUnavailableError(
+                    "Screening response has invalid entity count"
+                ) from exc
+            if count < 0:
+                raise ScreeningUnavailableError("Screening response has negative entity count")
+            if count > _SCREENING_MAX_ENTITY_COUNT:
+                raise ScreeningUnavailableError("Screening response entity count too large")
+            if len(results) + count > _SCREENING_MAX_ENTITY_RESULTS:
+                raise ScreeningUnavailableError("Screening response includes too many entities")
             for _ in range(count):
                 results.append(
                     EntityResult(
@@ -162,9 +220,9 @@ class ScreeningClient:
                 )
 
         return (
-            data.get("redacted_resource_url", resource_url),
-            data.get("redacted_description", description),
-            data.get("redacted_reason", reason),
+            _response_string(data, "redacted_resource_url", resource_url),
+            _response_string(data, "redacted_description", description),
+            _response_string(data, "redacted_reason", reason),
             results,
         )
 
@@ -198,11 +256,14 @@ class ScreeningClient:
                 if len(resp.content) > _SCREENING_RESPONSE_MAX_BYTES:
                     raise ScreeningUnavailableError("Screening response too large")
                 try:
-                    return resp.json()
+                    data = resp.json()
                 except ValueError as exc:
                     raise ScreeningUnavailableError(
                         "Screening service returned non-JSON body"
                     ) from exc
+                if not isinstance(data, dict):
+                    raise ScreeningUnavailableError("Screening response has invalid JSON shape")
+                return data
             if status == 401:
                 raise ScreeningAuthError("Screening API key rejected")
             if status == 429:

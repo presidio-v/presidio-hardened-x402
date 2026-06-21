@@ -1,0 +1,15 @@
+{
+  "schema": "presidio-hardened/evidence-ref@1",
+  "evidence": [
+    {
+      "item_id": "O5",
+      "source": "presidio-hardened-ai",
+      "source_version": "0.30.0",
+      "ledger_ref": "pai-ledger:head",
+      "content_hash": "abc123def456",
+      "signer": "presidio-hardened-ai",
+      "signature": "2e7af6d2882dd53847dcf3032e1fe36e58c5a879c224ea97b505b3e3b626b87a",
+      "claimed_at": "2026-06-12T00:00:00+00:00"
+    }
+  ]
+}

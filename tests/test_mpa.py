@@ -11,16 +11,9 @@ import httpx
 import pytest
 import respx
 
+import presidio_x402.mpa as mpa_mod
 from presidio_x402._types import PaymentDetails
 from presidio_x402.exceptions import MPADeniedError, MPAWebhookURLError
-from presidio_x402.mpa import (
-    MPAApproverConfig,
-    MPAConfig,
-    MPAEngine,
-    _canonical_payload,
-    _resolve_and_check_host,
-    build_countersignature,
-)
 
 
 class TestResolveAndCheckHost:
@@ -32,7 +25,50 @@ class TestResolveAndCheckHost:
         # localhost resolves to a loopback address (blocked range) — deterministic
         # and offline. Exercises the async loop.getaddrinfo path.
         with pytest.raises(MPAWebhookURLError, match="blocked address"):
-            await _resolve_and_check_host("localhost")
+            await mpa_mod._resolve_and_check_host("localhost")
+
+    @pytest.mark.asyncio
+    async def test_dns_protection_uses_checked_ip_for_request(self, monkeypatch):
+        calls: dict[str, object] = {}
+
+        async def _fake_resolve(host: str, port: int = 443) -> tuple[str, ...]:
+            calls["resolved"] = (host, port)
+            return ("203.0.113.10",)
+
+        async def _fake_post(
+            url: str,
+            *,
+            resolved_ips: tuple[str, ...],
+            content: bytes,
+            headers: dict[str, str],
+        ) -> httpx.Response:
+            calls["posted"] = (url, resolved_ips, json.loads(content), headers)
+            return httpx.Response(
+                200,
+                json={"approved": True, "approver_id": "alice"},
+                request=httpx.Request("POST", url),
+            )
+
+        monkeypatch.setattr(mpa_mod, "_resolve_and_check_host", _fake_resolve)
+        monkeypatch.setattr(mpa_mod, "_post_pinned_https", _fake_post)
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
+                threshold=1,
+                approvers=[
+                    mpa_mod.MPAApproverConfig(
+                        "alice",
+                        mode="webhook",
+                        webhook_url="https://approvals.example.com/alice",
+                    )
+                ],
+            )
+        )
+        await engine.request_approval(_make_details(), amount_usd=1.0)
+
+        assert calls["resolved"] == ("approvals.example.com", 443)
+        posted = calls["posted"]
+        assert isinstance(posted, tuple)
+        assert posted[1] == ("203.0.113.10",)
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +95,7 @@ def _make_crypto_sig(
     secret: bytes, details: PaymentDetails, amount_usd: float, *, timestamp: int | None = None
 ) -> str:
     # Now produces the "<unix_ts>:<hmac_hex>" freshness-bound format (F-8).
-    return build_countersignature(secret, details, amount_usd, timestamp=timestamp)
+    return mpa_mod.build_countersignature(secret, details, amount_usd, timestamp=timestamp)
 
 
 ALICE_SECRET = b"alice-shared-secret"
@@ -74,13 +110,17 @@ CHARLIE_SECRET = b"charlie-shared-secret"
 
 class TestMPAConfigValidation:
     def test_valid_config(self):
-        cfg = MPAConfig(
+        cfg = mpa_mod.MPAConfig(
             dns_rebinding_protection=False,
             threshold=2,
             approvers=[
-                MPAApproverConfig("alice", mode="webhook", webhook_url="https://a.internal"),
-                MPAApproverConfig("bob", mode="webhook", webhook_url="https://b.internal"),
-                MPAApproverConfig("charlie", mode="webhook", webhook_url="https://c.internal"),
+                mpa_mod.MPAApproverConfig(
+                    "alice", mode="webhook", webhook_url="https://a.internal"
+                ),
+                mpa_mod.MPAApproverConfig("bob", mode="webhook", webhook_url="https://b.internal"),
+                mpa_mod.MPAApproverConfig(
+                    "charlie", mode="webhook", webhook_url="https://c.internal"
+                ),
             ],
         )
         assert cfg.threshold == 2
@@ -88,29 +128,35 @@ class TestMPAConfigValidation:
 
     def test_threshold_zero_raises(self):
         with pytest.raises(ValueError, match="threshold must be >= 1"):
-            MPAConfig(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=0,
                 approvers=[
-                    MPAApproverConfig("alice", mode="webhook", webhook_url="https://a.internal"),
+                    mpa_mod.MPAApproverConfig(
+                        "alice", mode="webhook", webhook_url="https://a.internal"
+                    ),
                 ],
             )
 
     def test_threshold_exceeds_approvers_raises(self):
         with pytest.raises(ValueError, match="cannot exceed number of approvers"):
-            MPAConfig(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=3,
                 approvers=[
-                    MPAApproverConfig("alice", mode="webhook", webhook_url="https://a.internal"),
-                    MPAApproverConfig("bob", mode="webhook", webhook_url="https://b.internal"),
+                    mpa_mod.MPAApproverConfig(
+                        "alice", mode="webhook", webhook_url="https://a.internal"
+                    ),
+                    mpa_mod.MPAApproverConfig(
+                        "bob", mode="webhook", webhook_url="https://b.internal"
+                    ),
                 ],
             )
 
     def test_empty_approvers_raises(self):
         # threshold 1 > 0 approvers → should raise
         with pytest.raises(ValueError, match="cannot exceed number of approvers"):
-            MPAConfig(dns_rebinding_protection=False, threshold=1, approvers=[])
+            mpa_mod.MPAConfig(dns_rebinding_protection=False, threshold=1, approvers=[])
 
 
 # ---------------------------------------------------------------------------
@@ -120,13 +166,15 @@ class TestMPAConfigValidation:
 
 class TestMPAAmountThreshold:
     def setup_method(self):
-        self.engine = MPAEngine(
-            MPAConfig(
+        self.engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=1,
                 min_amount_usd=5.00,
                 approvers=[
-                    MPAApproverConfig("alice", mode="webhook", webhook_url="https://a.internal")
+                    mpa_mod.MPAApproverConfig(
+                        "alice", mode="webhook", webhook_url="https://a.internal"
+                    )
                 ],
             )
         )
@@ -160,11 +208,13 @@ class TestMPACryptoMode:
 
     @pytest.mark.asyncio
     async def test_single_valid_signature_meets_threshold(self):
-        engine = MPAEngine(
-            MPAConfig(
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=1,
-                approvers=[MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)],
+                approvers=[
+                    mpa_mod.MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)
+                ],
             )
         )
         sig = _make_crypto_sig(ALICE_SECRET, self.details, self.amount_usd)
@@ -175,14 +225,16 @@ class TestMPACryptoMode:
 
     @pytest.mark.asyncio
     async def test_two_of_three_valid_signatures(self):
-        engine = MPAEngine(
-            MPAConfig(
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=2,
                 approvers=[
-                    MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET),
-                    MPAApproverConfig("bob", mode="crypto", shared_secret=BOB_SECRET),
-                    MPAApproverConfig("charlie", mode="crypto", shared_secret=CHARLIE_SECRET),
+                    mpa_mod.MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET),
+                    mpa_mod.MPAApproverConfig("bob", mode="crypto", shared_secret=BOB_SECRET),
+                    mpa_mod.MPAApproverConfig(
+                        "charlie", mode="crypto", shared_secret=CHARLIE_SECRET
+                    ),
                 ],
             )
         )
@@ -194,11 +246,13 @@ class TestMPACryptoMode:
 
     @pytest.mark.asyncio
     async def test_wrong_signature_is_rejected(self):
-        engine = MPAEngine(
-            MPAConfig(
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=1,
-                approvers=[MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)],
+                approvers=[
+                    mpa_mod.MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)
+                ],
             )
         )
         with pytest.raises(MPADeniedError) as exc_info:
@@ -212,11 +266,13 @@ class TestMPACryptoMode:
 
     @pytest.mark.asyncio
     async def test_missing_signature_is_denied(self):
-        engine = MPAEngine(
-            MPAConfig(
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=1,
-                approvers=[MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)],
+                approvers=[
+                    mpa_mod.MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)
+                ],
             )
         )
         with pytest.raises(MPADeniedError):
@@ -224,13 +280,13 @@ class TestMPACryptoMode:
 
     @pytest.mark.asyncio
     async def test_below_threshold_signatures_denied(self):
-        engine = MPAEngine(
-            MPAConfig(
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=2,
                 approvers=[
-                    MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET),
-                    MPAApproverConfig("bob", mode="crypto", shared_secret=BOB_SECRET),
+                    mpa_mod.MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET),
+                    mpa_mod.MPAApproverConfig("bob", mode="crypto", shared_secret=BOB_SECRET),
                 ],
             )
         )
@@ -252,12 +308,14 @@ class TestMPACryptoFreshness:
         self.amount_usd = 2.00
 
     def _engine(self, max_age: int = 300):
-        return MPAEngine(
-            MPAConfig(
+        return mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=1,
                 max_signature_age_seconds=max_age,
-                approvers=[MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)],
+                approvers=[
+                    mpa_mod.MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)
+                ],
             )
         )
 
@@ -281,7 +339,9 @@ class TestMPACryptoFreshness:
     async def test_legacy_format_without_timestamp_rejected(self):
         # A bare hex signature (old format, no "<ts>:" prefix) must not validate.
         legacy = hmac.new(
-            ALICE_SECRET, _canonical_payload(self.details, self.amount_usd, 0), hashlib.sha256
+            ALICE_SECRET,
+            mpa_mod._canonical_payload(self.details, self.amount_usd, 0),
+            hashlib.sha256,
         ).hexdigest()
         with pytest.raises(MPADeniedError):
             await self._engine().request_approval(
@@ -301,11 +361,13 @@ class TestMPACryptoFreshness:
 
     def test_invalid_max_age_rejected(self):
         with pytest.raises(ValueError, match="max_signature_age_seconds"):
-            MPAConfig(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=1,
                 max_signature_age_seconds=0,
-                approvers=[MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)],
+                approvers=[
+                    mpa_mod.MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET)
+                ],
             )
 
 
@@ -318,19 +380,19 @@ class TestMPAWebhookMode:
     def setup_method(self):
         self.details = _make_details(amount="3.00")
         self.amount_usd = 3.00
-        self.engine = MPAEngine(
-            MPAConfig(
+        self.engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=2,
                 timeout_seconds=5.0,
                 approvers=[
-                    MPAApproverConfig(
+                    mpa_mod.MPAApproverConfig(
                         "alice", mode="webhook", webhook_url="https://approvals.internal/alice"
                     ),
-                    MPAApproverConfig(
+                    mpa_mod.MPAApproverConfig(
                         "bob", mode="webhook", webhook_url="https://approvals.internal/bob"
                     ),
-                    MPAApproverConfig(
+                    mpa_mod.MPAApproverConfig(
                         "charlie", mode="webhook", webhook_url="https://approvals.internal/charlie"
                     ),
                 ],
@@ -406,12 +468,12 @@ class TestMPAWebhookMode:
 
     @pytest.mark.asyncio
     async def test_approved_error_message_is_informative(self):
-        engine = MPAEngine(
-            MPAConfig(
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[
-                    MPAApproverConfig(
+                    mpa_mod.MPAApproverConfig(
                         "alice", mode="webhook", webhook_url="https://approvals.internal/alice"
                     ),
                 ],
@@ -447,12 +509,12 @@ class TestMPAWebhookHMAC:
     @pytest.mark.asyncio
     async def test_valid_hmac_header_counts_as_approval(self):
         """Webhook approver with shared_secret + correct X-MPA-HMAC → approved."""
-        engine = MPAEngine(
-            MPAConfig(
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[
-                    MPAApproverConfig(
+                    mpa_mod.MPAApproverConfig(
                         "alice",
                         mode="webhook",
                         webhook_url="https://approvals.internal/alice",
@@ -477,12 +539,12 @@ class TestMPAWebhookHMAC:
     @pytest.mark.asyncio
     async def test_missing_hmac_header_treated_as_denied(self):
         """Webhook approver with shared_secret but no X-MPA-HMAC header → denied."""
-        engine = MPAEngine(
-            MPAConfig(
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[
-                    MPAApproverConfig(
+                    mpa_mod.MPAApproverConfig(
                         "alice",
                         mode="webhook",
                         webhook_url="https://approvals.internal/alice",
@@ -505,12 +567,12 @@ class TestMPAWebhookHMAC:
     @pytest.mark.asyncio
     async def test_wrong_hmac_header_treated_as_denied(self):
         """Webhook approver with shared_secret + tampered X-MPA-HMAC header → denied."""
-        engine = MPAEngine(
-            MPAConfig(
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[
-                    MPAApproverConfig(
+                    mpa_mod.MPAApproverConfig(
                         "alice",
                         mode="webhook",
                         webhook_url="https://approvals.internal/alice",
@@ -535,12 +597,12 @@ class TestMPAWebhookHMAC:
     @pytest.mark.asyncio
     async def test_no_shared_secret_skips_hmac_check(self):
         """Webhook approver without shared_secret accepts response without X-MPA-HMAC."""
-        engine = MPAEngine(
-            MPAConfig(
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[
-                    MPAApproverConfig(
+                    mpa_mod.MPAApproverConfig(
                         "alice",
                         mode="webhook",
                         webhook_url="https://approvals.internal/alice",
@@ -573,13 +635,13 @@ class TestMPAMixedMode:
     @pytest.mark.asyncio
     async def test_crypto_plus_webhook_meets_threshold(self):
         """Alice provides crypto sig; Bob approves via webhook; threshold 2 → approved."""
-        engine = MPAEngine(
-            MPAConfig(
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=2,
                 approvers=[
-                    MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET),
-                    MPAApproverConfig(
+                    mpa_mod.MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET),
+                    mpa_mod.MPAApproverConfig(
                         "bob", mode="webhook", webhook_url="https://approvals.internal/bob"
                     ),
                 ],
@@ -597,13 +659,13 @@ class TestMPAMixedMode:
     @pytest.mark.asyncio
     async def test_crypto_valid_but_webhook_denied_below_threshold(self):
         """Alice provides valid crypto sig; Bob denies; threshold 2 → MPADeniedError."""
-        engine = MPAEngine(
-            MPAConfig(
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=2,
                 approvers=[
-                    MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET),
-                    MPAApproverConfig(
+                    mpa_mod.MPAApproverConfig("alice", mode="crypto", shared_secret=ALICE_SECRET),
+                    mpa_mod.MPAApproverConfig(
                         "bob", mode="webhook", webhook_url="https://approvals.internal/bob"
                     ),
                 ],
@@ -628,24 +690,26 @@ class TestMPAMixedMode:
 class TestCanonicalPayload:
     def test_same_details_and_timestamp_produce_same_payload(self):
         details = _make_details()
-        p1 = _canonical_payload(details, 1.00, 1000)
-        p2 = _canonical_payload(details, 1.00, 1000)
+        p1 = mpa_mod._canonical_payload(details, 1.00, 1000)
+        p2 = mpa_mod._canonical_payload(details, 1.00, 1000)
         assert p1 == p2
 
     def test_different_amounts_produce_different_payloads(self):
         details = _make_details()
-        p1 = _canonical_payload(details, 1.00, 1000)
-        p2 = _canonical_payload(details, 2.00, 1000)
+        p1 = mpa_mod._canonical_payload(details, 1.00, 1000)
+        p2 = mpa_mod._canonical_payload(details, 2.00, 1000)
         assert p1 != p2
 
     def test_different_timestamp_produces_different_payload(self):
         # F-8: the timestamp is part of the signed material.
         details = _make_details()
-        assert _canonical_payload(details, 1.00, 1000) != _canonical_payload(details, 1.00, 2000)
+        assert mpa_mod._canonical_payload(details, 1.00, 1000) != mpa_mod._canonical_payload(
+            details, 1.00, 2000
+        )
 
     def test_payload_is_valid_json(self):
         details = _make_details()
-        payload = _canonical_payload(details, 1.00, 1700000000)
+        payload = mpa_mod._canonical_payload(details, 1.00, 1700000000)
         parsed = json.loads(payload)
         assert parsed["resource_url"] == details.resource_url
         assert "amount_usd" in parsed
@@ -667,12 +731,12 @@ class TestMPAWebhookOutboundHMAC:
     @pytest.mark.asyncio
     async def test_outbound_request_carries_hmac_when_shared_secret_set(self):
         """When approver has shared_secret, X-MPA-REQUEST-HMAC must match HMAC(secret, body)."""
-        engine = MPAEngine(
-            MPAConfig(
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[
-                    MPAApproverConfig(
+                    mpa_mod.MPAApproverConfig(
                         "alice",
                         mode="webhook",
                         webhook_url="https://approvals.internal/alice",
@@ -707,12 +771,12 @@ class TestMPAWebhookOutboundHMAC:
     @pytest.mark.asyncio
     async def test_outbound_request_omits_hmac_when_no_shared_secret(self):
         """Backwards-compat: no shared_secret → no header; approver runs unauthenticated."""
-        engine = MPAEngine(
-            MPAConfig(
+        engine = mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
                 dns_rebinding_protection=False,
                 threshold=1,
                 approvers=[
-                    MPAApproverConfig(
+                    mpa_mod.MPAApproverConfig(
                         "alice",
                         mode="webhook",
                         webhook_url="https://approvals.internal/alice",

@@ -74,6 +74,14 @@ class TestInit:
         )
         assert c._base_url == "http://localhost:8080"
 
+    def test_allow_insecure_rejects_non_loopback_http_host(self) -> None:
+        with pytest.raises(ValueError, match="localhost|loopback"):
+            ScreeningClient(
+                base_url="http://screen.presidio-group.eu",
+                api_key=API_KEY,
+                allow_insecure=True,
+            )
+
     def test_unknown_scheme_rejected(self) -> None:
         with pytest.raises(ValueError, match="https://"):
             ScreeningClient(base_url="ftp://example.com", api_key=API_KEY)
@@ -91,6 +99,44 @@ class TestResponseSizeCap:
             async with ScreeningClient(BASE, API_KEY) as c:
                 with pytest.raises(ScreeningUnavailableError, match="too large"):
                     await c.scan_payment_fields("https://api.example.com/x", "d", "")
+
+
+class TestResponseShape:
+    @pytest.mark.asyncio
+    async def test_top_level_non_object_rejected(self) -> None:
+        with respx.mock:
+            respx.post(SCREEN_URL).mock(return_value=httpx.Response(200, json=[]))
+            async with ScreeningClient(BASE, API_KEY) as c:
+                with pytest.raises(ScreeningUnavailableError, match="invalid JSON shape"):
+                    await c.scan_payment_fields("https://x", "y", "z")
+
+    @pytest.mark.asyncio
+    async def test_redacted_field_must_be_string(self) -> None:
+        body = _ok_body()
+        body["redacted_resource_url"] = {"nested": "not allowed"}
+        with respx.mock:
+            respx.post(SCREEN_URL).mock(return_value=httpx.Response(200, json=body))
+            async with ScreeningClient(BASE, API_KEY) as c:
+                with pytest.raises(ScreeningUnavailableError, match="redacted_resource_url"):
+                    await c.scan_payment_fields("https://x", "y", "z")
+
+    @pytest.mark.asyncio
+    async def test_redacted_field_size_is_bounded(self) -> None:
+        body = _ok_body(redacted_desc="x" * 20_000)
+        with respx.mock:
+            respx.post(SCREEN_URL).mock(return_value=httpx.Response(200, json=body))
+            async with ScreeningClient(BASE, API_KEY) as c:
+                with pytest.raises(ScreeningUnavailableError, match="redacted_description"):
+                    await c.scan_payment_fields("https://x", "y", "z")
+
+    @pytest.mark.asyncio
+    async def test_entity_type_must_be_bounded_string(self) -> None:
+        body = _ok_body(entities=[{"entity_type": ["EMAIL_ADDRESS"], "count": 1}])
+        with respx.mock:
+            respx.post(SCREEN_URL).mock(return_value=httpx.Response(200, json=body))
+            async with ScreeningClient(BASE, API_KEY) as c:
+                with pytest.raises(ScreeningUnavailableError, match="entity_type"):
+                    await c.scan_payment_fields("https://x", "y", "z")
 
 
 class TestHappyPath:
@@ -143,6 +189,31 @@ class TestHappyPath:
             async with ScreeningClient(BASE, API_KEY) as c:
                 _, _, _, entities = await c.scan_payment_fields("https://x", "y", "z")
         assert len(entities) == 3
+
+    @pytest.mark.asyncio
+    async def test_huge_entity_count_rejected(self) -> None:
+        body = _ok_body(
+            entities=[{"entity_type": "EMAIL_ADDRESS", "field": "description", "count": 10_000}]
+        )
+        with respx.mock:
+            respx.post(SCREEN_URL).mock(return_value=httpx.Response(200, json=body))
+            async with ScreeningClient(BASE, API_KEY) as c:
+                with pytest.raises(ScreeningUnavailableError, match="count too large"):
+                    await c.scan_payment_fields("https://x", "y", "z")
+
+    @pytest.mark.asyncio
+    async def test_total_entity_count_rejected(self) -> None:
+        body = _ok_body(
+            entities=[
+                {"entity_type": "EMAIL_ADDRESS", "field": "description", "count": 32}
+                for _ in range(9)
+            ]
+        )
+        with respx.mock:
+            respx.post(SCREEN_URL).mock(return_value=httpx.Response(200, json=body))
+            async with ScreeningClient(BASE, API_KEY) as c:
+                with pytest.raises(ScreeningUnavailableError, match="too many entities"):
+                    await c.scan_payment_fields("https://x", "y", "z")
 
 
 class TestErrorMapping:

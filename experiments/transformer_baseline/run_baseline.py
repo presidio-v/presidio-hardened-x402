@@ -24,10 +24,10 @@ _ROOT = Path(__file__).parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from corpus.generate import CORPUS_DIR, load_corpus
-from experiments.evaluate import evaluate_corpus
-from experiments.run_sweep import ALL_ENTITY_TYPES
-from experiments.transformer_baseline.piiranha_filter import PiiranhaFilter
+from corpus.generate import CORPUS_DIR, load_corpus  # noqa: E402
+from experiments.evaluate import evaluate_corpus  # noqa: E402
+from experiments.run_sweep import ALL_ENTITY_TYPES  # noqa: E402
+from experiments.transformer_baseline.piiranha_filter import PiiranhaFilter  # noqa: E402
 
 RESULTS_DIR = Path(__file__).parent.parent / "results"
 
@@ -56,7 +56,7 @@ def run_sweep(
     if sample_n is not None and sample_n < len(samples):
         import random
 
-        rng = random.Random(42)
+        rng = random.Random(42)  # noqa: S311 - deterministic experiment sampling
         samples = rng.sample(samples, sample_n)
         print(f"  Downsampled to {len(samples)} samples.")
     else:

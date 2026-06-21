@@ -6,7 +6,47 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [0.6.0] — 2026-06-21
+
+The production-hardening and evidence-substrate release. v0.6.0 closes the
+v0.6.0 hardening payload, records human-pentest retest closure with no open
+Critical/High/Medium findings, and keeps prompt-injection / agent-bound response
+scanning issue #23 deferred outside this release.
+
 ### Added
+- **Enterprise remote audit sinks** (`audit_sinks.py`): `S3AuditWriter`,
+  `SplunkAuditWriter`, `DatadogAuditWriter`, and `MultiAuditWriter` provide
+  bounded, fail-safe fan-out to object storage and SIEM/log-intake targets. The
+  Splunk sink requires HTTPS HEC URLs; the Datadog sink validates the `site`
+  hostname component.
+- **OpenTelemetry spans** for security-control activations. The optional `[otel]`
+  extra adds `opentelemetry-api`; absent the extra, span creation is a no-op.
+- **Policy hot-reload**: `PolicyEngine.update_config()` and
+  `HardenedX402Client.update_policy()` allow thread-safe runtime policy swaps
+  without reconstructing the client.
+- **Per-tenant replay namespaces** in `ReplayGuard`, preserving replay isolation
+  for multi-tenant deployments that share Redis.
+- **Hard startup gates** for production key material:
+  `PRESIDIO_X402_REQUIRE_CHAIN_KEY=1` and
+  `PRESIDIO_X402_REQUIRE_FINGERPRINT_KEY=1` hard-fail when stable keys are absent.
+- **Latency SLO CI gate**: regex PII p99 is benchmarked and fails CI above the
+  50 ms budget.
+- **All-matrix coverage upload**: Codecov now receives coverage for each Python
+  matrix leg instead of Python 3.12 only. This closes GitHub issue #49 when the
+  v0.6.0 branch merges.
+- **SLSA/OIDC release hardening**: the publish workflow uses PyPI Trusted
+  Publishing, generates a CycloneDX SBOM, attaches release assets only after
+  successful PyPI publish, and creates build provenance attestations.
+- **Docker supply-chain pinning**: `tools/docker/Dockerfile` digest-pins the
+  Python base image and installs the spaCy model from a hash-pinned wheel.
+- **Human pentest spec and retest evidence** are recorded in the internal
+  security-audit artifacts. Both Medium findings from the pentest protocol were
+  remediated and retested.
+- **Action reference primitive**: `compute_action_ref()` and
+  `format_action_ref_timestamp()` expose deterministic action-ref derivation for
+  pre-execution decision trails.
 - **MiCA/EU evidence module** (`mica.py`, session-3 T3): emits Ed25519-signed
   (or HMAC-SHA256) compliance-supporting evidence in the cross-repo
   `presidio-hardened/evidence-ref@1` wire format over a verified audit window.
@@ -20,8 +60,36 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Fail-closed throughout: broken audit chain, missing key, empty window, or
   missing deployment flags refuse to sign. Research memo with per-claim
   verification status: `docs/mica-obligations.md`. New optional extra
-  `[evidence]` (cryptography>=46.0.6); HMAC mode needs no extra. Public API:
+  `[evidence]` (cryptography>=48.0.1); HMAC mode needs no extra. Public API:
   `build_evidence`, `Obligation`, `OBLIGATION_MAP`, `EvidenceError`.
+- **Evidence read path**: `verify_ref`, `verify_ed25519`, `verify_hmac`,
+  `load_trust_store`, and `parse_document` verify the vendored
+  `evidence-ref@1` vectors fail-closed with trust-store rotation support.
+
+### Changed
+- Amount parsing and policy ledgers now use `Decimal` internally to avoid float
+  drift around spending-policy boundaries.
+- The CrewAI optional extra remains intentionally empty until CrewAI's unresolved
+  `chromadb` CVE has a fixed version; the adapter stays importable for
+  integrators who install and audit CrewAI separately.
+
+### Fixed
+- Hosted screening client 200 responses are now validated for top-level object
+  shape, bounded string redacted fields, bounded string entity types, and bounded
+  entity counts.
+- `verify_ref()` now returns `False` instead of raising for malformed raw trust
+  entries, matching the documented fail-closed boolean contract.
+- Regex-mode credit-card redaction now catches common dashed, spaced, and
+  Unicode-hyphen-normalized card numbers in `resource_url`, `description`, and
+  `reason`.
+
+### Security
+- Added explicit minimum-safe dependency floors for `urllib3>=2.7.0`,
+  `cryptography>=48.0.1`, and `idna>=3.15`; project-scoped and all-extras
+  dependency audits report no known vulnerabilities.
+- Release workflow actions are pinned to immutable commit SHAs.
+- Issue #23 (third-party prompt/content injection into agent-bound envelopes) is
+  explicitly deferred and remains open; it is not a v0.6.0 release blocker.
 
 ## [0.5.0] — 2026-06-12
 

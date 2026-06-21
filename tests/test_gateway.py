@@ -303,6 +303,20 @@ async def test_policy_violation_raises_policy_violation_error():
 
 
 @pytest.mark.asyncio
+async def test_update_policy_on_running_client_blocks_next_payment():
+    """A live client picks up hot-reloaded policy without reconstruction."""
+    with respx.mock:
+        respx.get("https://api.example.com/v1/data").mock(
+            return_value=httpx.Response(402, headers={"X-PAYMENT": PAYMENT_HEADER_VALUE})
+        )
+        async with _make_client(policy={"max_per_call_usd": 1.00}) as client:
+            active = client.update_policy({"max_per_call_usd": 0.005})
+            assert active.max_per_call_usd == pytest.approx(0.005)
+            with pytest.raises(PolicyViolationError, match="per-call limit"):
+                await client.get("https://api.example.com/v1/data")
+
+
+@pytest.mark.asyncio
 async def test_policy_respected_accumulates_across_calls():
     """Daily limit blocks subsequent payments after budget exhausted."""
     with respx.mock:

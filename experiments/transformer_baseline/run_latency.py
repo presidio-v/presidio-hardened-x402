@@ -24,9 +24,9 @@ _ROOT = Path(__file__).parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from corpus.generate import CORPUS_DIR, load_corpus
-from experiments.run_sweep import ALL_ENTITY_TYPES
-from experiments.transformer_baseline.piiranha_filter import PiiranhaFilter
+from corpus.generate import CORPUS_DIR, load_corpus  # noqa: E402
+from experiments.run_sweep import ALL_ENTITY_TYPES  # noqa: E402
+from experiments.transformer_baseline.piiranha_filter import PiiranhaFilter  # noqa: E402
 
 RESULTS_DIR = Path(__file__).parent.parent / "results"
 

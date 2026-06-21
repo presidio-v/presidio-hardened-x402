@@ -26,14 +26,18 @@ _ROOT = Path(__file__).parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from corpus.generate import CORPUS_DIR, load_corpus
-from experiments.evaluate import _overlaps  # noqa: PLC2701
+from corpus.generate import CORPUS_DIR, load_corpus  # noqa: E402
+from experiments.evaluate import _overlaps  # noqa: E402, PLC2701
 
 RESULTS_DIR = Path(__file__).parent / "results"
 
 ALL_ENTITIES = [
-    "EMAIL_ADDRESS", "PERSON", "PHONE_NUMBER",
-    "US_SSN", "CREDIT_CARD", "IBAN_CODE",
+    "EMAIL_ADDRESS",
+    "PERSON",
+    "PHONE_NUMBER",
+    "US_SSN",
+    "CREDIT_CARD",
+    "IBAN_CODE",
 ]
 
 
@@ -117,22 +121,20 @@ def bootstrap(
     print(f"  Bootstrap-resampling {n_bootstrap} times (seed={seed})...")
 
     rng = np.random.default_rng(seed)
-    N = len(per_sample)
+    n_samples = len(per_sample)
 
     micro_p = np.empty(n_bootstrap)
     micro_r = np.empty(n_bootstrap)
     micro_f1 = np.empty(n_bootstrap)
-    per_entity_f1: dict[str, np.ndarray] = {
-        et: np.empty(n_bootstrap) for et in ALL_ENTITIES
-    }
+    per_entity_f1: dict[str, np.ndarray] = {et: np.empty(n_bootstrap) for et in ALL_ENTITIES}
 
     for k in range(n_bootstrap):
-        idx = rng.integers(0, N, size=N)
+        idx = rng.integers(0, n_samples, size=n_samples)
         totals = _aggregate(per_sample, idx)
-        TP = sum(t[0] for t in totals.values())
-        FP = sum(t[1] for t in totals.values())
-        FN = sum(t[2] for t in totals.values())
-        p, r, f1 = _f1(TP, FP, FN)
+        tp = sum(t[0] for t in totals.values())
+        fp = sum(t[1] for t in totals.values())
+        fn = sum(t[2] for t in totals.values())
+        p, r, f1 = _f1(tp, fp, fn)
         micro_p[k] = p
         micro_r[k] = r
         micro_f1[k] = f1
@@ -149,7 +151,7 @@ def bootstrap(
         )
 
     return {
-        "n_samples": N,
+        "n_samples": n_samples,
         "n_bootstrap": n_bootstrap,
         "seed": seed,
         "micro_precision": _ci(micro_p),

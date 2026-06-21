@@ -4,7 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.5.x   | ✓ (current) |
+| 0.6.x   | ✓ (latest release) |
+| 0.5.x   | ✓ |
 | 0.4.x   | ✓ |
 | 0.3.x   | security fixes only |
 
@@ -38,6 +39,10 @@ presidio-hardened-x402 provides the following security controls for x402 payment
    via webhook or HMAC-SHA256 cryptographic countersignature modes (v0.3.0+)
 6. **Prometheus metrics** — Structured telemetry for all security control activations,
    enabling real-time alerting on policy violations, PII detections, and replay attempts (v0.3.0+)
+7. **Enterprise audit sinks** — Optional S3, Splunk HEC, and Datadog audit writers
+   with bounded buffers and TLS enforcement (v0.6.0+)
+8. **Evidence verification** — Signed `evidence-ref@1` emission and trust-store-backed
+   verification for compliance-supporting audit windows (v0.6.0+)
 
 ### Automatic vs. opt-in controls
 
@@ -57,6 +62,9 @@ active unless you enable them.
 | Multi-party authorization (MPA) | Opt-in | Construct and pass an `MPAEngine` |
 | Hosted screening service | Opt-in | `remote_screening=True` + a `screening_client` (local regex still runs as backstop) |
 | Prometheus metrics | Opt-in | Install `prometheus-client` and wire a `MetricsCollector` (graceful no-op when absent) |
+| OpenTelemetry spans | Opt-in | Install `[otel]` and configure an exporter; disabled is a no-op |
+| Remote audit sinks | Opt-in | Use `MultiAuditWriter` with `S3AuditWriter`, `SplunkAuditWriter`, or `DatadogAuditWriter` |
+| Evidence signing / verification | Opt-in | Use `build_evidence()` / `verify_ref()` with a deployment trust store |
 
 Header/secret redaction at the logging sink ships in v0.5.0 (family audit rec
 R2): `install_log_redaction()` runs at package import and scrubs API keys,
@@ -95,6 +103,9 @@ See `PRESIDIO-REQ.md` for the full threat model and security design rationale.
   only (emails, SSNs, credit cards, phone numbers) and may miss free-text PII
 - The in-memory replay guard does not persist across process restarts; use the Redis
   backend for production deployments requiring cross-process deduplication
+- The CrewAI adapter remains importable, but the `crewai` extra is intentionally
+  empty until CrewAI's `chromadb` dependency has a fixed release for CVE-2026-45829.
+  Install CrewAI separately only after your own dependency audit and risk acceptance.
 
 ## Software Development Lifecycle
 

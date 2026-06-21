@@ -53,24 +53,40 @@ from datetime import datetime, timezone
 from typing import IO
 
 from ._types import AuditEvent, AuditWriter
+from .exceptions import ConfigurationError
 
 logger = logging.getLogger("presidio_x402.audit_log")
 
-_chain_key_hex = os.environ.get("PRESIDIO_X402_CHAIN_KEY")
-if _chain_key_hex:
-    try:
-        _CHAIN_KEY = bytes.fromhex(_chain_key_hex)
-    except ValueError as _exc:
-        raise ValueError(
-            "PRESIDIO_X402_CHAIN_KEY must be a 64-character hex string (32 bytes); "
-            f"got {len(_chain_key_hex)} characters"
-        ) from _exc
-    if len(_CHAIN_KEY) != 32:
-        raise ValueError(
-            f"PRESIDIO_X402_CHAIN_KEY must decode to exactly 32 bytes; got {len(_CHAIN_KEY)}"
-        )
-    logger.debug("AuditLog: loaded persistent chain key from PRESIDIO_X402_CHAIN_KEY")
-else:
+#: Opt-in hard gate: when truthy, a missing chain key fails import (fail-closed)
+#: rather than silently using a process-scoped key with no cross-session integrity.
+_REQUIRE_CHAIN_KEY_ENV = "PRESIDIO_X402_REQUIRE_CHAIN_KEY"
+
+
+def _require_chain_key() -> bool:
+    return os.environ.get(_REQUIRE_CHAIN_KEY_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _load_chain_key() -> bytes:
+    """Load the HMAC chain key, or fail-closed when the operator demanded one.
+
+    Wrapped in a function (not inline) so the gate is unit-testable without a
+    module reload.
+    """
+    chain_key_hex = os.environ.get("PRESIDIO_X402_CHAIN_KEY")
+    if chain_key_hex:
+        try:
+            key = bytes.fromhex(chain_key_hex)
+        except ValueError as exc:
+            raise ValueError(
+                "PRESIDIO_X402_CHAIN_KEY must be a 64-character hex string (32 bytes); "
+                f"got {len(chain_key_hex)} characters"
+            ) from exc
+        if len(key) != 32:
+            raise ValueError(
+                f"PRESIDIO_X402_CHAIN_KEY must decode to exactly 32 bytes; got {len(key)}"
+            )
+        logger.debug("AuditLog: loaded persistent chain key from PRESIDIO_X402_CHAIN_KEY")
+        return key
     logger.error(
         "PRESIDIO_X402_CHAIN_KEY not set — audit HMAC chain is process-scoped "
         "and cross-session tamper detection is disabled. Set this env var "
@@ -78,7 +94,16 @@ else:
         "WARNING because the default is silently insecure in any deployment "
         "that survives a process restart; treat as a deployment-time defect."
     )
-    _CHAIN_KEY = secrets.token_bytes(32)
+    if _require_chain_key():
+        raise ConfigurationError(
+            "PRESIDIO_X402_CHAIN_KEY is not set, but PRESIDIO_X402_REQUIRE_CHAIN_KEY is set. "
+            "Refusing to start with a process-scoped audit chain key (fail-closed): provide a "
+            "32-byte hex key persisted across restarts, or unset the REQUIRE gate for dev."
+        )
+    return secrets.token_bytes(32)
+
+
+_CHAIN_KEY = _load_chain_key()
 
 
 def _hmac_entry(content: str) -> str:
@@ -243,7 +268,10 @@ class AuditLog:
                 self._writer.write(event)
             except Exception:
                 logger.exception("Audit writer failed to write event")
-            # Update chain regardless of write success to maintain chain integrity
+                raise
+            # Advance the HMAC chain only after the event was durably accepted by
+            # the writer. A missing audit entry must not become the predecessor of
+            # later events.
             entry_json = json.dumps(_event_to_dict(event), default=str)
             self._prev_hmac = _hmac_entry(entry_json)
 

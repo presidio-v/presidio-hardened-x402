@@ -21,11 +21,22 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
 
 from .exceptions import PolicyViolationError
 
 logger = logging.getLogger("presidio_x402.policy_engine")
+
+
+def _decimal_usd(value: float | int | str | Decimal, field_name: str) -> Decimal:
+    try:
+        amount = Decimal(str(value))
+    except InvalidOperation as exc:
+        raise ValueError(f"{field_name} must be a finite non-negative USD amount") from exc
+    if not amount.is_finite() or amount < 0:
+        raise ValueError(f"{field_name} must be a finite non-negative USD amount")
+    return amount
 
 
 @dataclass
@@ -64,32 +75,53 @@ class PolicyConfig:
         )
 
 
+def _coerce_config(config: PolicyConfig | dict | None) -> PolicyConfig:
+    if config is None:
+        return PolicyConfig()
+    if isinstance(config, dict):
+        return PolicyConfig.from_dict(config)
+    return config
+
+
+def _validate_config(config: PolicyConfig) -> None:
+    if config.max_per_call_usd is not None:
+        _decimal_usd(config.max_per_call_usd, "max_per_call_usd")
+    if config.daily_limit_usd is not None:
+        _decimal_usd(config.daily_limit_usd, "daily_limit_usd")
+    for prefix, limit in config.per_endpoint.items():
+        _decimal_usd(limit, f"per_endpoint[{prefix!r}]")
+
+
 class _SpendLedger:
     """Thread-safe rolling time-window spend ledger."""
 
     def __init__(self, window_seconds: int) -> None:
         self._window = window_seconds
         self._lock = threading.Lock()
-        # List of (timestamp, amount_usd) pairs
-        self._entries: list[tuple[float, float]] = []
+        # List of (timestamp, amount_usd) pairs. Amounts are Decimal internally
+        # so aggregate policy boundaries are not subject to binary float drift.
+        self._entries: list[tuple[float, Decimal]] = []
 
     def _evict_stale(self, now: float) -> None:
         cutoff = now - self._window
         self._entries = [(ts, amt) for ts, amt in self._entries if ts >= cutoff]
 
-    def total(self) -> float:
+    def _total_decimal(self) -> Decimal:
         now = time.monotonic()
         with self._lock:
             self._evict_stale(now)
-            return sum(amt for _, amt in self._entries)
+            return sum((amt for _, amt in self._entries), Decimal("0"))
 
-    def record(self, amount_usd: float) -> None:
+    def total(self) -> float:
+        return float(self._total_decimal())
+
+    def record(self, amount_usd: Decimal) -> None:
         now = time.monotonic()
         with self._lock:
             self._evict_stale(now)
             self._entries.append((now, amount_usd))
 
-    def release(self, amount_usd: float) -> bool:
+    def release(self, amount_usd: Decimal) -> bool:
         """Reverse a single previously recorded *amount_usd* entry.
 
         Removes the most-recent entry matching the amount (the one just
@@ -103,12 +135,18 @@ class _SpendLedger:
                     return True
         return False
 
-    def would_exceed(self, amount_usd: float, limit_usd: float) -> bool:
-        return self.total() + amount_usd > limit_usd
+    def would_exceed(self, amount_usd: Decimal, limit_usd: Decimal) -> bool:
+        return self._total_decimal() + amount_usd > limit_usd
 
     def reset(self) -> None:
         with self._lock:
             self._entries.clear()
+
+    def reconfigure_window(self, window_seconds: int) -> None:
+        now = time.monotonic()
+        with self._lock:
+            self._window = window_seconds
+            self._evict_stale(now)
 
 
 def _endpoint_prefix_matches(prefix: str, url: str) -> bool:
@@ -137,10 +175,8 @@ class PolicyEngine:
     """
 
     def __init__(self, config: PolicyConfig | dict | None = None) -> None:
-        if config is None:
-            config = PolicyConfig()
-        elif isinstance(config, dict):
-            config = PolicyConfig.from_dict(config)
+        config = _coerce_config(config)
+        _validate_config(config)
         self.config = config
         self._global_ledger = _SpendLedger(config.window_seconds)
         self._endpoint_ledgers: dict[str, _SpendLedger] = {}
@@ -149,6 +185,25 @@ class PolicyEngine:
         # concurrent callers both pass would_exceed() then both record, pushing
         # aggregate spend over the configured limit.
         self._check_lock = threading.Lock()
+
+    def update_config(self, config: PolicyConfig | dict | None) -> PolicyConfig:
+        """Atomically replace the active policy configuration.
+
+        Existing spend ledgers are preserved so a tighter limit immediately
+        applies to the current rolling window. Changing ``window_seconds``
+        updates the active ledgers and evicts entries that are stale under the
+        new window.
+        """
+        new_config = _coerce_config(config)
+        _validate_config(new_config)
+        with self._check_lock:
+            self.config = new_config
+            self._global_ledger.reconfigure_window(new_config.window_seconds)
+            with self._ledger_lock:
+                for ledger in self._endpoint_ledgers.values():
+                    ledger.reconfigure_window(new_config.window_seconds)
+        logger.info("PolicyEngine config hot-reloaded")
+        return new_config
 
     def _get_endpoint_ledger(self, prefix: str) -> _SpendLedger:
         with self._ledger_lock:
@@ -194,28 +249,38 @@ class PolicyEngine:
         amount_usd:
             The payment amount in USD.
         """
-        # 1. Per-call limit — stateless, safe to check outside the serialisation lock
-        if self.config.max_per_call_usd is not None and amount_usd > self.config.max_per_call_usd:
-            logger.warning(
-                "Policy violation: per-call limit %.4f USD, requested %.4f USD for %s",
-                self.config.max_per_call_usd,
-                amount_usd,
-                resource_url,
-            )
-            raise PolicyViolationError(
-                f"Payment of ${amount_usd:.4f} exceeds per-call limit of "
-                f"${self.config.max_per_call_usd:.4f}",
-                amount_usd=amount_usd,
-                limit_usd=self.config.max_per_call_usd,
-            )
+        amount_dec = _decimal_usd(amount_usd, "amount_usd")
 
-        # 2 & 3. Aggregate and per-endpoint checks + recording are performed under
-        # a single lock to prevent TOCTOU races where two concurrent callers both
-        # pass would_exceed() and then both record, pushing spend over the limit.
+        # All config reads and aggregate recording are performed under one lock.
+        # This keeps runtime policy hot-reloads coherent with in-flight checks
+        # and preserves the original TOCTOU protection for aggregate ledgers.
         with self._check_lock:
+            # 1. Per-call limit
+            if self.config.max_per_call_usd is not None:
+                max_per_call_dec = _decimal_usd(self.config.max_per_call_usd, "max_per_call_usd")
+            else:
+                max_per_call_dec = None
+            if max_per_call_dec is not None and amount_dec > max_per_call_dec:
+                logger.warning(
+                    "Policy violation: per-call limit %.4f USD, requested %.4f USD for %s",
+                    self.config.max_per_call_usd,
+                    amount_usd,
+                    resource_url,
+                )
+                raise PolicyViolationError(
+                    f"Payment of ${amount_usd:.4f} exceeds per-call limit of "
+                    f"${self.config.max_per_call_usd:.4f}",
+                    amount_usd=amount_usd,
+                    limit_usd=self.config.max_per_call_usd,
+                )
+
             # 2. Global aggregate limit
-            if self.config.daily_limit_usd is not None and self._global_ledger.would_exceed(
-                amount_usd, self.config.daily_limit_usd
+            if self.config.daily_limit_usd is not None:
+                daily_limit_dec = _decimal_usd(self.config.daily_limit_usd, "daily_limit_usd")
+            else:
+                daily_limit_dec = None
+            if daily_limit_dec is not None and self._global_ledger.would_exceed(
+                amount_dec, daily_limit_dec
             ):
                 current = self._global_ledger.total()
                 logger.warning(
@@ -235,8 +300,9 @@ class PolicyEngine:
             prefix = self._matching_endpoint_prefix(resource_url)
             if prefix is not None:
                 ep_limit = self.config.per_endpoint[prefix]
+                ep_limit_dec = _decimal_usd(ep_limit, f"per_endpoint[{prefix!r}]")
                 ep_ledger = self._get_endpoint_ledger(prefix)
-                if ep_ledger.would_exceed(amount_usd, ep_limit):
+                if ep_ledger.would_exceed(amount_dec, ep_limit_dec):
                     current = ep_ledger.total()
                     logger.warning(
                         "Policy violation: endpoint limit %.2f USD for %s, current %.4f + %.4f",
@@ -253,9 +319,9 @@ class PolicyEngine:
                     )
 
             # All checks passed — record atomically within the same lock acquisition
-            self._global_ledger.record(amount_usd)
+            self._global_ledger.record(amount_dec)
             if prefix is not None:
-                self._get_endpoint_ledger(prefix).record(amount_usd)
+                self._get_endpoint_ledger(prefix).record(amount_dec)
 
         logger.debug("Policy check passed: %.4f USD for %s", amount_usd, resource_url)
 
@@ -268,15 +334,17 @@ class PolicyEngine:
         recording done at check time, under the same serialisation lock. A
         no-op if the entry has already aged out of the window.
         """
+        amount_dec = _decimal_usd(amount_usd, "amount_usd")
         with self._check_lock:
-            self._global_ledger.release(amount_usd)
+            self._global_ledger.release(amount_dec)
             prefix = self._matching_endpoint_prefix(resource_url)
             if prefix is not None:
-                self._get_endpoint_ledger(prefix).release(amount_usd)
+                self._get_endpoint_ledger(prefix).release(amount_dec)
 
     def reset(self) -> None:
         """Reset all spend ledgers (useful in tests)."""
-        self._global_ledger.reset()
-        with self._ledger_lock:
-            for ledger in self._endpoint_ledgers.values():
-                ledger.reset()
+        with self._check_lock:
+            self._global_ledger.reset()
+            with self._ledger_lock:
+                for ledger in self._endpoint_ledgers.values():
+                    ledger.reset()

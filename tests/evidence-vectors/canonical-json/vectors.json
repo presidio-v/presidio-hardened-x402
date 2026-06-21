@@ -1,0 +1,102 @@
+{
+  "description": "Layer-0 canonical JSON profile: sorted keys, separators (\",\", \":\"), UTF-8, ensure_ascii=False. sha256_hex is the content hash over the canonical bytes. Strict profile (ADR-0001 D1): floats are REJECTED by conforming canonicalizers; payloads under 'rejected' must error.",
+  "cases": [
+    {
+      "name": "key-sorting",
+      "payload": {
+        "b": "2",
+        "a": "1",
+        "z": "26",
+        "m": "13"
+      },
+      "canonical": "{\"a\":\"1\",\"b\":\"2\",\"m\":\"13\",\"z\":\"26\"}",
+      "sha256_hex": "422a48419655c88ae7f6a07cf37ce405310f2f7fc446c192a1efdf300a1ed4f3"
+    },
+    {
+      "name": "nested-objects",
+      "payload": {
+        "outer": {
+          "y": [
+            "s",
+            "t"
+          ],
+          "x": {
+            "k": "v"
+          }
+        },
+        "alpha": "first"
+      },
+      "canonical": "{\"alpha\":\"first\",\"outer\":{\"x\":{\"k\":\"v\"},\"y\":[\"s\",\"t\"]}}",
+      "sha256_hex": "f57efa60c19052657cd01912d5b55b939e6c38ee1946e0aca4945defda0265c4"
+    },
+    {
+      "name": "unicode-preserved",
+      "payload": {
+        "name": "Käfer-Prüfung",
+        "city": "München",
+        "sz": "ß"
+      },
+      "canonical": "{\"city\":\"München\",\"name\":\"Käfer-Prüfung\",\"sz\":\"ß\"}",
+      "sha256_hex": "d48380d31bc591bf6859864db22f1cb6a527449417cdfc77d0eaee7f70d10959"
+    },
+    {
+      "name": "integers-allowed",
+      "payload": {
+        "count": 42,
+        "zero": 0,
+        "negative": -7
+      },
+      "canonical": "{\"count\":42,\"negative\":-7,\"zero\":0}",
+      "sha256_hex": "e01be1d76a0b904972403added802a1d629fbb1baf676d82211814ebd76f61b8"
+    },
+    {
+      "name": "booleans-null",
+      "payload": {
+        "flag": true,
+        "off": false,
+        "none": null
+      },
+      "canonical": "{\"flag\":true,\"none\":null,\"off\":false}",
+      "sha256_hex": "5455ee4bb5110739e4755e265ee0a158045472d0cd9b2610c618fdf45ec5d2b5"
+    },
+    {
+      "name": "empty-structures",
+      "payload": {
+        "obj": {},
+        "arr": [],
+        "s": ""
+      },
+      "canonical": "{\"arr\":[],\"obj\":{},\"s\":\"\"}",
+      "sha256_hex": "cb21fb26e9762b2ad84481ae53d34c4d8082d0a756ee9f7afcd22d0617430a31"
+    },
+    {
+      "name": "signing-message-shape",
+      "payload": {
+        "content_hash": "abc123def456",
+        "signer": "presidio-hardened-ai"
+      },
+      "canonical": "{\"content_hash\":\"abc123def456\",\"signer\":\"presidio-hardened-ai\"}",
+      "sha256_hex": "a3eb6903b1cf092b66b751417951da8a8e66554a338742d804ba97a2e134ba92"
+    }
+  ],
+  "rejected": [
+    {
+      "name": "float-top-level",
+      "payload": {
+        "amount": 1.5
+      },
+      "reason": "floats rejected (treasury-strict profile)"
+    },
+    {
+      "name": "float-nested",
+      "payload": {
+        "a": {
+          "b": [
+            1.0
+          ]
+        }
+      },
+      "reason": "floats rejected (treasury-strict profile)"
+    }
+  ]
+}

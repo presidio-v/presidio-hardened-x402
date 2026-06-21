@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
 
 from presidio_x402.exceptions import X402PaymentError
@@ -55,6 +58,24 @@ class TestPIIFilterRegexMode:
     # ------------------------------------------------------------------
     def test_detects_visa_card_number(self):
         _, entities = self.filt.scan_and_redact("card=4111111111111111")
+        assert any(e.entity_type == "CREDIT_CARD" for e in entities)
+
+    def test_detects_visa_card_number_with_dashes_in_url(self):
+        redacted, entities = self.filt.scan_and_redact(
+            "https://pay.example/checkout?card=4111-1111-1111-1111"
+        )
+        assert "4111-1111-1111-1111" not in redacted
+        assert "<REDACTED>" in redacted
+        assert any(e.entity_type == "CREDIT_CARD" for e in entities)
+
+    def test_detects_card_number_with_spaces(self):
+        redacted, entities = self.filt.scan_and_redact("card 5500 0055 5555 5559")
+        assert "5500 0055 5555 5559" not in redacted
+        assert any(e.entity_type == "CREDIT_CARD" for e in entities)
+
+    def test_detects_card_number_with_unicode_hyphens_after_normalisation(self):
+        redacted, entities = self.filt.scan_and_redact("card=4111\u20111111\u20111111\u20111111")
+        assert "4111-1111-1111-1111" not in redacted
         assert any(e.entity_type == "CREDIT_CARD" for e in entities)
 
     def test_detects_mastercard_number(self):
@@ -129,6 +150,17 @@ class TestPIIFilterRegexMode:
         assert "alice@example.com" not in clean_reason
         assert len(all_entities) == 3
 
+    def test_scan_payment_fields_redacts_separated_cards_in_all_primary_fields(self):
+        clean_url, clean_desc, clean_reason, entities = self.filt.scan_payment_fields(
+            resource_url="https://pay.example?card=4111-1111-1111-1111",
+            description="use 5500 0055 5555 5559",
+            reason="fallback card 3714-496353-98431",
+        )
+        assert "4111-1111-1111-1111" not in clean_url
+        assert "5500 0055 5555 5559" not in clean_desc
+        assert "3714-496353-98431" not in clean_reason
+        assert sum(1 for e in entities if e.entity_type == "CREDIT_CARD") == 3
+
     def test_scan_payment_fields_clean_input_unchanged(self):
         clean_url, clean_desc, clean_reason, entities = self.filt.scan_payment_fields(
             resource_url="https://api.example.com/items/42",
@@ -147,6 +179,103 @@ class TestPIIFilterRegexMode:
         filt = PIIFilter(mode="regex", redaction_template="[REDACTED:{entity_type}]")
         redacted, _ = filt.scan_and_redact("alice@example.com")
         assert "[REDACTED:EMAIL_ADDRESS]" in redacted
+
+    # ------------------------------------------------------------------
+    # NLP mode branch behavior (dependency-free fakes)
+    # ------------------------------------------------------------------
+    def test_nlp_scan_uses_analyzer_results_and_custom_operator(self, monkeypatch):
+        class FakeOperatorConfig:
+            def __init__(self, operator_name, params):
+                self.operator_name = operator_name
+                self.params = params
+
+        monkeypatch.setitem(
+            sys.modules,
+            "presidio_anonymizer.entities",
+            types.SimpleNamespace(OperatorConfig=FakeOperatorConfig),
+        )
+
+        class Finding:
+            entity_type = "EMAIL_ADDRESS"
+            start = 8
+            end = 25
+            score = 0.9
+
+        class LowConfidenceFinding:
+            entity_type = "PHONE_NUMBER"
+            start = 0
+            end = 7
+            score = 0.1
+
+        class FakeAnalyzer:
+            def analyze(self, *, text, entities, language):
+                assert text == "Contact alice@example.com"
+                assert entities == ["EMAIL_ADDRESS"]
+                assert language == "en"
+                return [Finding(), LowConfidenceFinding()]
+
+        class FakeAnonymizer:
+            def anonymize(self, *, text, analyzer_results, operators):
+                assert len(analyzer_results) == 1
+                cfg = operators["EMAIL_ADDRESS"]
+                assert cfg.operator_name == "replace"
+                assert cfg.params == {"new_value": "[EMAIL_ADDRESS]"}
+                return types.SimpleNamespace(
+                    text=text.replace("alice@example.com", "[EMAIL_ADDRESS]")
+                )
+
+        filt = PIIFilter(
+            mode="regex",
+            entities=["EMAIL_ADDRESS"],
+            redaction_template="[{entity_type}]",
+            min_score=0.5,
+        )
+        filt.mode = "nlp"
+        filt._analyzer = FakeAnalyzer()
+        filt._anonymizer = FakeAnonymizer()
+
+        redacted, entities = filt.scan_and_redact("Contact alice@example.com")
+
+        assert redacted == "Contact [EMAIL_ADDRESS]"
+        assert len(entities) == 1
+        assert entities[0].entity_type == "EMAIL_ADDRESS"
+        assert entities[0].original_text == "alice@example.com"
+
+    def test_nlp_scan_returns_original_text_when_all_results_below_threshold(self, monkeypatch):
+        class FakeOperatorConfig:
+            def __init__(self, operator_name, params):
+                self.operator_name = operator_name
+                self.params = params
+
+        monkeypatch.setitem(
+            sys.modules,
+            "presidio_anonymizer.entities",
+            types.SimpleNamespace(OperatorConfig=FakeOperatorConfig),
+        )
+
+        class LowConfidenceFinding:
+            entity_type = "EMAIL_ADDRESS"
+            start = 8
+            end = 25
+            score = 0.1
+
+        class FakeAnalyzer:
+            def analyze(self, *, text, entities, language):  # noqa: ARG002
+                return [LowConfidenceFinding()]
+
+        class FakeAnonymizer:
+            def anonymize(self, **kwargs):  # pragma: no cover - should not be called
+                raise AssertionError("anonymizer should not run without accepted findings")
+
+        filt = PIIFilter(mode="regex", min_score=0.5)
+        filt.mode = "nlp"
+        filt._analyzer = FakeAnalyzer()
+        filt._anonymizer = FakeAnonymizer()
+
+        redacted, entities = filt.scan_and_redact("Contact alice@example.com")
+
+        assert redacted == "Contact alice@example.com"
+        assert entities == []
 
     # ------------------------------------------------------------------
     # scan_dict — recursive PII scan over arbitrary JSON data

@@ -37,10 +37,31 @@ jobs:
       - name: Partner conformance suite (the OEM embed-kit guarantee, SEMVER.md)
         run: python -m presidio_x402.conformance
       - name: Upload coverage
-        if: matrix.python-version == '3.12'
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6
         with:
           file: coverage.xml
+          flags: py${{ matrix.python-version }}
+          name: py${{ matrix.python-version }}
+
+  latency-slo:
+    name: Latency SLO
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Benchmark regex PII control latency
+        run: python -m experiments.run_latency --mode regex --warmup 50 --n 200 --out latency_results_ci.json
+      - name: Enforce p99 latency SLO
+        run: python -m experiments.check_latency_slo latency_results_ci.json --mode regex --max-p99-ms 50
+      - name: Upload latency results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: latency-results
+          path: latency_results_ci.json
 
   sbom:
     name: SBOM (CycloneDX)

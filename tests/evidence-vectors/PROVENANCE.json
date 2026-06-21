@@ -1,0 +1,28 @@
+{
+  "source_repo": "presidio-evidence",
+  "source_commit": "562a127c8028f4deebcd20009992d2a24c5be296",
+  "source_branch": "main",
+  "vendored_at": "2026-06-21",
+  "note": "Vendored contract (schemas+vectors are normative per ADR-0001). Patent-safe: vendoring the CONTRACT, not importing the private package. Re-vendor when presidio-evidence regenerates vectors; sha mismatch => drift, investigate before bumping.",
+  "files": {
+    "canonical-json/vectors.json": "921b8127e8fc3a1dd18a84b06df554f2bd3a2c3a544fe586c1cd6c26810c3c82",
+    "evidence-ref/invalid-empty-field.json": "97e9617c4633921f06d416a46ed2997d26fecb20a4f8b0a3361238f82f647a34",
+    "evidence-ref/invalid-evidence-not-array.json": "2f2147f35bb06a57737c8a42751a5c422b26f4b56c2d5c8df7b71db66cec4ed1",
+    "evidence-ref/invalid-missing-field.json": "043650e43afe79d791b7a91137c874176ce0de95aa5a9acbe572289cdde02b1d",
+    "evidence-ref/invalid-non-hex-signature.json": "4504714f778fef91b3b0d0041b978ad07e629723ed5c5c4334ea54482c063ef3",
+    "evidence-ref/invalid-null-byte.json": "8da42c76d153db2cac20825fa21f5f02b8d6bb73d3ceff0666910f8e8a189abb",
+    "evidence-ref/invalid-oversize-field.json": "75c5fa5ccb6f4fa2ef27c2d441270bc9a4b0c09a93cfaf828445431e4cda92fc",
+    "evidence-ref/invalid-uppercase-hex.json": "86868e4b4383c32a8c3c4c189e95eeaeb323685dea714725dcf47c5c60cbdea6",
+    "evidence-ref/invalid-wrong-schema-id.json": "8823136fe913f989fa21975736b83dc84463b5bc869f25dc75c965f0714db23c",
+    "evidence-ref/valid-envelope.json": "dca251c240afd403ecd8eda1bb3a1c696d9bf02ddd6f6a2d2be36c84fff9ed46",
+    "evidence-ref/valid-envelope.notes.json": "93d1b53b3bb1eb34cceea8dea36ed9cf86e278106bc52a35341e642ace37a71f",
+    "evidence-ref/valid-hmac-ref.json": "0b0b04d145f810d6263a91937dc820aa4a1271a8e7761e305607c804436db753",
+    "evidence-ref/valid-minimal.json": "6134426a05cb23a8b520bdebc1acdb9b26b0eeb7e5a3696229b0f132886d1843",
+    "signing/ed25519-golden.json": "6f3cf23892d16b017bb48a672db3c5ca54a364c843c7377410ceec08f3501baf",
+    "signing/hmac-sha256-golden.json": "89ad270a83d4abba8b716fc95e68fbf893d13993587dc341749df1cdfb64511b",
+    "trust-store/invalid-empty-keylist.json": "ffe5eb83be76601e2b0d5064fce3df60f6b1ca13e89aace5e4a5d0a50f266ff5",
+    "trust-store/invalid-missing-key.json": "14bb083eeba18868f7686b40378498315935d41fefff82f1ae72ade6ec3fd53e",
+    "trust-store/invalid-unknown-alg.json": "3c10d8a2e88b8760c7187b7db4c938cd85cc12ce1252ecf7536ed56186a3702e",
+    "trust-store/valid.json": "b7ad521738dcc65f4f7cd2c4ade5d8b3743fdfaed1b85644ffd708f0e9442960"
+  }
+}

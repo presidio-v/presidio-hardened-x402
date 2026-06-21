@@ -1,0 +1,18 @@
+{
+  "description": "Companion to valid-envelope.json: evidence[0] is end-to-end verifiable. content_hash = sha256(canonical(signed_content)); signature = ed25519(priv 01*32) over canonical({content_hash, signer}).",
+  "signed_content": {
+    "records": [
+      "r1",
+      "r2"
+    ],
+    "use_case": "fraud-scoring"
+  },
+  "expected_content_hash": "3907dd429ab81335ac6fc24321d34cb367cc5a0c64fffa7ae69c55ff642b88fe",
+  "verifies_with_public_key_hex": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+  "trust_store": {
+    "presidio-hardened-ai": {
+      "alg": "ed25519",
+      "public_key": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+    }
+  }
+}

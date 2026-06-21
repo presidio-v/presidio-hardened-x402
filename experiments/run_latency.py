@@ -25,8 +25,8 @@ _ROOT = Path(__file__).parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from corpus.generate import CORPUS_DIR, load_corpus
-from experiments.run_sweep import ALL_ENTITY_TYPES
+from corpus.generate import CORPUS_DIR, DEFAULT_SEED, generate_corpus, load_corpus  # noqa: E402
+from experiments.run_sweep import ALL_ENTITY_TYPES  # noqa: E402
 
 RESULTS_DIR = Path(__file__).parent / "results"
 
@@ -58,7 +58,15 @@ def benchmark(
     """
     from presidio_x402.pii_filter import PIIFilter
 
-    samples = load_corpus(corpus_path)
+    samples = (
+        load_corpus(corpus_path)
+        if corpus_path.exists()
+        else generate_corpus(
+            n=max(n_warmup, n_timed),
+            pii_rate=0.40,
+            seed=DEFAULT_SEED,
+        )
+    )
     if not samples:
         raise ValueError(f"No samples found in {corpus_path}")
 
@@ -84,7 +92,8 @@ def benchmark(
 
     result = {
         "mode": mode,
-        "entities": entities or (list(pii_filter.entities) if pii_filter.entities else list(ALL_ENTITY_TYPES)),
+        "entities": entities
+        or (list(pii_filter.entities) if pii_filter.entities else list(ALL_ENTITY_TYPES)),
         "n_warmup": n_warmup,
         "n_timed": n_timed,
         "p50_ms": round(_percentile(latencies_ms, 50), 3),
@@ -105,15 +114,21 @@ def benchmark(
 def main() -> None:
     parser = argparse.ArgumentParser(description="PIIFilter latency benchmark")
     parser.add_argument(
-        "--mode", choices=["regex", "nlp", "both"], default="regex",
+        "--mode",
+        choices=["regex", "nlp", "both"],
+        default="regex",
         help="PIIFilter mode(s) to benchmark (default: regex)",
     )
     parser.add_argument(
-        "--corpus", type=Path, default=CORPUS_DIR / "corpus.jsonl",
+        "--corpus",
+        type=Path,
+        default=CORPUS_DIR / "corpus.jsonl",
         help="Path to corpus JSONL file",
     )
     parser.add_argument(
-        "--out", type=Path, default=RESULTS_DIR / "latency_results.json",
+        "--out",
+        type=Path,
+        default=RESULTS_DIR / "latency_results.json",
         help="Output JSON path",
     )
     parser.add_argument("--n", type=int, default=1000, help="Number of timed iterations")
@@ -122,6 +137,7 @@ def main() -> None:
 
     modes = ["regex", "nlp"] if args.mode == "both" else [args.mode]
     results = []
+    failures = []
 
     for mode in modes:
         print(f"\n--- Benchmarking mode={mode} ---")
@@ -135,11 +151,14 @@ def main() -> None:
             results.append(result)
         except Exception as exc:
             print(f"  ERROR: {exc}")
+            failures.append(f"{mode}: {exc}")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8") as fh:
         json.dump(results, fh, indent=2)
     print(f"\nLatency results written to {args.out}")
+    if failures:
+        raise SystemExit("Latency benchmark failed: " + "; ".join(failures))
 
 
 if __name__ == "__main__":
