@@ -363,7 +363,7 @@ deferred and remains open outside the v0.6.0 release scope.
 
 ---
 
-## v0.7.0 Requirements (SLO Payment Broker) — re-slotted from v0.6.0 on 2026-06-12
+## v0.7.0 Requirements (SLO Payment Broker) — **library core delivered 2026-06-21**
 
 This version fills a second white spot: **market-based SLO enforcement**. Current
 autoscaling is reactive and rule-based. This milestone makes the agent an economic actor
@@ -373,32 +373,44 @@ x402 micropayments.
 ### Integration target
 
 `presidio-hardened-arch-translucency` provides the SLO observability signal (latency
-percentiles, quality metrics). `presidio-hardened-x402` acts as the SLO payment broker:
-it receives degradation events, applies `SLOPaymentPolicy`, and triggers x402 payments
-for capacity upgrades — all with the same PII redaction and spending governance already
-built in v0.1.0.
+percentiles, quality metrics) as **Ed25519-signed `evidence-ref@1` envelopes** (the same
+substrate x402 verifies via `mica`). `presidio-hardened-x402` acts as the SLO payment
+broker: it receives degradation events, **verifies the signed trigger fail-closed**, applies
+`SLOPaymentPolicy`, and triggers x402 payments for capacity upgrades — all with the same
+PII redaction and spending governance built in v0.1.0.
 
-### New components
+**Design upgrade — authorization, not metric.** The broker moves money, so a degradation
+signal is treated as an *authorization* and must be a signed evidence-ref from a trusted
+arch-translucency signer, verified before any payment. This makes spoofed/misconfigured
+degradation a verification failure (no payment) rather than something a cooldown races to
+contain. This is why v0.6.0 evidence Phase-A (the `mica` verifier) was a hard prerequisite.
 
-- **`slo_broker.py`** — `SLOPaymentBroker`: wraps `HardenedX402Client`; listens to SLO
-  degradation events; applies cooldown and tier escalation logic; triggers capacity upgrade
-  payments; records `SLO_PAYMENT_TRIGGERED` and `SLO_PAYMENT_BLOCKED` audit events.
+### New components — Delivered
 
-- **`slo_policy.py`** — `SLOPaymentPolicy`: extends `PolicyConfig` with:
-  - `latency_threshold_ms`: p99 latency above which a payment is triggered
-  - `max_per_slo_event_usd`: per-event spending cap
-  - `cooldown_seconds`: minimum gap between consecutive SLO payments (prevents drain)
-  - `max_daily_slo_usd`: daily SLO spending cap (shares ledger with `PolicyEngine`)
-  - `tier_escalation_rules`: step-up pricing for repeated degradation events
+- [x] **`slo_broker.py`** — `SLOPaymentBroker`: wraps `HardenedX402Client`; on a verified
+  `SLOTrigger` applies cooldown + tier escalation + per-event/daily caps; buys capacity via
+  a pluggable `CapacityProvider` (default `X402CapacityProvider`); records
+  `SLO_PAYMENT_TRIGGERED` / `SLO_PAYMENT_BLOCKED` audit events. Decision serialized
+  (`asyncio.Lock`) so concurrent triggers can't both pass the cooldown.
 
-- **`arch_translucency_adapter.py`** — consumes `presidio-hardened-arch-translucency`
-  metrics feed; translates degradation events into `SLOTrigger` objects consumed by
-  `SLOPaymentBroker`.
+- [x] **`slo_policy.py`** — `SLOPaymentPolicy(PolicyConfig)`: `latency_threshold_ms`,
+  `max_per_slo_event_usd`, `cooldown_seconds`, `max_daily_slo_usd`, `tier_escalation_rules`.
+  Being a `PolicyConfig` subclass, SLO spend also counts against the ordinary budgets (shared
+  ledger); the SLO caps are an independent second layer.
 
-- **Extended PII filter**: provisioning-specific entity types (`WORKLOAD_CLASS`,
-  `DATA_CLASSIFICATION`, `QUERY_PATTERN`) added to the `PIIFilter` entity registry.
-  Infrastructure provisioning requests carry sensitive workload context that must not
-  reach third-party compute providers.
+- [x] **`arch_translucency_adapter.py`** — `ArchTranslucencyAdapter` + `SLOTrigger`:
+  fail-closed gate that accepts a degradation signal only when (1) `sha256(content)` matches
+  the ref's `content_hash`, (2) the signature verifies against a trusted signer
+  (`mica.verify_ref`), and optionally (3) the signer is on an allow-list. Feed transport
+  injectable; attested-content field names overridable via `field_map`.
+
+- [x] **Extended PII filter**: opt-in provisioning entity types (`WORKLOAD_CLASS`,
+  `DATA_CLASSIFICATION`, `QUERY_PATTERN`) — kept out of the default active set so existing PII
+  behaviour is unchanged; selectable via `entities=` / `PROVISIONING_ENTITIES`. Redacts
+  workload context before it reaches a third-party compute provider.
+
+**Test coverage:** `test_slo_policy.py`, `test_arch_translucency_adapter.py`,
+`test_slo_broker.py`, `test_pii_provisioning.py` (29 tests). Full suite 476 passed / 9 skipped.
 
 ### Scoping decisions for v0.7.0
 
@@ -416,11 +428,11 @@ built in v0.1.0.
 
 ### New threat model entries
 
-| Threat | Mitigation |
-|--------|-----------|
-| SLO-triggered spending drain (adversarial or misconfigured degradation signals) | `SLOPaymentPolicy` cooldown + `max_daily_slo_usd` cap |
-| Workload metadata leakage in provisioning requests | Extended PIIFilter covers provisioning-specific entity types |
-| Vendor lock-in via payment coupling | Pluggable provider registry in `SLOPaymentBroker` |
+| ID | Threat | Primary mitigation | Defense-in-depth |
+|----|--------|--------------------|------------------|
+| **T-SLO-1** | SLO-triggered spending drain — adversarial or misconfigured infrastructure floods the agent with degraded signals to provoke runaway capacity payments | **Signed-trigger verification**: only a fail-closed-verified `evidence-ref` from a trusted arch-translucency signer can trigger a payment (`ArchTranslucencyAdapter` + `mica.verify_ref`) | `SLOPaymentPolicy` cooldown, `max_per_slo_event_usd`, `max_daily_slo_usd`, and step-up `tier_escalation_rules` |
+| **T-SLO-2** | Workload-metadata leakage — provisioning requests carry query types, data classifications, and access patterns that must not reach third-party compute providers | Extended `PIIFilter` provisioning entities (`WORKLOAD_CLASS`, `DATA_CLASSIFICATION`, `QUERY_PATTERN`) redact workload context before transmission | Opt-in, so no false-positive regression on ordinary payment metadata |
+| **T-SLO-3** | Vendor lock-in via payment coupling — agent becomes economically dependent on one capacity provider | Pluggable `CapacityProvider` registry in `SLOPaymentBroker` | — |
 
 ---
 

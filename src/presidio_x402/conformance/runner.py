@@ -17,6 +17,15 @@ if TYPE_CHECKING:
 CHECKS: list[tuple[str, Callable[[], None]]] = []
 
 
+class ConformanceFailureError(AssertionError):
+    """Raised when a partner conformance invariant fails."""
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ConformanceFailureError(message)
+
+
 def check(name: str) -> Callable[[Callable[[], None]], Callable[[], None]]:
     def register(fn: Callable[[], None]) -> Callable[[], None]:
         CHECKS.append((name, fn))
@@ -91,7 +100,7 @@ def check_api_surface() -> None:
     import presidio_x402
 
     missing = [name for name in presidio_x402.__all__ if not hasattr(presidio_x402, name)]
-    assert not missing, f"__all__ names missing from package: {missing}"
+    _require(not missing, f"__all__ names missing from package: {missing}")
 
 
 @check("PII redacted before signer sees payment details")
@@ -110,8 +119,8 @@ def check_pii_redaction() -> None:
             await client.get("https://conformance.invalid/v1/data")
 
     _run(flow())
-    assert seen, "signer was never invoked"
-    assert "pii@example.com" not in seen[0], "raw PII reached the signer"
+    _require(bool(seen), "signer was never invoked")
+    _require("pii@example.com" not in seen[0], "raw PII reached the signer")
 
 
 @check("pii_action=block fails closed on PII")
@@ -203,9 +212,12 @@ def check_audit_chain() -> None:
                 await client.get("https://conformance.invalid/v1/data")
 
         _run(flow())
-        assert path.exists() and path.stat().st_size > 0, "no audit records written"
+        _require(path.exists() and path.stat().st_size > 0, "no audit records written")
         report = ComplianceReport.from_jsonl(path)
-        assert report.chain_ok, f"audit chain failed on untampered log: {report.chain_warnings}"
+        _require(
+            report.chain_ok,
+            f"audit chain failed on untampered log: {report.chain_warnings}",
+        )
 
         # Tamper with the first record — the chain must flag it.
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -214,7 +226,7 @@ def check_audit_chain() -> None:
         lines[0] = json.dumps(record)
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         tampered = ComplianceReport.from_jsonl(path)
-        assert not tampered.chain_ok, "tampered audit log passed chain verification"
+        _require(not tampered.chain_ok, "tampered audit log passed chain verification")
 
 
 @check("x402 binding parses spec offers and rejects malformed offers fail-closed")
@@ -224,7 +236,10 @@ def check_binding() -> None:
 
     binding = X402Binding()
     details = binding.parse_payment_required(_OFFER)
-    assert details.amount == "0.01" and details.network == "base-sepolia"
+    _require(
+        details.amount == "0.01" and details.network == "base-sepolia",
+        "valid x402 offer parsed to unexpected payment details",
+    )
     for bad in ("not json", "[]", '{"accepts": []}', '{"accepts": ["exact"]}'):
         try:
             binding.parse_payment_required(bad)

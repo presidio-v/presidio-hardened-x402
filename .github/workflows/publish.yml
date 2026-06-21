@@ -84,11 +84,13 @@ jobs:
       - name: Publish GitHub release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* sbom.cdx.json --clobber
+          if gh release view "$GITHUB_REF_NAME" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* sbom.cdx.json --repo "$GH_REPO" --clobber
           else
             gh release create "$GITHUB_REF_NAME" dist/* sbom.cdx.json \
+              --repo "$GH_REPO" \
               --verify-tag \
               --title "$GITHUB_REF_NAME" \
               --notes "Release $GITHUB_REF_NAME"

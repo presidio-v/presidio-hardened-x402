@@ -28,6 +28,7 @@ import logging
 
 from ._types import PaymentProtocolBinding
 from .action_ref import compute_action_ref, format_action_ref_timestamp
+from .arch_translucency_adapter import ArchTranslucencyAdapter, SLOTrigger
 from .audit_log import AuditLog, FileAuditWriter, NullAuditWriter, StreamAuditWriter
 from .bindings.x402 import X402Binding
 from .compliance_report import ComplianceReport
@@ -50,12 +51,20 @@ from .log_redaction import RedactingFilter, SecretRedactor, install_log_redactio
 from .metrics import MetricsCollector
 from .mica import OBLIGATION_MAP, EvidenceError, Obligation, build_evidence
 from .mpa import MPAApproverConfig, MPAConfig, MPAEngine, build_countersignature
-from .pii_filter import PIIFilter
+from .pii_filter import PROVISIONING_ENTITIES, PIIFilter
 from .policy_engine import PolicyConfig, PolicyEngine
 from .replay_guard import ReplayGuard, compute_fingerprint
 from .screening_client import ScreeningClient
+from .slo_broker import (
+    CapacityProvider,
+    SLOPaymentBroker,
+    SLOPaymentDecision,
+    UpgradeReceipt,
+    X402CapacityProvider,
+)
+from .slo_policy import SLOPaymentPolicy
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 __all__ = [
     # Primary public API
     "HardenedX402Client",
@@ -106,6 +115,16 @@ __all__ = [
     "install_log_redaction",
     "RedactingFilter",
     "SecretRedactor",
+    # Market-based SLO enforcement (v0.7.0)
+    "SLOPaymentBroker",
+    "SLOPaymentPolicy",
+    "SLOPaymentDecision",
+    "SLOTrigger",
+    "ArchTranslucencyAdapter",
+    "CapacityProvider",
+    "X402CapacityProvider",
+    "UpgradeReceipt",
+    "PROVISIONING_ENTITIES",
 ]
 
 logger = logging.getLogger("presidio_x402")

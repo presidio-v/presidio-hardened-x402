@@ -167,6 +167,57 @@ _REGEX_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ),
 ]
 
+# ---------------------------------------------------------------------------
+# Provisioning-metadata entity types (v0.7.0, SLO payment broker).
+#
+# Infrastructure capacity-upgrade requests carry sensitive *workload context* —
+# what the agent runs, how its data is classified, what it queries — which must
+# not leak to a third-party compute provider when the SLO broker pays for an
+# upgrade. These are heuristic, higher-false-positive patterns, so they are
+# **opt-in**: not in the default active set, only matched when a caller selects
+# them via ``entities=`` (e.g. ``PIIFilter(entities=list(PROVISIONING_ENTITIES))``).
+# ---------------------------------------------------------------------------
+PROVISIONING_ENTITIES: tuple[str, ...] = (
+    "WORKLOAD_CLASS",
+    "DATA_CLASSIFICATION",
+    "QUERY_PATTERN",
+)
+
+_PROVISIONING_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    # Data-classification banners — the markers you least want a compute provider
+    # to see attached to a workload.
+    (
+        "DATA_CLASSIFICATION",
+        re.compile(
+            r"\b(?:TOP[\s\-]?SECRET|SECRET|CONFIDENTIAL|RESTRICTED|CLASSIFIED|"
+            r"CUI|PII|PHI|PCI(?:[\s\-]?DSS)?|INTERNAL[\s\-]?ONLY)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    # Workload descriptors that reveal what the agent is actually running.
+    (
+        "WORKLOAD_CLASS",
+        re.compile(
+            r"\b(?:ml[\s\-]?training|model[\s\-]?(?:training|inference)|"
+            r"fraud[\s\-]?detection|risk[\s\-]?scoring|key[\s\-]?management|"
+            r"kyc|aml|genomics?|biometrics?)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    # Query/access-pattern fragments (SQL verb bounded to a nearby clause keyword;
+    # the {0,120} bound prevents catastrophic backtracking on hostile input).
+    (
+        "QUERY_PATTERN",
+        re.compile(
+            r"\b(?:SELECT|INSERT|UPDATE|DELETE)\b[^\n]{0,120}?\b(?:FROM|INTO|SET|WHERE)\b",
+            re.IGNORECASE,
+        ),
+    ),
+]
+
+# Lookup pool for opt-in selection: structural defaults + provisioning entities.
+_ALL_PATTERNS: list[tuple[str, re.Pattern[str]]] = _REGEX_PATTERNS + _PROVISIONING_PATTERNS
+
 
 @dataclass
 class EntityResult:
@@ -229,9 +280,13 @@ class PIIFilter:
             ) from exc
 
     def _active_patterns(self) -> list[tuple[str, re.Pattern[str]]]:
+        # Default (entities=None) keeps the structural set only — provisioning
+        # entities are opt-in to avoid false positives on ordinary metadata. When
+        # a caller names entities, select from the full pool so they can enable
+        # WORKLOAD_CLASS / DATA_CLASSIFICATION / QUERY_PATTERN explicitly.
         if self.entities is None:
             return _REGEX_PATTERNS
-        return [(name, pat) for name, pat in _REGEX_PATTERNS if name in self.entities]
+        return [(name, pat) for name, pat in _ALL_PATTERNS if name in self.entities]
 
     def scan_and_redact(self, text: str) -> tuple[str, list[EntityResult]]:
         """Scan *text* for PII, redact matches, and return ``(redacted_text, results)``.

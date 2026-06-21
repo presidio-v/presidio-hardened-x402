@@ -4,7 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.6.x   | ✓ (latest release) |
+| 0.7.x   | ✓ (latest release) |
+| 0.6.x   | ✓ |
 | 0.5.x   | ✓ |
 | 0.4.x   | ✓ |
 | 0.3.x   | security fixes only |
@@ -65,6 +66,7 @@ active unless you enable them.
 | OpenTelemetry spans | Opt-in | Install `[otel]` and configure an exporter; disabled is a no-op |
 | Remote audit sinks | Opt-in | Use `MultiAuditWriter` with `S3AuditWriter`, `SplunkAuditWriter`, or `DatadogAuditWriter` |
 | Evidence signing / verification | Opt-in | Use `build_evidence()` / `verify_ref()` with a deployment trust store |
+| SLO payment broker (v0.7.0) | Opt-in | `SLOPaymentBroker` pays only on a **verified** signed degradation trigger (`ArchTranslucencyAdapter` → `verify_ref`); cooldown + per-event/daily caps + escalation as defence-in-depth |
 
 Header/secret redaction at the logging sink ships in v0.5.0 (family audit rec
 R2): `install_log_redaction()` runs at package import and scrubs API keys,
@@ -88,11 +90,21 @@ See `PRESIDIO-REQ.md` for the full threat model and security design rationale.
 | Forged MPA webhook response | Crypto mode verifies HMAC-SHA256 countersignatures against shared secrets |
 | Unobservable security control activations | Prometheus metrics expose every PII detection, policy block, replay, and MPA event |
 
+### v0.7.0 additions (SLO payment broker)
+
+| Threat | Mitigation |
+|--------|-----------|
+| T-SLO-1 — SLO-triggered spending drain (spoofed/misconfigured degradation signals) | Trigger is an *authorization, not a metric*: only a fail-closed-verified signed `evidence-ref` from a trusted arch-translucency signer can trigger a payment; cooldown + per-event/daily caps + step-up escalation are defence-in-depth |
+| T-SLO-2 — Workload-metadata leakage to a compute provider | Opt-in provisioning PII entities (`WORKLOAD_CLASS`, `DATA_CLASSIFICATION`, `QUERY_PATTERN`) redact workload context before transmission |
+| T-SLO-3 — Vendor lock-in via payment coupling | Pluggable `CapacityProvider` registry |
+
 ## Dependency Security
 
 - Dependencies are pinned to minimum-safe versions
 - `dependabot.yml` is configured for automated dependency updates
 - CodeQL analysis is run on every push and pull request
+- CI runs `pip-audit` against release extras (`evidence`, `redis`, `audit-s3`,
+  `langchain`, `prometheus`, `otel`, `schema`) before merge
 - Critical security updates are backported to the current supported version
 
 ## Known Limitations
@@ -112,3 +124,8 @@ See `PRESIDIO-REQ.md` for the full threat model and security design rationale.
 This repository is developed under the Presidio hardened-family SDLC. The public report
 — scope, standards mapping, threat-model gates, and supply-chain controls — is at
 <https://github.com/presidio-v/presidio-hardened-docs/blob/main/sdlc/sdlc-report.md>.
+
+## Manual Security Audit History
+
+- [`SECURITY-AUDIT-2026-06-21-v0.7.0.md`](SECURITY-AUDIT-2026-06-21-v0.7.0.md) —
+  v0.7.0 third-party functional/security audit remediation status.
