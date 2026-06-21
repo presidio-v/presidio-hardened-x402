@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from presidio_x402 import telemetry
 from presidio_x402._types import PaymentDetails
 from presidio_x402.audit_log import AuditLog, NullAuditWriter
 from presidio_x402.core import ScreeningPipeline
@@ -67,6 +68,27 @@ def _pipeline(*, mpa_engine: MPAEngine | None = None) -> ScreeningPipeline:
         audit=AuditLog(NullAuditWriter()),
         mpa_engine=mpa_engine,
     )
+
+
+def test_security_control_span_noops_when_trace_api_disabled(monkeypatch):
+    calls: list[tuple[str, object]] = []
+
+    class Span:
+        def set_attribute(self, key: str, value: object) -> None:
+            calls.append((key, value))
+
+    monkeypatch.setattr(telemetry, "_TRACE_API", False)
+
+    assert telemetry._trace_api() is None
+    assert telemetry._tracer() is None
+
+    telemetry.set_span_attribute(Span(), "ignored", {"nested": "dict"})
+    assert calls == []
+
+    with telemetry.security_control_span("policy", invalid={"nested": "dict"}) as span:
+        span.set_attribute("manual", "ok")
+
+    assert calls == []
 
 
 @pytest.mark.asyncio
