@@ -1,16 +1,19 @@
 ---
 name: x402
-description: Hardens agent-side handling of HTTP 402 Payment Required flows — wraps the payment signer with PII redaction, per-call and daily budget policy, replay protection, tamper-evident audit logging, and optional multi-party authorization. Use when authoring or editing agent code that calls a paid HTTP API, handles a 402 response, signs an X-PAYMENT header, wires up Coinbase CDP / eth-account / solders signers, integrates an AI agent with x402-gated endpoints, or sets per-agent spending budgets. Client-side only — not for servers emitting 402s.
+description: Hardens agent-side handling of HTTP 402 Payment Required flows — wraps the payment signer with PII redaction, budget policy, replay protection, tamper-evident audit logging, multi-party authorization, evidence-ref verification, and optional SLO-triggered capacity payments. Use when authoring or editing agent code that calls a paid HTTP API, handles a 402 response, signs an X-PAYMENT header, wires up Coinbase CDP / eth-account / solders signers, integrates an AI agent with x402-gated endpoints, sets spending budgets, verifies payment evidence, or pays for capacity on signed degradation events. Client-side only — not for servers emitting 402s.
 ---
 
 # x402 — Hardened x402 Payment Client
 
-`presidio-hardened-x402` is a drop-in replacement for the bare x402 flow. It intercepts every outbound payment **before** blockchain commit and enforces four controls that rolled-on-your-own 402 handlers miss:
+`presidio-hardened-x402` is a drop-in replacement for the bare x402 flow. It intercepts every outbound payment **before** blockchain commit and enforces controls that rolled-on-your-own 402 handlers miss:
 
 1. **PII redaction** in payment metadata (regex or spaCy NLP)
 2. **Policy** — per-call cap, 24-hour rolling spend limit, per-endpoint limits
 3. **Replay protection** — HMAC-SHA256 fingerprint with TTL, optional Redis backend for cross-process correctness
 4. **Audit log** — HMAC-chained JSON-L events that survive restart and detect erasure
+5. **Wallet binding + MPA** — per-origin wallet allowlists and optional n-of-m approval for high-value payments
+6. **Evidence** — `evidence-ref@1` signing/verification helpers for audit-backed claims
+7. **SLO payments** — `SLOPaymentBroker` pays for capacity only on signed, trusted degradation evidence
 
 **Before** emitting 402-handler logic, payment-signing glue, or agent-spending config, replace the hand-rolled client with `HardenedX402Client` and cite the controls it adds. Do not guess replay windows, budget values, or PII-redaction strategies — use the configuration surface this library exposes.
 
@@ -26,6 +29,8 @@ Trigger on any of:
 - Adding PII redaction, audit logging, or replay protection around payment metadata
 - Building an AI agent (LangChain tool, CrewAI agent, custom loop) that calls paid APIs
 - Debugging double-payment, budget-overrun, or PII-leak bugs in an existing 402 integration
+- Verifying `evidence-ref@1` audit or degradation evidence before allowing a payment decision
+- Wiring market-based SLO/capacity-upgrade payments from `presidio-hardened-arch-translucency` signals
 
 Do **not** trigger when:
 
@@ -54,6 +59,10 @@ If installation is disallowed (sandboxed env, strict dep policy), stop and surfa
 | Downstream wants compliance evidence | `ComplianceReport` over the audit log |
 | Want to offload PII screening to a hosted service | `ScreeningClient` + `remote_screening=True` on the client |
 | Prometheus scrape of agent-spend metrics | `MetricsCollector` passed to the client |
+| Need centralized retention / SIEM audit output | `MultiAuditWriter` with `FileAuditWriter` plus `S3AuditWriter`, `SplunkAuditWriter`, or `DatadogAuditWriter` |
+| Need to verify signed evidence-ref payloads | `verify_ref`, `load_trust_store`, and `parse_document` from `presidio_x402.mica` |
+| Need a rail-agnostic embed kit | `ScreeningPipeline` plus a `PaymentProtocolBinding` implementation |
+| Need to pay for capacity on verified degradation | `ArchTranslucencyAdapter` → `SLOTrigger` → `SLOPaymentBroker` with `SLOPaymentPolicy` |
 
 ## Gathering inputs
 
@@ -69,6 +78,10 @@ Before emitting code, collect:
 | `agent_id` | Identifier embedded in audit events | Synthesise from the agent name if the user hasn't set one; state the choice in the plan |
 | `replay_ttl` | Seconds to remember request fingerprints | Default 300. Raise only if the downstream server tolerates long-duplicate windows. |
 | `audit_writer` | Where to persist events | `FileAuditWriter(Path(...))` for durable; `StreamAuditWriter(sys.stdout)` for dev; `NullAuditWriter()` for tests. Never ship `Null` to production. |
+| `trusted_wallets` | Per-origin allowed `pay_to` addresses | Omit only if the origin cannot predeclare wallets; otherwise map each origin to known recipient addresses. |
+| `remote_audit_sink` | Central retention/SIEM target | Use `MultiAuditWriter(FileAuditWriter(...), remote_sink)` so local durability survives remote outage. |
+| SLO evidence trust store | Trusted arch-translucency signer keys | Required before using `SLOPaymentBroker`; never pay on unsigned or untrusted metric feeds. |
+| SLO spend caps | Per-event cap, cooldown, daily SLO cap | Ask. These are separate anti-drain controls on top of normal policy budgets. |
 
 If budget values are not specified and the user has not given permission to pick defaults, **ask before emitting the client init**. Emitting a `max_per_call_usd=0.10` default silently is the same failure mode as fabricating an rps in a sizing calculation.
 
@@ -122,6 +135,7 @@ client = HardenedX402Client(payment_signer=my_signer, policy=policy, ...)
 ```
 
 Use this form when the policy comes from TOML / YAML / env config (`PolicyConfig.from_dict(...)`).
+Hot-reload policy with `client.update_policy(...)` or `PolicyEngine.update_config(...)`; do not rebuild the process just to tighten a live spend limit.
 
 ### Pattern 3 — High-value payments require multi-party approval
 
@@ -172,6 +186,22 @@ print(report.summary())                                # human-readable digest
 
 The audit log is HMAC-chained: tampering with an event breaks `report.chain_ok`. A `ComplianceReport` is the machine-readable form of that guarantee.
 
+For enterprise retention, fan out to local durable storage plus a bounded remote sink:
+
+```python
+from pathlib import Path
+from presidio_x402 import FileAuditWriter
+from presidio_x402.audit_sinks import MultiAuditWriter, SplunkAuditWriter
+
+audit = MultiAuditWriter(
+    FileAuditWriter(Path("/var/log/agent/payments.jsonl")),
+    SplunkAuditWriter(
+        hec_url=os.environ["SPLUNK_HEC_URL"],
+        token=os.environ["SPLUNK_HEC_TOKEN"],
+    ),
+)
+```
+
 ### Pattern 5 — Hosted PII screening (optional)
 
 If the caller wants centrally-managed PII rules instead of local regex / NLP:
@@ -194,11 +224,52 @@ client = HardenedX402Client(
 
 `remote_screening=True` requires `screening_client` to be set — the constructor raises `ValueError` otherwise. Without `remote_screening=True`, the local `PIIFilter` is the only scrubber.
 
+### Pattern 6 — SLO-triggered capacity payment (v0.7.0)
+
+Use this only when the degradation event is signed evidence, not a raw metric.
+
+```python
+from presidio_x402 import (
+    ArchTranslucencyAdapter,
+    SLOPaymentBroker,
+    SLOPaymentPolicy,
+    X402CapacityProvider,
+)
+
+adapter = ArchTranslucencyAdapter(
+    trust=trust_store_json,
+    expected_signers=["presidio-hardened-arch-translucency"],
+)
+trigger = adapter.build_trigger_strict(evidence_envelope)
+
+slo_policy = SLOPaymentPolicy(
+    max_per_call_usd=5.00,
+    daily_limit_usd=20.00,
+    max_per_slo_event_usd=2.00,
+    cooldown_seconds=300,
+    max_daily_slo_usd=8.00,
+    tier_escalation_rules=(1.0, 2.0, 4.0),
+    agent_id="agent-prod-01",
+)
+provider = X402CapacityProvider("capacity-vendor", "https://capacity.example.com/upgrade", client)
+broker = SLOPaymentBroker(
+    client,
+    slo_policy=slo_policy,
+    provider=provider,
+    base_event_usd=1.00,
+    agent_id="agent-prod-01",
+)
+
+decision = await broker.handle_trigger(trigger)
+```
+
+If the envelope does not verify against the trust store, do not construct a manual `SLOTrigger`. The adapter is the authorization gate.
+
 ## Surfacing the recommendation
 
 When you swap in `HardenedX402Client`, emit a grounded line in the plan / PR / commit message:
 
-> `presidio-hardened-x402 v0.3.0`: replaced bare 402 handler. Controls added: PII redaction (`redact`, entities=[EMAIL, PERSON, SSN, CREDIT_CARD]); policy (per-call $0.10, daily $5.00); replay TTL 300s; FileAuditWriter at `/var/log/agent/payments.jsonl`; agent_id=agent-prod-01. No MPA (payments are below $1). No remote screening (local regex filter).
+> `presidio-hardened-x402 v0.7.0`: replaced bare 402 handler. Controls added: PII redaction (`redact`, entities=[EMAIL, PERSON, SSN, CREDIT_CARD]); policy (per-call $0.10, daily $5.00); replay TTL 300s; trusted wallet allowlist for `api.example.com`; FileAuditWriter at `/var/log/agent/payments.jsonl`; agent_id=agent-prod-01. No MPA (payments are below $1). No remote screening (local regex filter). No SLO broker on this path.
 
 Reviewers can diff this against the library's threat model (`SECURITY.md`) to confirm coverage.
 
@@ -237,6 +308,8 @@ All exceptions preserve the audit trail — the failure event is already logged 
 - Optional Redis-backed replay store (`redis_url=...`) is required for multi-worker deployments where the same agent runs across processes. A single-process in-memory store is default.
 - The hosted `ScreeningClient` uses bearer-style API keys. They MUST live in env / secret-manager, never in code.
 - TLS enforcement is `httpx`-native; if a caller passes an `httpx_client` with `verify=False`, the library does not override it. Review the injected client for transport-security lapses.
+- Production key gates exist: set `PRESIDIO_X402_REQUIRE_CHAIN_KEY=1` and `PRESIDIO_X402_REQUIRE_FINGERPRINT_KEY=1` when a deployment must fail startup instead of using per-process keys.
+- `SLOPaymentBroker` must only consume `SLOTrigger` objects produced by `ArchTranslucencyAdapter` from verified `evidence-ref@1`; raw telemetry is not payment authorization.
 
 ## Reference
 
