@@ -273,21 +273,24 @@ redistributed across v0.5.0+; production-hardening items now land in v0.6.0
 ### Adversary-chain disposition
 
 All 8 chains in `adversary-attack/` dispositioned per the closure table in the
-parent repo's `adversary-attack/README.md`: 3 CLOSED (04 Unicode evasion,
+parent repo's `adversary-attack/README.md`: CLOSED or MITIGATED as of the
+v0.6.0 release-readiness pass. The original v0.4.0 state was 3 CLOSED (04 Unicode evasion,
 05 exception exfiltration, 07 MPA SSRF), 3 MITIGATED-config (02 replay,
 03 audit OOM, 06 wallet hijack — operator must set
 `PRESIDIO_X402_FINGERPRINT_KEY` + `PRESIDIO_X402_CHAIN_KEY` and populate the
 wallet allowlist at deploy), 2 PARTIAL (01 spaCy model not yet wheel-pinned,
 08 tools/ sidecar Dockerfile not digest-pinned — residual scope deferred to
-v0.6.0). No CRITICAL/HIGH chain remains OPEN with zero in-tree control.
+v0.6.0). v0.6.0 closes the Docker/model residuals with digest/hash pinning.
+No CRITICAL/HIGH chain remains OPEN with zero in-tree control.
 
 ### Out of v0.4.0 (moved to later milestones per ADR-0006)
 
 - Third-party external security audit → **DONE 2026-06-06**: external second-set-of-eyes
   review performed by Grok 4.3 (xAI) across the published `tools/` package and research
   tree (report in `presidio-third-party-audits/`). No Critical/High; advisory-only
-  family-lens findings. Mitigates RSK-019. Residual: a commissioned human penetration
-  test before paid tiers go live remains tracked under v0.6.0 (see below).
+  family-lens findings. Mitigates RSK-019. The commissioned human penetration
+  test completed on 2026-06-21; both Medium findings were remediated and
+  retested before the v0.6.0 release-readiness pass.
 - Multi-tenant key scoping + remote audit sinks (S3 / Splunk / Datadog) → v0.6.0
 - Email-hash per-install salt → v0.6.0 (closes RSK-002)
 - `/v1/revoke` endpoint → v0.4.1
@@ -330,27 +333,31 @@ v0.6.0 unchanged; the SLO payment broker moves to v0.7.0.
 
 ---
 
-## v0.6.0 Requirements (Multi-Tenant + Audit Sink + SLSA L3)
+## v0.6.0 Requirements (Multi-Tenant + Audit Sink + SLSA L3) — Delivered
 
 Converts the single-tenant v0.4.0 screening service into a production platform.
 Largely the "production hardening" scope previously carried under v0.4.0, plus
 the multi-tenant work required to take paid tiers live. (Re-slotted from v0.5.0
 on 2026-06-12; content unchanged.)
 
-- Multi-tenant key scoping with per-tenant Redis namespace
-- Remote audit sink interfaces: `S3AuditWriter`, `SplunkAuditWriter`,
+Status: release-ready on branch `v0.6.0` as of 2026-06-21. Public issue #23
+(third-party prompt/content injection into agent-bound envelopes) is explicitly
+deferred and remains open outside the v0.6.0 release scope.
+
+- [x] Multi-tenant key scoping with per-tenant Redis namespace
+- [x] Remote audit sink interfaces: `S3AuditWriter`, `SplunkAuditWriter`,
   `DatadogAuditWriter` (enterprise tier)
-- Per-install salt for `email:<sha256>` audit prefix (closes RSK-002)
-- Commissioned human penetration test before paid tiers (closes RSK-019 residual;
+- [x] Per-install salt for `email:<sha256>` audit prefix (closes RSK-002)
+- [x] Commissioned human penetration test before paid tiers (closes RSK-019 residual;
   the 2026-06-06 AI-based external review already mitigated the "no second set of
-  eyes" risk); blocks Track 1/Track 2 paid tiers
-- SLSA L3 hardened build worker + provenance attestation; digest-pinned base
+  eyes" risk); both Medium retest items resolved
+- [x] SLSA L3 hardened build worker + provenance attestation; digest-pinned base
   image for `tools/docker/` and pinned spaCy model wheel (closes chain-01 and
   chain-08 residuals)
-- Performance regression test suite: p99 < 50ms latency SLO enforced in CI
-- Policy hot-reload: update `PolicyConfig` at runtime without client restart
-- OpenTelemetry span export for every security control activation
-- Hard startup-gates: `PRESIDIO_X402_REQUIRE_FINGERPRINT_KEY=1` and
+- [x] Performance regression test suite: p99 < 50ms latency SLO enforced in CI
+- [x] Policy hot-reload: update `PolicyConfig` at runtime without client restart
+- [x] OpenTelemetry span export for every security control activation
+- [x] Hard startup-gates: `PRESIDIO_X402_REQUIRE_FINGERPRINT_KEY=1` and
   `PRESIDIO_X402_REQUIRE_CHAIN_KEY=1` opt-ins that hard-fail import when the
   corresponding env var is unset
 

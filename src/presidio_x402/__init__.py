@@ -55,7 +55,7 @@ from .policy_engine import PolicyConfig, PolicyEngine
 from .replay_guard import ReplayGuard, compute_fingerprint
 from .screening_client import ScreeningClient
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __all__ = [
     # Primary public API
     "HardenedX402Client",
