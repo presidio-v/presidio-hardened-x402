@@ -13,7 +13,12 @@ from datetime import datetime, timezone
 
 import pytest
 
-from presidio_x402.action_ref import compute_action_ref, format_action_ref_timestamp
+from presidio_x402.action_ref import (
+    compute_action_ref,
+    compute_screen_ref,
+    format_action_ref_timestamp,
+    format_screen_scope,
+)
 
 # --- Known-answer vectors (argentum-core mycelium-provider-protocol-v1) -------
 
@@ -110,3 +115,82 @@ def test_format_then_compute_roundtrip():
         compute_action_ref("nexus-agent-xa12.onrender.com", "oracle.signal", "BTC", ts)
         == "fdd7f810499f06be24355ca8e2bfb8c4b965cc80c838f41fa074683443d89f5a"
     )
+
+
+# --- screen_ref byte-match vectors -------------------------------------------
+# Lifted verbatim from argentum-core
+# examples/conformance/presidio/action-ref-v1.fixture.json (commit 16dbc92),
+# the byte-identical targets for the screen_ref leg of the composed envelope
+# on x402-foundation/x402#2332. action_type is the fixed "pii_screen"; scope
+# carries the lexicographically-sorted entity segment (rule normative since
+# 16dbc92). entities are passed in DETECTION order on purpose — the canonical
+# sort must happen inside compute_screen_ref, not at the call site.
+SCREEN_VECTORS = [
+    # id, verdict, entities (detection order), timestamp, expected
+    (
+        "presidio-x402-003",
+        "PII_REDACTED",
+        ["EMAIL_ADDRESS", "US_SSN"],
+        "2026-06-20T17:45:00.000Z",
+        "c832ef8610c6989f8c6f5cea51ac019b8ac9860e389110079a895e67595950a2",
+    ),
+    (
+        "presidio-x402-004",  # the vector that needed the sort fix (PII_BLOCKED)
+        "PII_BLOCKED",
+        ["US_SSN", "EMAIL_ADDRESS"],  # detection order reversed: sort must fix it
+        "2026-06-20T17:45:01.000Z",
+        "79509b33e9ad2bf7bf4f80bff2dd73d04e012204ae63bb1bbc1b9d052f337ef4",
+    ),
+    (
+        "presidio-x402-005",  # clean-allow: no entity segment at all
+        "clean-allow",
+        [],
+        "2026-06-20T17:45:02.000Z",
+        "d9f8ecb35fef996e58a72cee801c17b4ca40c3ed3dede89438830e7a4a8c911d",
+    ),
+]
+
+_SCREEN_AGENT_ID = "did:presidio:x402:agent-7f3a9c"
+
+
+@pytest.mark.parametrize("vid,verdict,entities,ts,expected", SCREEN_VECTORS)
+def test_screen_ref_byte_match(vid, verdict, entities, ts, expected):
+    assert compute_screen_ref(_SCREEN_AGENT_ID, verdict, entities, ts) == expected
+
+
+def test_screen_scope_sorts_entities_lexicographically():
+    # Detection order must not leak into the scope: US_SSN before EMAIL_ADDRESS
+    # canonicalizes to EMAIL_ADDRESS,US_SSN (E < U).
+    assert (
+        format_screen_scope("PII_BLOCKED", ["US_SSN", "EMAIL_ADDRESS"])
+        == "presidio:x402.screen:PII_BLOCKED:EMAIL_ADDRESS,US_SSN"
+    )
+
+
+def test_screen_scope_dedupes_entities():
+    # Multiplicity (two emails) must not leak into the canonical scope.
+    assert (
+        format_screen_scope("PII_REDACTED", ["EMAIL_ADDRESS", "EMAIL_ADDRESS", "US_SSN"])
+        == "presidio:x402.screen:PII_REDACTED:EMAIL_ADDRESS,US_SSN"
+    )
+
+
+def test_screen_scope_clean_allow_has_no_entity_segment():
+    assert format_screen_scope("clean-allow") == "presidio:x402.screen:clean-allow"
+
+
+def test_screen_scope_rejects_empty_verdict():
+    with pytest.raises(ValueError, match="non-empty"):
+        format_screen_scope("")
+
+
+@pytest.mark.parametrize("bad_verdict", ["PII:REDACTED", "PII,REDACTED"])
+def test_screen_scope_rejects_separator_in_verdict(bad_verdict):
+    # Both ':' and ',' would forge or split a scope segment; reject either.
+    with pytest.raises(ValueError, match="separator"):
+        format_screen_scope(bad_verdict, ["EMAIL_ADDRESS"])
+
+
+def test_screen_scope_rejects_separator_in_entity():
+    with pytest.raises(ValueError, match="separator"):
+        format_screen_scope("PII_REDACTED", ["EMAIL,ADDRESS"])
