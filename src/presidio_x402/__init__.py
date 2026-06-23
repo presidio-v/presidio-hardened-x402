@@ -27,7 +27,12 @@ from __future__ import annotations
 import logging
 
 from ._types import PaymentProtocolBinding
-from .action_ref import compute_action_ref, format_action_ref_timestamp
+from .action_ref import (
+    compute_action_ref,
+    compute_screen_ref,
+    format_action_ref_timestamp,
+    format_screen_scope,
+)
 from .arch_translucency_adapter import ArchTranslucencyAdapter, SLOTrigger
 from .audit_log import AuditLog, FileAuditWriter, NullAuditWriter, StreamAuditWriter
 from .bindings.x402 import X402Binding
@@ -106,7 +111,9 @@ __all__ = [
     "ReplayGuard",
     "compute_fingerprint",
     "compute_action_ref",
+    "compute_screen_ref",
     "format_action_ref_timestamp",
+    "format_screen_scope",
     "AuditLog",
     "NullAuditWriter",
     "StreamAuditWriter",
