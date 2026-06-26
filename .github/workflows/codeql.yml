@@ -8,6 +8,10 @@ on:
   schedule:
     - cron: "30 5 * * 1"
 
+# Least privilege: read-only token at the top level (OpenSSF Scorecard Token-Permissions).
+permissions:
+  contents: read
+
 jobs:
   analyze:
     name: Analyze (Python)

@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# Least privilege: read-only token for all jobs (OpenSSF Scorecard Token-Permissions).
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint
