@@ -107,6 +107,37 @@ See `PRESIDIO-REQ.md` for the full threat model and security design rationale.
   `langchain`, `prometheus`, `otel`, `schema`) before merge
 - Critical security updates are backported to the current supported version
 
+## Supply-Chain Provenance (SLSA Build L3)
+
+Release artefacts for `presidio-hardened-x402` reach **SLSA v1.0 Build Level 3**.
+The release workflow (`.github/workflows/publish.yml`, triggered by a signed
+`v*` tag) runs on GitHub-hosted runners and emits:
+
+- **Build provenance** — `actions/attest-build-provenance` produces a
+  Sigstore-signed in-toto attestation linking the source revision to each
+  artefact digest. On GitHub-hosted runners this provenance is L3-grade:
+  builds are isolated/ephemeral, and the signing identity is a short-lived
+  OIDC token from GitHub's control plane that the build steps cannot access —
+  so a tampered build cannot forge matching provenance.
+- **PEP 740 attestations** on PyPI, published via Trusted Publishing (OIDC, no
+  stored API tokens).
+- **CycloneDX SBOM** (`sbom.cdx.json`) generated per release and attached to
+  the GitHub Release.
+- **Signed git tags** (org SSH signing key) and SHA-pinned GitHub Actions.
+
+Verify a downloaded wheel:
+
+```bash
+gh attestation verify presidio_hardened_x402-<version>-py3-none-any.whl \
+  --repo presidio-v/presidio-hardened-x402
+```
+
+The L3 claim is contingent on GitHub-hosted runners; the full
+requirement-by-requirement mapping (and the caveat that self-hosted runners
+would cap the level at L2) is maintained in the SDLC supply-chain report. We do
+not yet claim hermetic or reproducible builds — that is a stretch target beyond
+the L3 baseline, not an L3 requirement.
+
 ## Known Limitations
 
 - The `PaymentSigner` protocol is abstract; the security of the signing implementation
