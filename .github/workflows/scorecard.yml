@@ -34,6 +34,11 @@ jobs:
         with:
           results_file: results.sarif
           results_format: sarif
+          # The default GITHUB_TOKEN cannot read branch-protection rules, so the
+          # Branch-Protection check errors. A fine-grained PAT (admin:read on this
+          # repo) stored as SCORECARD_TOKEN lets that check score; falls back to
+          # the default token when the secret is absent (non-breaking).
+          repo_token: ${{ secrets.SCORECARD_TOKEN || github.token }}
           # Publish to the public OpenSSF store so the score is externally
           # verifiable and a Scorecard badge can be rendered.
           publish_results: true

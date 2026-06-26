@@ -41,15 +41,22 @@ jobs:
           python -m pip install dist/*.whl
           cyclonedx-py environment --output-format JSON --output-file sbom.cdx.json
       - name: Attest build provenance
+        id: attest
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-path: dist/*
+      - name: Stage provenance bundle as a release asset
+        # Copy the Sigstore/in-toto attestation bundle to a named file so it can
+        # be attached to the GitHub Release. OpenSSF Scorecard's Signed-Releases
+        # check inspects release assets and recognises `.intoto.jsonl` provenance.
+        run: cp "${{ steps.attest.outputs.bundle-path }}" provenance.intoto.jsonl
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-artifacts
           path: |
             dist/
             sbom.cdx.json
+            provenance.intoto.jsonl
 
   publish:
     name: Publish to PyPI (Trusted Publishing)
@@ -87,9 +94,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           if gh release view "$GITHUB_REF_NAME" --repo "$GH_REPO" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* sbom.cdx.json --repo "$GH_REPO" --clobber
+            gh release upload "$GITHUB_REF_NAME" dist/* sbom.cdx.json provenance.intoto.jsonl --repo "$GH_REPO" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/* sbom.cdx.json \
+            gh release create "$GITHUB_REF_NAME" dist/* sbom.cdx.json provenance.intoto.jsonl \
               --repo "$GH_REPO" \
               --verify-tag \
               --title "$GITHUB_REF_NAME" \
