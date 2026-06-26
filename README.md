@@ -5,6 +5,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/presidio-v/presidio-hardened-x402.svg)](https://github.com/presidio-v/presidio-hardened-x402/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml/badge.svg)](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/presidio-v/presidio-hardened-x402/badge)](https://securityscorecards.dev/viewer/?uri=github.com/presidio-v/presidio-hardened-x402)
 
 > v0.7.0 — market-based SLO enforcement: signed arch-translucency degradation evidence becomes a verified x402 capacity-payment trigger, with cooldowns, spend caps, provisioning redaction, and pluggable capacity providers.
 
