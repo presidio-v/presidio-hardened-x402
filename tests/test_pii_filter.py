@@ -241,6 +241,56 @@ class TestPIIFilterRegexMode:
         assert entities[0].entity_type == "EMAIL_ADDRESS"
         assert entities[0].original_text == "alice@example.com"
 
+    def test_nlp_mode_registers_structural_recognizers(self, monkeypatch):
+        # Regression: NLP mode must be a SUPERSET of regex mode. Presidio's predefined
+        # US_SSN/PHONE recognizers score plain dashed patterns ~0.05 (below min_score),
+        # so without registering our high-confidence structural recognizers the *paid*
+        # NLP tier silently misses SSNs and phone numbers the free regex tier catches.
+        from presidio_x402.pii_filter import _REGEX_PATTERNS, _STRUCTURAL_NLP_SCORE
+
+        registered = []
+
+        class FakePattern:
+            def __init__(self, *, name, regex, score):
+                self.name, self.regex, self.score = name, regex, score
+
+        class FakePatternRecognizer:
+            def __init__(self, *, supported_entity, name, patterns):
+                self.supported_entity = supported_entity
+                self.patterns = patterns
+
+        class FakeRegistry:
+            def add_recognizer(self, rec):
+                registered.append(rec)
+
+        class FakeAnalyzer:
+            def __init__(self):
+                self.registry = FakeRegistry()
+
+        monkeypatch.setitem(
+            sys.modules,
+            "presidio_analyzer",
+            types.SimpleNamespace(
+                AnalyzerEngine=FakeAnalyzer,
+                Pattern=FakePattern,
+                PatternRecognizer=FakePatternRecognizer,
+            ),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "presidio_anonymizer",
+            types.SimpleNamespace(AnonymizerEngine=object),
+        )
+
+        PIIFilter(mode="nlp")
+
+        got = {r.supported_entity: r.patterns[0].score for r in registered}
+        expected = {name for name, _ in _REGEX_PATTERNS}
+        assert expected <= set(got), f"missing structural recognizers: {expected - set(got)}"
+        # the two the bare AnalyzerEngine specifically dropped
+        assert "US_SSN" in got and "PHONE_NUMBER" in got
+        assert all(score == _STRUCTURAL_NLP_SCORE for score in got.values())
+
     def test_nlp_scan_returns_original_text_when_all_results_below_threshold(self, monkeypatch):
         class FakeOperatorConfig:
             def __init__(self, operator_name, params):
