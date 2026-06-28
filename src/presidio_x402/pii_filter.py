@@ -218,6 +218,14 @@ _PROVISIONING_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 # Lookup pool for opt-in selection: structural defaults + provisioning entities.
 _ALL_PATTERNS: list[tuple[str, re.Pattern[str]]] = _REGEX_PATTERNS + _PROVISIONING_PATTERNS
 
+# Confidence assigned to our structural pattern recognizers when they augment the
+# spaCy NER in NLP mode. High, because these are validated structural patterns —
+# and crucially *above* any reasonable ``min_score`` so that SSNs/phones are not
+# silently dropped (Presidio's predefined US_SSN/PHONE recognizers score plain
+# dashed patterns ~0.05). Kept below 1.0 (the regex-mode certainty) to leave NER
+# room and signal "pattern, not validated value".
+_STRUCTURAL_NLP_SCORE = 0.85
+
 
 @dataclass
 class EntityResult:
@@ -267,12 +275,34 @@ class PIIFilter:
 
     def _init_presidio_nlp(self) -> None:
         try:
-            from presidio_analyzer import AnalyzerEngine
+            from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer
             from presidio_anonymizer import AnonymizerEngine
 
             self._analyzer = AnalyzerEngine()
+            # NLP mode must be a SUPERSET of regex mode: register our high-confidence
+            # structural recognizers alongside the spaCy NER. Without this, the *paid*
+            # NLP tier silently misses SSNs and phone numbers that the free regex tier
+            # catches, because Presidio's predefined US_SSN/PHONE recognizers score
+            # plain dashed patterns ~0.05 — below ``min_score``. (See _STRUCTURAL_NLP_SCORE.)
+            for _name, _compiled in _REGEX_PATTERNS:
+                _rx = _compiled.pattern
+                if _compiled.flags & re.IGNORECASE:
+                    _rx = "(?i)" + _rx
+                self._analyzer.registry.add_recognizer(
+                    PatternRecognizer(
+                        supported_entity=_name,
+                        name=f"PresidioHardenedStructural-{_name}",
+                        patterns=[
+                            Pattern(
+                                name=f"{_name} (structural)",
+                                regex=_rx,
+                                score=_STRUCTURAL_NLP_SCORE,
+                            )
+                        ],
+                    )
+                )
             self._anonymizer = AnonymizerEngine()
-            logger.debug("PIIFilter initialized in NLP mode")
+            logger.debug("PIIFilter initialized in NLP mode (NER + structural recognizers)")
         except ImportError as exc:
             raise ImportError(
                 "NLP mode requires: pip install presidio-hardened-x402[nlp] "
