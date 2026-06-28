@@ -8,6 +8,41 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No unreleased changes.
 
+## [0.8.0] — 2026-06-29
+
+PII-completeness, byte-determinism, and supply-chain hardening (library). The
+headline change: NLP mode is now a structural **superset** of regex, so the
+high-accuracy engine can no longer silently miss the structured identifiers
+(SSN, phone, credit card, …) that the zero-setup regex engine already caught.
+
+### Added
+- **`screen_ref` leg** for composed-envelope screening pointers — a signed,
+  PII-free screening verdict block that other parties can canonicalize and
+  countersign alongside their own evidence refs.
+
+### Changed
+- **`pii_filter.py` — NLP mode is a superset of regex.** `mode="nlp"` now
+  registers the structural pattern recognizers (`US_SSN`, `PHONE_NUMBER`,
+  `CREDIT_CARD`, `EMAIL_ADDRESS`, `IBAN`, `IP_ADDRESS`) on top of the spaCy NER
+  pipeline, so it detects every entity regex mode does *plus* the NER entities.
+  Previously a bare `AnalyzerEngine` scored some structured identifiers below
+  threshold and let them through. The default zero-setup `mode="regex"` is
+  unchanged; `mode="nlp"` still requires the spaCy model extra.
+
+### Security
+- **`action_ref.py`** rejects empty entity-type sets and NFC-normalizes its
+  fields before hashing, closing two byte-determinism gaps so the same action
+  always yields the same `action_ref` (audit F1/F2).
+- **Log hygiene:** the missing-payment-header warning redacts the resource URL
+  before logging, so a PII-bearing URL cannot reach a log sink.
+- **Supply chain:** weekly OpenSSF Scorecard workflow + README badge; Scorecard
+  Token-Permissions / SAST / Signed-Releases / Branch-Protection remediations;
+  SLSA Build L3 provenance documented.
+- **Independent multi-round security audit** of the v0.8.0 release cycle —
+  library scope cleared (PII recognizer completeness, `action_ref` determinism,
+  log hygiene, supply chain) with no Critical/High/Medium findings; see
+  [`SECURITY-AUDIT-2026-06-29-v0.8.0.md`](SECURITY-AUDIT-2026-06-29-v0.8.0.md).
+
 ## [0.7.0] — 2026-06-21
 
 Market-based SLO enforcement (library). The agent becomes an economic actor that

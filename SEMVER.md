@@ -12,7 +12,7 @@ Everything exported in `presidio_x402.__all__`, plus the documented constructor/
 - **Minor (0.X.0):** additive API (new exports, new optional parameters with defaults), new optional extras. Existing code keeps working — including audit event shapes, exception types, and the wire behaviour of the x402 binding. Deprecations are announced here (docstring + CHANGELOG) at least one minor before any change.
 - **Major (1.0.0+):** the only place deprecated surface may be removed. None scheduled.
 
-**Pin guidance for partners:** `presidio-hardened-x402>=0.5,<0.6` in production; run the conformance suite (below) in your CI on every upgrade.
+**Pin guidance for partners:** `presidio-hardened-x402>=0.8,<0.9` in production; run the conformance suite (below) in your CI on every upgrade.
 
 ## Behavioural guarantees (stronger than API stability)
 
