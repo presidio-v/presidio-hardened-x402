@@ -279,7 +279,7 @@ class TestPIIFilterRegexMode:
         monkeypatch.setitem(
             sys.modules,
             "presidio_anonymizer",
-            types.SimpleNamespace(AnonymizerEngine=lambda: object()),
+            types.SimpleNamespace(AnonymizerEngine=object),
         )
 
         PIIFilter(mode="nlp")
