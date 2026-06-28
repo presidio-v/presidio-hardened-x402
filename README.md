@@ -7,7 +7,7 @@
 [![CI](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml/badge.svg)](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/presidio-v/presidio-hardened-x402/badge)](https://securityscorecards.dev/viewer/?uri=github.com/presidio-v/presidio-hardened-x402)
 
-> v0.7.0 — market-based SLO enforcement: signed arch-translucency degradation evidence becomes a verified x402 capacity-payment trigger, with cooldowns, spend caps, provisioning redaction, and pluggable capacity providers.
+> v0.8.0 — NLP screening is now a structural superset of regex (the high-accuracy engine no longer misses structured identifiers like SSN/phone/card), plus a composed-envelope `screen_ref` leg, `action_ref` byte-determinism, URL-redacted log hygiene, and OpenSSF Scorecard / SLSA Build L3 supply-chain hardening.
 
 Security middleware for the [x402 payment protocol](https://www.x402.org/).
 
@@ -427,7 +427,8 @@ All exceptions are importable from `presidio_x402`.
 | v0.4.0 | **Screening API launch** — hosted [`screen.presidio-group.eu`](https://screen.presidio-group.eu) free tier (regex mode, 100 req/day) · `ScreeningClient` + `remote_screening=True` mode · per-origin `pay_to` allowlist (chain-06 mitigation) · audit-cycle hardening (F-A/B 2026-05-03, F-C/D/E 2026-05-10, F1/F2/F3 2026-05-17); see [`CHANGELOG.md`](CHANGELOG.md) |
 | v0.5.0 | **OEM embed kit** — rail-agnostic `ScreeningPipeline` core + `bindings/x402` layer (`PaymentProtocolBinding` protocol, hedge against rail fragmentation: ACP/Tempo, AP2) · [SEMVER.md](SEMVER.md) stability guarantees · partner conformance suite (`python -m presidio_x402.conformance`) · CDP/LangChain/CrewAI quickstarts · SBOM in CI · freshness-bound MPA countersignatures (F-8) |
 | v0.6.0 | **Production hardening + evidence substrate** — multi-tenant replay namespaces · enterprise audit sinks (S3 / Splunk / Datadog) · signed `evidence-ref@1` verification · SLSA/OIDC release provenance · digest-pinned Docker base + hash-pinned spaCy model · latency SLO and all-matrix coverage CI gates · OTel spans · policy hot-reload · startup key gates · human-pentest retest closure |
-| **v0.7.0** | **SLO payment broker (library)** — x402 micropayments as runtime infrastructure bids: `SLOPaymentBroker` + `SLOPaymentPolicy` + evidence-anchored `ArchTranslucencyAdapter` + provisioning PII entities; cross-repo validated against `presidio-hardened-arch-translucency`. cs.DC preprint + empirical eval tracked separately — **latest release** |
+| v0.7.0 | **SLO payment broker (library)** — x402 micropayments as runtime infrastructure bids: `SLOPaymentBroker` + `SLOPaymentPolicy` + evidence-anchored `ArchTranslucencyAdapter` + provisioning PII entities; cross-repo validated against `presidio-hardened-arch-translucency`. cs.DC preprint + empirical eval tracked separately |
+| **v0.8.0** | **PII completeness + supply-chain hardening (library)** — `nlp` mode is now a structural superset of `regex` (no structured-identifier misses) · composed-envelope `screen_ref` leg · `action_ref` byte-determinism (NFC + non-empty entity sets) · URL-redacted log hygiene · OpenSSF Scorecard workflow/badge + SLSA Build L3 provenance · independent multi-round security audit cleared — **latest release** |
 | Unreleased on `main` | Deferred #23 prompt-injection / agent-bound response scanning threat-model work |
 
 See [PRESIDIO-REQ.md](PRESIDIO-REQ.md) for full deliberation and rationale.

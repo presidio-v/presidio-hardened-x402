@@ -98,6 +98,14 @@ See `PRESIDIO-REQ.md` for the full threat model and security design rationale.
 | T-SLO-2 — Workload-metadata leakage to a compute provider | Opt-in provisioning PII entities (`WORKLOAD_CLASS`, `DATA_CLASSIFICATION`, `QUERY_PATTERN`) redact workload context before transmission |
 | T-SLO-3 — Vendor lock-in via payment coupling | Pluggable `CapacityProvider` registry |
 
+### v0.8.0 additions (PII completeness + determinism)
+
+| Threat | Mitigation |
+|--------|-----------|
+| The high-accuracy engine silently misses structured identifiers | `mode="nlp"` registers the structural recognizers (`US_SSN`, `PHONE_NUMBER`, `CREDIT_CARD`, `EMAIL_ADDRESS`, `IBAN`, `IP_ADDRESS`) as a superset of regex on top of NER — no structured identifier scores below threshold and slips through |
+| Non-deterministic `action_ref` (replay / attribution ambiguity) | `action_ref` rejects empty entity-type sets and NFC-normalizes fields before hashing — the same action always yields the same ref |
+| PII-bearing resource URL reaching a log sink | The missing-payment-header warning redacts the URL before it is logged |
+
 ## Dependency Security
 
 - Dependencies are pinned to minimum-safe versions
@@ -158,5 +166,8 @@ This repository is developed under the Presidio hardened-family SDLC. The public
 
 ## Manual Security Audit History
 
+- [`SECURITY-AUDIT-2026-06-29-v0.8.0.md`](SECURITY-AUDIT-2026-06-29-v0.8.0.md) —
+  v0.8.0 independent multi-round security review (library scope) — GO, no open
+  Critical/High/Medium findings.
 - [`SECURITY-AUDIT-2026-06-21-v0.7.0.md`](SECURITY-AUDIT-2026-06-21-v0.7.0.md) —
   v0.7.0 third-party functional/security audit remediation status.

@@ -436,6 +436,44 @@ contain. This is why v0.6.0 evidence Phase-A (the `mica` verifier) was a hard pr
 
 ---
 
+## v0.8.0 Requirements (PII completeness + supply-chain hardening) — **library delivered 2026-06-29**
+
+A correctness-and-hardening milestone. No new payment surface; the focus is closing
+a screening-completeness gap, byte-determinism of the attribution primitive, log
+hygiene, and measured supply-chain provenance.
+
+### Delivered
+
+- [x] **NLP mode is a structural superset of regex** — `PIIFilter(mode="nlp")` registers
+  the structural recognizers (`US_SSN`, `PHONE_NUMBER`, `CREDIT_CARD`, `EMAIL_ADDRESS`,
+  `IBAN`, `IP_ADDRESS`) on top of the spaCy NER pipeline, so the high-accuracy engine
+  detects everything regex mode does plus the NER entities. Closes the gap where a bare
+  `AnalyzerEngine` scored some structured identifiers below threshold and let them
+  through. Default `mode="regex"` behaviour is unchanged.
+
+- [x] **`screen_ref` leg** — a signed, PII-free screening verdict block for
+  composed-envelope screening pointers, which other parties can canonicalize and
+  countersign alongside their own evidence refs.
+
+- [x] **`action_ref` byte-determinism** — rejects empty entity-type sets and
+  NFC-normalizes fields before hashing so the same action always yields the same ref
+  (audit F1/F2).
+
+- [x] **Log hygiene** — the missing-payment-header warning redacts the resource URL
+  before logging.
+
+- [x] **Supply-chain provenance** — weekly OpenSSF Scorecard workflow + README badge;
+  Scorecard Token-Permissions / SAST / Signed-Releases / Branch-Protection
+  remediations; SLSA Build L3 provenance documented.
+
+### Verification
+
+Independent multi-round security audit cleared the library scope (GO, no open
+Critical/High/Medium findings); see
+[`SECURITY-AUDIT-2026-06-29-v0.8.0.md`](SECURITY-AUDIT-2026-06-29-v0.8.0.md).
+
+---
+
 ## Security Model
 
 The threat model for presidio-hardened-x402 addresses the following adversaries:
