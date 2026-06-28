@@ -194,3 +194,30 @@ def test_screen_scope_rejects_separator_in_verdict(bad_verdict):
 def test_screen_scope_rejects_separator_in_entity():
     with pytest.raises(ValueError, match="separator"):
         format_screen_scope("PII_REDACTED", ["EMAIL,ADDRESS"])
+
+
+def test_screen_scope_rejects_empty_entity():
+    # F1 (audit 2026-06-28): an empty entity would emit a trailing-colon scope
+    # ("presidio:x402.screen:PII_REDACTED:") that no verifier can reproduce.
+    with pytest.raises(ValueError, match="non-empty"):
+        format_screen_scope("PII_REDACTED", [""])
+
+
+def test_compute_screen_ref_rejects_empty_entity():
+    with pytest.raises(ValueError, match="non-empty"):
+        compute_screen_ref(_SCREEN_AGENT_ID, "PII_REDACTED", [""], "2026-06-28T19:30:00.000Z")
+
+
+def test_action_ref_nfc_normalises_unicode_fields():
+    # F2 (audit 2026-06-28): NFD- and NFC-form inputs must hash identically, so a
+    # non-ASCII field can't produce an action_ref only one verifier accepts.
+    import unicodedata
+
+    ts = "2026-06-28T19:30:00.000Z"
+    nfc = unicodedata.normalize("NFC", "café")  # 'é' as U+00E9
+    nfd = unicodedata.normalize("NFD", "café")  # 'e' + combining acute U+0301
+    assert nfc != nfd  # distinct byte sequences before normalisation
+    assert compute_action_ref(nfd, "pii_screen", "x", ts) == compute_action_ref(
+        nfc, "pii_screen", "x", ts
+    )
+    # ASCII determinism is unaffected — guarded by the published-vector byte-match tests above.

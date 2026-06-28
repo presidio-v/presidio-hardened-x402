@@ -14,12 +14,13 @@ external service. A Mycelium/ARGENTUM "provider" integration (an optional
 
 Spec: argentum-core ``docs/spec/action-ref.md`` (stable ref ``action-ref-v1.0``).
 
-.. note:: Safe band
+.. note:: Canonicalisation
 
-   The :func:`json.dumps` canonicalisation below is RFC 8785-compatible for the
-   input shapes this primitive targets: ASCII field values and conformant
-   ``YYYY-MM-DDTHH:MM:SS.mmmZ`` timestamps. For non-ASCII or surrogate-pair
-   field values, use an RFC 8785 library to guarantee byte-level portability.
+   The :func:`json.dumps` canonicalisation below is RFC 8785-compatible: string
+   fields are NFC-normalised before hashing (so NFD-form Unicode yields the same
+   digest a normalising verifier computes), and timestamps are pinned to the
+   conformant ``YYYY-MM-DDTHH:MM:SS.mmmZ`` form. NFC is a no-op for the ASCII
+   inputs this primitive targets (DIDs, ``payment.send``, ASCII scopes).
 
 Usage::
 
@@ -40,6 +41,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -112,10 +114,13 @@ def compute_action_ref(
             "timestamp must be RFC 3339 UTC with exactly 3 millisecond digits "
             f"and a trailing 'Z' (YYYY-MM-DDTHH:MM:SS.mmmZ); got {timestamp!r}"
         )
+    # NFC-normalise the string fields so a caller passing NFD-form Unicode yields the
+    # same digest as an RFC 8785 verifier (which normalises to NFC). No-op for ASCII
+    # inputs (DIDs, ``payment.send``, ASCII scopes), so existing digests are unchanged.
     payload = {
-        "agent_id": agent_id,
-        "action_type": action_type,
-        "scope": scope,
+        "agent_id": unicodedata.normalize("NFC", agent_id),
+        "action_type": unicodedata.normalize("NFC", action_type),
+        "scope": unicodedata.normalize("NFC", scope),
         "timestamp": timestamp,
     }
     # JCS (RFC 8785): lexicographic key order, no inter-token whitespace, UTF-8.
@@ -163,6 +168,8 @@ def format_screen_scope(verdict: str, entities: Iterable[str] = ()) -> str:
         raise ValueError(f"screen verdict must not contain ':' or ',' separators; got {verdict!r}")
     canonical_entities = sorted(set(entities))
     for entity in canonical_entities:
+        if not entity:
+            raise ValueError("entity type must be a non-empty string")
         if "," in entity or ":" in entity:
             raise ValueError(f"entity type must not contain ',' or ':' separators; got {entity!r}")
     scope = f"{_SCREEN_SCOPE_PREFIX}:{verdict}"
