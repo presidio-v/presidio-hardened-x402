@@ -8,6 +8,16 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No unreleased changes.
 
+## [0.8.1] — 2026-06-29
+
+### Fixed
+- **`pii_filter.py` — PHONE span boundary.** The structural phone pattern's
+  leading `\b` with an optional `\(?` truncated parenthesized / `+1` numbers
+  (`(415) 555-0182` matched as `415) 555-0182`), leaving the leading `(`
+  un-redacted and mis-aligning the redaction span. The area code is now matched
+  as a whole unit (`(NNN)` or `NNN` + separator) with digit lookarounds. Full
+  forms are captured; no change to credit-card / SSN matching.
+
 ## [0.8.0] — 2026-06-29
 
 PII-completeness, byte-determinism, and supply-chain hardening (library). The
