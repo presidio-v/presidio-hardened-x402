@@ -147,10 +147,18 @@ _REGEX_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             + r")(?![-\s]?[0-9])"
         ),
     ),
-    # Structural: US phone numbers
+    # Structural: US phone numbers. The area code is matched as a whole unit —
+    # either ``(NNN)`` or ``NNN`` followed by a separator — so the span includes the
+    # leading ``(`` / ``+1`` instead of starting mid-number (a leading ``\b`` with an
+    # optional ``\(?`` truncated ``(415) 555-0182`` to ``415) 555-0182``, mis-aligning
+    # the redaction span). Digit lookarounds replace ``\b`` so the parens don't break it.
     (
         "PHONE_NUMBER",
-        re.compile(r"\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s][0-9]{3}[-.\s][0-9]{4}\b"),
+        re.compile(
+            r"(?<![0-9])(?:\+?1[-.\s]?)?"
+            r"(?:\([0-9]{3}\)[-.\s]?|[0-9]{3}[-.\s])"
+            r"[0-9]{3}[-.\s][0-9]{4}(?![0-9])"
+        ),
     ),
     # Structural: IBAN (EU bank accounts)
     (
