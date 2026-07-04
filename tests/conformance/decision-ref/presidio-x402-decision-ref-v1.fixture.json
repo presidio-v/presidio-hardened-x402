@@ -228,5 +228,119 @@
       "verdict_recomputed": "DENY",
       "failure_mode": "verdict_not_recomputable"
     }
+  ],
+  "digest_forward_compat_note": "Second block (x402#2332 / autogen#7353, pshkv's matrix): the digest & forward-compat axis. Property vectors (axis=digest) assert decision_ref_differs or decision_ref_equals at the preimage level; fail-closed vectors (axis=forward_compat) carry expect=reject. Conformance rule for the latter: decision_ref_preimage_fields must be present, non-empty, and set-equal to the preimage object's keys.",
+  "digest_forward_compat_vectors": [
+    {
+      "id": "presidio-x402-decision-dfc-policy-version-binding",
+      "axis": "digest",
+      "assert": "decision_ref_differs",
+      "relative_to": "presidio-x402-decision-001",
+      "note": "preimage-level property vector: exercises decision_ref canonicalisation/binding, not a standalone signed record.",
+      "description": "Same artifact_hash as -001, policy_version bumped v1 -> v2. policy_version is in the preimage, so the same artifact under a different policy surface yields a DIFFERENT decision_ref. An older id cannot silently stand in for a decision taken under a new policy.",
+      "baseline_decision_ref": "655c85c5d14e7bdff09d21b8f292f767c8e519fa5c0529cc0b9f7f695ca2a31b",
+      "decision_ref_preimage_fields": [
+        "artifact_hash",
+        "artifact_type",
+        "policy_version",
+        "verdict"
+      ],
+      "decision_ref_preimage": {
+        "artifact_hash": "c61af4e5f126f6093153741ac167205f7cca23b10dbe98c368c12c1ef7e86662",
+        "artifact_type": "presidio-hardened-x402/payment-decision@1",
+        "policy_version": "presidio-x402.policy.v2",
+        "verdict": "ALLOW"
+      },
+      "jcs_payload": "{\"artifact_hash\":\"c61af4e5f126f6093153741ac167205f7cca23b10dbe98c368c12c1ef7e86662\",\"artifact_type\":\"presidio-hardened-x402/payment-decision@1\",\"policy_version\":\"presidio-x402.policy.v2\",\"verdict\":\"ALLOW\"}",
+      "preimage_canonical_bytes_hex": "7b2261727469666163745f68617368223a2263363161663465356631323666363039333135333734316163313637323035663763636132336231306462653938633336386331326331656637653836363632222c2261727469666163745f74797065223a22707265736964696f2d68617264656e65642d783430322f7061796d656e742d6465636973696f6e4031222c22706f6c6963795f76657273696f6e223a22707265736964696f2d783430322e706f6c6963792e7632222c2276657264696374223a22414c4c4f57227d",
+      "decision_ref": "99fb68a2f0cdc586899325412652cc1dcada040dc4fc03bb854a8d5d323ccfbb"
+    },
+    {
+      "id": "presidio-x402-decision-dfc-verdict-binding",
+      "axis": "digest",
+      "assert": "decision_ref_differs",
+      "relative_to": "presidio-x402-decision-001",
+      "note": "preimage-level property vector: exercises decision_ref canonicalisation/binding, not a standalone signed record.",
+      "description": "Same artifact_hash and policy_version as -001, verdict ALLOW -> DENY. The verdict is bound into decision_ref, so it cannot be swapped without the id moving. (Such a record would also fail the first-block recompute; here we isolate the digest-binding property.)",
+      "baseline_decision_ref": "655c85c5d14e7bdff09d21b8f292f767c8e519fa5c0529cc0b9f7f695ca2a31b",
+      "decision_ref_preimage_fields": [
+        "artifact_hash",
+        "artifact_type",
+        "policy_version",
+        "verdict"
+      ],
+      "decision_ref_preimage": {
+        "artifact_hash": "c61af4e5f126f6093153741ac167205f7cca23b10dbe98c368c12c1ef7e86662",
+        "artifact_type": "presidio-hardened-x402/payment-decision@1",
+        "policy_version": "presidio-x402.policy.v1",
+        "verdict": "DENY"
+      },
+      "jcs_payload": "{\"artifact_hash\":\"c61af4e5f126f6093153741ac167205f7cca23b10dbe98c368c12c1ef7e86662\",\"artifact_type\":\"presidio-hardened-x402/payment-decision@1\",\"policy_version\":\"presidio-x402.policy.v1\",\"verdict\":\"DENY\"}",
+      "preimage_canonical_bytes_hex": "7b2261727469666163745f68617368223a2263363161663465356631323666363039333135333734316163313637323035663763636132336231306462653938633336386331326331656637653836363632222c2261727469666163745f74797065223a22707265736964696f2d68617264656e65642d783430322f7061796d656e742d6465636973696f6e4031222c22706f6c6963795f76657273696f6e223a22707265736964696f2d783430322e706f6c6963792e7631222c2276657264696374223a2244454e59227d",
+      "decision_ref": "0096eed281b8daa69b16f247f7721f241a694249fa54184e7478f55fc3525e02"
+    },
+    {
+      "id": "presidio-x402-decision-dfc-canonicalisation-stable",
+      "axis": "digest",
+      "assert": "decision_ref_equals",
+      "relative_to": "presidio-x402-decision-001",
+      "note": "preimage-level property vector: exercises decision_ref canonicalisation/binding, not a standalone signed record.",
+      "description": "Byte-for-byte the same preimage content as -001, presented with the keys in scrambled order. JCS (RFC 8785) sorts keys before hashing, so the canonical bytes and the decision_ref are IDENTICAL to -001. Reordering is not tampering.",
+      "baseline_decision_ref": "655c85c5d14e7bdff09d21b8f292f767c8e519fa5c0529cc0b9f7f695ca2a31b",
+      "decision_ref_preimage_fields": [
+        "artifact_hash",
+        "artifact_type",
+        "policy_version",
+        "verdict"
+      ],
+      "decision_ref_preimage": {
+        "artifact_hash": "c61af4e5f126f6093153741ac167205f7cca23b10dbe98c368c12c1ef7e86662",
+        "artifact_type": "presidio-hardened-x402/payment-decision@1",
+        "policy_version": "presidio-x402.policy.v1",
+        "verdict": "ALLOW"
+      },
+      "jcs_payload": "{\"artifact_hash\":\"c61af4e5f126f6093153741ac167205f7cca23b10dbe98c368c12c1ef7e86662\",\"artifact_type\":\"presidio-hardened-x402/payment-decision@1\",\"policy_version\":\"presidio-x402.policy.v1\",\"verdict\":\"ALLOW\"}",
+      "preimage_canonical_bytes_hex": "7b2261727469666163745f68617368223a2263363161663465356631323666363039333135333734316163313637323035663763636132336231306462653938633336386331326331656637653836363632222c2261727469666163745f74797065223a22707265736964696f2d68617264656e65642d783430322f7061796d656e742d6465636973696f6e4031222c22706f6c6963795f76657273696f6e223a22707265736964696f2d783430322e706f6c6963792e7631222c2276657264696374223a22414c4c4f57227d",
+      "decision_ref": "655c85c5d14e7bdff09d21b8f292f767c8e519fa5c0529cc0b9f7f695ca2a31b",
+      "decision_ref_preimage_unsorted": {
+        "verdict": "ALLOW",
+        "policy_version": "presidio-x402.policy.v1",
+        "artifact_type": "presidio-hardened-x402/payment-decision@1",
+        "artifact_hash": "c61af4e5f126f6093153741ac167205f7cca23b10dbe98c368c12c1ef7e86662"
+      }
+    },
+    {
+      "id": "presidio-x402-decision-dfc-missing-preimage-field-list",
+      "axis": "forward_compat",
+      "assert": "non_conformant",
+      "expect": "reject",
+      "description": "The record ships a decision_ref_preimage but declares no decision_ref_preimage_fields. Without the self-describing field list a verifier cannot know the canonicalisation scope (which keys, in what set) -> it must fail closed, not guess.",
+      "decision_ref_preimage": {
+        "artifact_hash": "c61af4e5f126f6093153741ac167205f7cca23b10dbe98c368c12c1ef7e86662",
+        "artifact_type": "presidio-hardened-x402/payment-decision@1",
+        "policy_version": "presidio-x402.policy.v1",
+        "verdict": "ALLOW"
+      }
+    },
+    {
+      "id": "presidio-x402-decision-dfc-unknown-field-fail-closed",
+      "axis": "forward_compat",
+      "assert": "fail_closed",
+      "expect": "reject",
+      "description": "A future policy version adds risk_tier to the preimage object but does NOT list it in decision_ref_preimage_fields. Declared fields != object keys, so an older verifier would hash a subset and silently accept a decision it cannot fully reconstruct -> fail closed. The self-describing field list exists precisely so the surface can grow without this.",
+      "decision_ref_preimage": {
+        "artifact_hash": "c61af4e5f126f6093153741ac167205f7cca23b10dbe98c368c12c1ef7e86662",
+        "artifact_type": "presidio-hardened-x402/payment-decision@1",
+        "policy_version": "presidio-x402.policy.v1",
+        "verdict": "ALLOW",
+        "risk_tier": "elevated"
+      },
+      "decision_ref_preimage_fields": [
+        "artifact_hash",
+        "artifact_type",
+        "policy_version",
+        "verdict"
+      ]
+    }
   ]
 }
