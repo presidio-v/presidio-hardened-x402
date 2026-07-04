@@ -104,3 +104,43 @@ def test_fixture_leads_with_negatives():
     assert "signer_equals_runtime" in fmodes
     assert "verdict_not_recomputable" in fmodes
     assert any(v["expect"] == "accept" for v in _VECTORS)
+
+
+# --- second block: pshkv's digest / forward-compat axis (x402#2332, autogen#7353) ---
+_DFC = _FIXTURE.get("digest_forward_compat_vectors", [])
+_DFC_IDS = [v["id"] for v in _DFC]
+
+
+def _conformant_preimage(v: dict) -> bool:
+    """A preimage is verifiable only if its field list is present and set-equal to its keys."""
+    fields = v.get("decision_ref_preimage_fields")
+    return bool(fields) and set(fields) == set(v["decision_ref_preimage"].keys())
+
+
+@pytest.mark.parametrize("v", _DFC, ids=_DFC_IDS)
+def test_digest_forward_compat(v):
+    """Digest axis: id sensitive to its preimage, and fails closed on the unknown."""
+    a = v["assert"]
+    pre = v["decision_ref_preimage"]
+    if a == "decision_ref_differs":
+        # same artifact, one changed preimage field -> a different, still-recomputable id
+        assert pre["artifact_hash"] == _FIXTURE["vectors"][0]["artifact_hash"]
+        assert sha256_hex(jcs(pre)) == v["decision_ref"] != v["baseline_decision_ref"]
+    elif a == "decision_ref_equals":
+        # JCS is order-insensitive: scrambled keys canonicalise to the same bytes and id
+        assert jcs(v["decision_ref_preimage_unsorted"]) == jcs(pre) == v["jcs_payload"]
+        assert sha256_hex(jcs(pre)) == v["decision_ref"] == v["baseline_decision_ref"]
+    elif a in ("non_conformant", "fail_closed"):
+        assert v["expect"] == "reject"
+        assert not _conformant_preimage(v)
+    else:
+        pytest.fail(f"{v['id']}: unknown assert '{a}'")
+
+
+def test_digest_block_covers_pshkv_matrix():
+    """All five pshkv cases present: two bindings, canonicalisation, and both fail-closed."""
+    asserts = [v["assert"] for v in _DFC]
+    assert asserts.count("decision_ref_differs") == 2  # policy_version + verdict binding
+    assert "decision_ref_equals" in asserts  # reorder -> same digest
+    assert "non_conformant" in asserts  # missing preimage field list
+    assert "fail_closed" in asserts  # unknown field, not in declared list
