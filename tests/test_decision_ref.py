@@ -533,9 +533,7 @@ def test_cli_main_reports_jsonl_failures(policy_signer, tmp_path, capsys):
     sig = bad["evidence"][0]["signature"]
     bad["evidence"][0]["signature"] = ("f" if sig[0] != "f" else "0") + sig[1:]
     envelope_path = tmp_path / "decisions.jsonl"
-    envelope_path.write_text(
-        json.dumps(good) + "\n" + json.dumps(bad) + "\n", encoding="utf-8"
-    )
+    envelope_path.write_text(json.dumps(good) + "\n" + json.dumps(bad) + "\n", encoding="utf-8")
     trust_path = tmp_path / "trust.json"
     trust_path.write_text(json.dumps(trust), encoding="utf-8")
 
