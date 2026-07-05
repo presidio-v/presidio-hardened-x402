@@ -17,7 +17,9 @@ mirroring ``test_capability.py`` / ``test_mica.py``.
 
 from __future__ import annotations
 
+import copy
 import json
+import runpy
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric import ed25519
@@ -503,3 +505,60 @@ def test_null_writer_discards(policy_signer):
         controls=_controls(),
     )
     assert env["decision_ref"]
+
+
+def test_cli_main_verifies_single_envelope(policy_signer, tmp_path, capsys):
+    from presidio_x402.decision_ref import main
+
+    signer, priv, _pub, trust = policy_signer
+    env = build_decision_evidence(_content(_controls()), signing_key=priv, signer=signer)
+    envelope_path = tmp_path / "decision.json"
+    envelope_path.write_text(json.dumps(env), encoding="utf-8")
+    trust_path = tmp_path / "trust.json"
+    trust_path.write_text(json.dumps(trust), encoding="utf-8")
+
+    assert main([str(envelope_path), str(trust_path)]) == 0
+    out = capsys.readouterr().out
+    assert env["decision_ref"] in out
+    assert "verdict=ALLOW" in out
+    assert "OK" in out
+
+
+def test_cli_main_reports_jsonl_failures(policy_signer, tmp_path, capsys):
+    from presidio_x402.decision_ref import main
+
+    signer, priv, _pub, trust = policy_signer
+    good = build_decision_evidence(_content(_controls()), signing_key=priv, signer=signer)
+    bad = copy.deepcopy(good)
+    sig = bad["evidence"][0]["signature"]
+    bad["evidence"][0]["signature"] = ("f" if sig[0] != "f" else "0") + sig[1:]
+    envelope_path = tmp_path / "decisions.jsonl"
+    envelope_path.write_text(
+        json.dumps(good) + "\n" + json.dumps(bad) + "\n", encoding="utf-8"
+    )
+    trust_path = tmp_path / "trust.json"
+    trust_path.write_text(json.dumps(trust), encoding="utf-8")
+
+    assert main([str(envelope_path), str(trust_path)]) == 1
+    out = capsys.readouterr().out
+    assert "FAIL(bad_signature)" in out
+    assert "OK" in out
+
+
+def test_cli_main_returns_usage_error_on_missing_file(tmp_path, capsys):
+    from presidio_x402.decision_ref import main
+
+    trust_path = tmp_path / "trust.json"
+    trust_path.write_text("{}", encoding="utf-8")
+
+    assert main([str(tmp_path / "missing.json"), str(trust_path)]) == 2
+    err = capsys.readouterr().err
+    assert "error:" in err
+
+
+def test_conformance_module_exits_with_runner_code(monkeypatch):
+    import presidio_x402.conformance.runner as runner
+
+    monkeypatch.setattr(runner, "main", lambda: 7)
+    with pytest.raises(SystemExit, match="7"):
+        runpy.run_module("presidio_x402.conformance.__main__", run_name="__main__")
