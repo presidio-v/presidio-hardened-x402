@@ -36,6 +36,8 @@ from .telemetry import security_control_span, set_span_attribute
 if TYPE_CHECKING:
     from ._types import PaymentDetails
     from .audit_log import AuditLog
+    from .capability import VerifiedGrantChain
+    from .decision_ref import DecisionRefEmitter
     from .metrics import MetricsCollector
     from .mpa import MPAEngine
     from .pii_filter import PIIFilter
@@ -117,6 +119,9 @@ class ScreeningPipeline:
         trusted_wallets: dict[str, frozenset[str]] | None = None,
         screening_client: ScreeningClient | None = None,
         remote_screening: bool = False,
+        decision_ref_emitter: DecisionRefEmitter | None = None,
+        capability_chain: VerifiedGrantChain | None = None,
+        agent_id: str | None = None,
     ) -> None:
         if remote_screening and screening_client is None:
             raise ValueError("remote_screening=True requires a screening_client instance")
@@ -131,6 +136,12 @@ class ScreeningPipeline:
         self._trusted_wallets = trusted_wallets
         self._screening_client = screening_client
         self._remote_screening = remote_screening
+        # Decision-ref emission is strictly opt-in: when the emitter is None (the
+        # default) NO decision-ref code path runs and apply() is byte-identical to
+        # prior releases. See presidio_x402.decision_ref.
+        self._decision_emitter = decision_ref_emitter
+        self._capability_chain = capability_chain
+        self._agent_id = agent_id
 
     def rollback(self, *, resource_url: str, amount_usd: float, fingerprint: str) -> None:
         """Reverse the spend + replay fingerprint speculatively committed in
@@ -152,6 +163,7 @@ class ScreeningPipeline:
         details: PaymentDetails,
         *,
         mpa_signatures: dict[str, str] | None = None,
+        raw_offer_hash: str | None = None,
     ) -> tuple[PaymentDetails, str]:
         """Apply PIIFilter → PolicyEngine → ReplayGuard → MPAEngine → AuditLog.
 
@@ -166,6 +178,16 @@ class ScreeningPipeline:
         re-raising.
         """
         amount_usd = amount_to_usd(details.amount, details.currency)
+
+        # Decision-ref emission is opt-in. When an emitter is configured we track
+        # each control's verdict as it runs so a single payment-decision@1 record
+        # can be signed on the success path. When it is None this stays None and
+        # no extra work happens (byte-identical default behaviour).
+        decision_controls = None
+        if self._decision_emitter is not None:
+            from .decision_ref import ControlResults
+
+            decision_controls = ControlResults()
 
         # Preserve the original resource_url for replay-guard fingerprinting.
         # In pii_action="redact" mode the URL gets rewritten with PII tokens
@@ -280,6 +302,20 @@ class ScreeningPipeline:
                     self._metrics.record_pii_detection(entity_types, "warn")
             set_span_attribute(pii_span, "presidio_x402.outcome", "allowed")
 
+        # Record the PII verdict for the decision-ref (success path: never
+        # PII_BLOCKED, since that raises above). Only entity-type LABELS enter
+        # here — the screened strings never do (PII-freedom by construction).
+        if decision_controls is not None:
+            entity_labels = sorted({e.entity_type for e in pii_entities})
+            if not entity_labels:
+                decision_controls.pii_verdict = "PII_NONE"
+            elif self._pii_action == "redact":
+                decision_controls.pii_verdict = "PII_REDACTED"
+                decision_controls.pii_mutated = True
+            elif self._pii_action == "warn":
+                decision_controls.pii_verdict = "PII_WARNED"
+            decision_controls.pii_entities = tuple(entity_labels)
+
         # ------------------------------------------------------------------
         # 2. Trusted-wallet allowlist (pay_to substitution defence)
         # ------------------------------------------------------------------
@@ -324,6 +360,14 @@ class ScreeningPipeline:
                     resource_url=details.resource_url, amount_usd=amount_usd
                 )
                 set_span_attribute(policy_span, "presidio_x402.outcome", "allowed")
+                if decision_controls is not None:
+                    from .decision_ref import policy_limit_hash, policy_snapshot_hash
+
+                    decision_controls.policy_verdict = "ALLOW"
+                    decision_controls.policy_snapshot_hash = policy_snapshot_hash(
+                        self._policy.config
+                    )
+                    decision_controls.policy_limit_hash = policy_limit_hash(self._policy.config)
             except PolicyViolationError as exc:
                 set_span_attribute(policy_span, "presidio_x402.outcome", "blocked")
                 set_span_attribute(
@@ -363,6 +407,11 @@ class ScreeningPipeline:
             try:
                 self._replay.check_and_record(fingerprint)
                 set_span_attribute(replay_span, "presidio_x402.outcome", "allowed")
+                if decision_controls is not None:
+                    from .decision_ref import fingerprint_hash
+
+                    decision_controls.replay_verdict = "FRESH"
+                    decision_controls.replay_fingerprint_hash = fingerprint_hash(fingerprint)
             except ReplayDetectedError:
                 set_span_attribute(replay_span, "presidio_x402.outcome", "blocked")
                 set_span_attribute(
@@ -400,6 +449,10 @@ class ScreeningPipeline:
                     set_span_attribute(mpa_span, "presidio_x402.outcome", "approved")
                     if self._metrics:
                         self._metrics.record_mpa_event("approved")
+                    if decision_controls is not None:
+                        decision_controls.mpa_verdict = "APPROVED"
+                        decision_controls.mpa_required = True
+                        decision_controls.mpa_threshold = self._mpa.config.threshold
                 except (MPADeniedError, MPATimeoutError) as exc:
                     # Roll back the spend + replay fingerprint committed at steps 3–4:
                     # an MPA-denied/timed-out payment was never signed, so it must not
@@ -426,4 +479,55 @@ class ScreeningPipeline:
                         self._metrics.record_payment_blocked(f"mpa_{outcome}", amount_usd)
                     raise
 
+        # Trusted-wallet verdict on the success path is TRUSTED (an UNTRUSTED
+        # pay_to raises above, before we reach here).
+        if decision_controls is not None:
+            decision_controls.trusted_wallet_verdict = "TRUSTED"
+
+        # Emit the signed payment-decision@1 record immediately before returning
+        # to the caller, which signs next. No network I/O on this path.
+        if self._decision_emitter is not None and decision_controls is not None:
+            self._emit_decision_ref(details, decision_controls, raw_offer_hash=raw_offer_hash)
+
         return details, fingerprint
+
+    def _emit_decision_ref(
+        self,
+        details: PaymentDetails,
+        controls: object,
+        *,
+        raw_offer_hash: str | None = None,
+    ) -> None:
+        """Build and write one payment-decision@1 record (opt-in path only).
+
+        Best-effort by contract: emission must never change the payment outcome,
+        so any emitter/signing failure is caught and logged rather than raised —
+        a decision the gateway already made must not be undone by a record of it.
+        """
+        from .decision_ref import capability_parents, details_hash
+
+        try:
+            origin = resource_origin(details.resource_url)
+            d_hash = details_hash(
+                pay_to=details.pay_to,
+                amount=details.amount,
+                currency=details.currency,
+                network=details.network,
+            )
+            self._decision_emitter.emit(  # type: ignore[union-attr]
+                agent_id=self._agent_id or "",
+                payment_signer=details.pay_to,
+                network=details.network,
+                binding="x402",
+                offer_hash=raw_offer_hash,
+                offer_hash_absent="not-retained",
+                details_hash=d_hash,
+                pay_to=details.pay_to,
+                amount=details.amount,
+                currency=details.currency,
+                resource_origin=origin,
+                controls=controls,  # type: ignore[arg-type]
+                parents=capability_parents(self._capability_chain),
+            )
+        except Exception:
+            logger.exception("decision-ref emission failed (payment outcome unaffected)")

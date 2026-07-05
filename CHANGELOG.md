@@ -6,7 +6,35 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No unreleased changes.
+## [0.9.0] — 2026-07-05
+
+### Added
+- **Capability certificates (`presidio-hardened/capability-grant@1`).** A
+  signed, offline-verifiable, attenuable spending grant format for turning
+  operator policy into a portable capability chain. Grants use the family
+  canonical JSON profile, detached Ed25519 signatures, SHA-256 content
+  addressing, float-free amount encoding, monotone caveat attenuation, strict
+  expiry, and a `PolicyConfig` bridge for admitted chains.
+- **Decision-ref emission (`presidio-hardened-x402/payment-decision@1`).** A signed,
+  portable, offline-verifiable record of one payment decision — the per-control gate
+  verdicts (`pii → trusted_wallet → policy → replay → mpa`), hashed inputs, and the
+  effective policy hash bound into the family `evidence-ref@1` envelope, with a thin,
+  recomputable `decision_ref` correlation id (Pillar II of the Computational
+  Jurisprudence program). New `presidio_x402.decision_ref` module: `DecisionRefEmitter`,
+  `build_payment_decision_content`, `build_decision_evidence`, `compute_decision_ref`,
+  `verify_decision_ref`, `f_controls`, `ControlResults`, file/null writers, and an
+  offline CLI verifier (`python -m presidio_x402.decision_ref`). Emission is **opt-in
+  via `HardenedX402Client(decision_ref_emitter=...)` and off by default** — behaviour is
+  byte-identical to prior releases when unset, and there is no network I/O on the emit
+  path. The verifier fails closed with distinct reasons (hash mismatch, non-recomputable
+  verdict, self-approval `signer_equals_runtime`, unknown signer, bad signature, broken
+  parent linkage) and, when the policy came from a `capability-grant@1` chain, checks
+  provenance linkage to the chain's terminal `grant_hash`. PII-freedom is structural: the
+  record carries only hashes and entity-type labels, never a raw metadata string; the
+  `offer_hash` is the SHA-256 digest of the raw 402 offer bytes as received and is omitted
+  with `offer_hash_absent: "not-retained"` when those bytes are unavailable. Wire format
+  pinned by `tests/conformance/decision-ref/` and
+  `plan/presidio-evidence-decision-ref-design.md`.
 
 ## [0.8.1] — 2026-06-29
 

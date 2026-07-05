@@ -36,8 +36,33 @@ from .action_ref import (
 from .arch_translucency_adapter import ArchTranslucencyAdapter, SLOTrigger
 from .audit_log import AuditLog, FileAuditWriter, NullAuditWriter, StreamAuditWriter
 from .bindings.x402 import X402Binding
+from .capability import (
+    CAPABILITY_SCHEMA_ID,
+    CapabilityError,
+    Caveats,
+    Grant,
+    VerifiedGrantChain,
+    delegate_grant,
+    issue_grant,
+    policy_config_from_chain,
+    verify_chain,
+)
 from .compliance_report import ComplianceReport
 from .core import ScreeningPipeline
+from .decision_ref import (
+    PAYMENT_DECISION_SCHEMA_ID,
+    ControlResults,
+    DecisionRefEmitter,
+    DecisionRefError,
+    DecisionRefVerification,
+    FileDecisionRefWriter,
+    NullDecisionRefWriter,
+    build_decision_evidence,
+    build_payment_decision_content,
+    compute_decision_ref,
+    f_controls,
+    verify_decision_ref,
+)
 from .exceptions import (
     MPADeniedError,
     MPATimeoutError,
@@ -69,7 +94,7 @@ from .slo_broker import (
 )
 from .slo_policy import SLOPaymentPolicy
 
-__version__ = "0.7.0"
+__version__ = "0.9.0"
 __all__ = [
     # Primary public API
     "HardenedX402Client",
@@ -79,11 +104,34 @@ __all__ = [
     "ScreeningPipeline",
     "PaymentProtocolBinding",
     "X402Binding",
+    # Capability certificates (capability-grant@1) — Pillar I
+    "issue_grant",
+    "delegate_grant",
+    "verify_chain",
+    "policy_config_from_chain",
+    "VerifiedGrantChain",
+    "Grant",
+    "Caveats",
+    "CapabilityError",
+    "CAPABILITY_SCHEMA_ID",
     # MiCA/EU signed evidence (evidence-ref@1 wire format)
     "build_evidence",
     "Obligation",
     "OBLIGATION_MAP",
     "EvidenceError",
+    # Decision-ref emission (payment-decision@1 in evidence-ref@1) — Pillar II
+    "DecisionRefEmitter",
+    "DecisionRefError",
+    "DecisionRefVerification",
+    "ControlResults",
+    "NullDecisionRefWriter",
+    "FileDecisionRefWriter",
+    "build_payment_decision_content",
+    "build_decision_evidence",
+    "compute_decision_ref",
+    "verify_decision_ref",
+    "f_controls",
+    "PAYMENT_DECISION_SCHEMA_ID",
     # Multi-party authorization
     "MPAConfig",
     "MPAApproverConfig",

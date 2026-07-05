@@ -474,6 +474,53 @@ Critical/High/Medium findings); see
 
 ---
 
+## v0.9.0 Requirements (proof-carrying decision evidence) — **delivered 2026-07-05**
+
+Additive, opt-in evidence surface. No change to the shipped screening order or to
+default behaviour; the feature is off unless a caller supplies an emitter.
+
+### Delivered
+
+- [x] **Decision-ref emission (`presidio-hardened-x402/payment-decision@1`)** — a
+  signed, portable, offline-verifiable record of one payment decision (Pillar II of
+  the Computational Jurisprudence program). Binds the per-control gate verdicts
+  (`pii → trusted_wallet → policy → replay → mpa`), hashed inputs, and the effective
+  policy content hash into the family `evidence-ref@1` envelope, with a thin,
+  recomputable `decision_ref` correlation id. Implemented in
+  `src/presidio_x402/decision_ref.py`; wired into `ScreeningPipeline` /
+  `HardenedX402Client` via `decision_ref_emitter=` (**default off — behaviour
+  byte-identical when unset**). No network I/O on the emit path.
+
+- [x] **Capability certificates (`presidio-hardened/capability-grant@1`)** — signed,
+  offline-verifiable, attenuable spending grants that turn operator policy into a
+  portable capability chain. Implemented in `src/presidio_x402/capability.py` with
+  detached Ed25519 signatures, family canonical JSON, SHA-256 content addressing,
+  float-free amounts, monotone caveat narrowing, strict expiry, and a `PolicyConfig`
+  bridge for admitted chains.
+
+- [x] **Fail-closed offline verifier** — `verify_decision_ref` (+ a
+  `python -m presidio_x402.decision_ref` CLI) checks signature, hash integrity,
+  verdict recomputation (`verdict == f(controls)`), self-approval refusal
+  (`signer_equals_runtime`), and — when the policy came from a `capability-grant@1`
+  chain — provenance linkage to the chain's terminal `grant_hash`. Distinct reason
+  code per layer; never fails open.
+
+- [x] **PII-freedom by construction** — the record carries only hashes, an origin,
+  and entity-type labels. `offer_hash` is the SHA-256 digest of the raw 402 offer
+  bytes as received; when the raw bytes are unavailable the field is omitted with
+  `offer_hash_absent: "not-retained"`. No field accepts a raw metadata string, and
+  a PII-bearing corpus test asserts no raw string reaches any emitted record.
+
+### Honest-claims bound
+
+The record proves what the library **concluded under a declared predicate**,
+tamper-evidently (signed) and admissibly (recomputable). It does **not** prove the
+process was uncompromised or that the declared controls are the real controls
+(that is an attestation layer, not this one) — **no TEE claim**. The optional
+public-chain anchor (`decision-anchor@1`) is deferred, not implemented.
+
+---
+
 ## Security Model
 
 The threat model for presidio-hardened-x402 addresses the following adversaries:

@@ -7,7 +7,7 @@
 [![CI](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml/badge.svg)](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/presidio-v/presidio-hardened-x402/badge)](https://securityscorecards.dev/viewer/?uri=github.com/presidio-v/presidio-hardened-x402)
 
-> v0.8.0 — NLP screening is now a structural superset of regex (the high-accuracy engine no longer misses structured identifiers like SSN/phone/card), plus a composed-envelope `screen_ref` leg, `action_ref` byte-determinism, URL-redacted log hygiene, and OpenSSF Scorecard / SLSA Build L3 supply-chain hardening.
+> v0.9.0 — proof-carrying x402 evidence: attenuable `capability-grant@1` spending grants plus opt-in `payment-decision@1` decision refs with raw-offer digest binding, fail-closed offline verification, capability-chain provenance linkage, and PII-free emitted records.
 
 Security middleware for the [x402 payment protocol](https://www.x402.org/).
 
@@ -368,6 +368,56 @@ The signing key lives in a separate bridge sidecar (arch-translucency stays key-
 holds only the public key. The wire contract is pinned by the `evidence-ref@1`
 golden-vector tests shared with arch-translucency.
 
+---
+
+## Decision-ref emission (`payment-decision@1`)
+
+A **decision-ref** is a signed, portable record of one payment decision that a third
+party verifies **offline** — without re-running the gateway. It binds the per-control
+gate verdicts (`pii → trusted_wallet → policy → replay → mpa`), the hashed inputs, and
+the effective policy hash into the family `evidence-ref@1` envelope, with a thin,
+recomputable `decision_ref` correlation id. Emission is **opt-in and off by default**;
+when no emitter is configured, behaviour is byte-identical to prior releases and no
+decision-ref code runs. There is no network I/O on the emit path.
+
+```python
+from presidio_x402 import HardenedX402Client, DecisionRefEmitter, verify_decision_ref
+from presidio_x402.decision_ref import FileDecisionRefWriter
+
+# Signer independence is claim-critical: a policy/approval identity distinct from the
+# payment wallet — a self-signed record fails closed on verify (signer_equals_runtime).
+emitter = DecisionRefEmitter(
+    signing_key=POLICY_PRIVATE_KEY_HEX,          # Ed25519 (or an HMAC secret)
+    signer="presidio-hardened-x402-policy",
+    writer=FileDecisionRefWriter("/var/log/x402-decisions.jsonl"),
+)
+client = HardenedX402Client(payment_signer=signer, decision_ref_emitter=emitter)
+# ... one signed payment-decision@1 record is emitted per paid payment.
+
+# Verify offline against a pinned trust store (fail-closed, distinct reasons):
+result = verify_decision_ref(envelope, {"presidio-hardened-x402-policy":
+    {"alg": "ed25519", "public_key": POLICY_PUBLIC_KEY_HEX}})
+assert result.ok and result.verdict == "ALLOW"
+```
+
+The verifier checks signature, hash integrity, that the recorded verdict **re-derives**
+from the recorded controls (`verdict == f(controls)` — the line between *attested* and
+*admissible*), that the signer is not the actor's own controller (self-approval fails
+closed), and — when the spending policy came from a capability chain
+(`capability-grant@1`) — parent linkage to the chain's terminal `grant_hash`.
+A minimal offline CLI is provided:
+
+```bash
+python -m presidio_x402.decision_ref envelope.jsonl trust-store.json
+```
+
+**Honest bound.** A decision-ref proves what the library concluded under a *declared*
+predicate, tamper-evidently and recomputably. It does **not** prove the process was
+uncompromised or that the declared controls are the real controls (no TEE claim). Wire
+format and `decision_ref` derivation are pinned by the conformance fixture under
+`tests/conformance/decision-ref/` and the design note
+`plan/presidio-evidence-decision-ref-design.md`.
+
 ### Provisioning Metadata Redaction
 
 Capacity-upgrade requests can reveal workload type, data classification, or access pattern.
@@ -428,8 +478,9 @@ All exceptions are importable from `presidio_x402`.
 | v0.5.0 | **OEM embed kit** — rail-agnostic `ScreeningPipeline` core + `bindings/x402` layer (`PaymentProtocolBinding` protocol, hedge against rail fragmentation: ACP/Tempo, AP2) · [SEMVER.md](SEMVER.md) stability guarantees · partner conformance suite (`python -m presidio_x402.conformance`) · CDP/LangChain/CrewAI quickstarts · SBOM in CI · freshness-bound MPA countersignatures (F-8) |
 | v0.6.0 | **Production hardening + evidence substrate** — multi-tenant replay namespaces · enterprise audit sinks (S3 / Splunk / Datadog) · signed `evidence-ref@1` verification · SLSA/OIDC release provenance · digest-pinned Docker base + hash-pinned spaCy model · latency SLO and all-matrix coverage CI gates · OTel spans · policy hot-reload · startup key gates · human-pentest retest closure |
 | v0.7.0 | **SLO payment broker (library)** — x402 micropayments as runtime infrastructure bids: `SLOPaymentBroker` + `SLOPaymentPolicy` + evidence-anchored `ArchTranslucencyAdapter` + provisioning PII entities; cross-repo validated against `presidio-hardened-arch-translucency`. cs.DC preprint + empirical eval tracked separately |
-| **v0.8.0** | **PII completeness + supply-chain hardening (library)** — `nlp` mode is now a structural superset of `regex` (no structured-identifier misses) · composed-envelope `screen_ref` leg · `action_ref` byte-determinism (NFC + non-empty entity sets) · URL-redacted log hygiene · OpenSSF Scorecard workflow/badge + SLSA Build L3 provenance · independent multi-round security audit cleared — **latest release** |
-| Unreleased on `main` | Deferred #23 prompt-injection / agent-bound response scanning threat-model work |
+| v0.8.0 | PII completeness + supply-chain hardening (library) — `nlp` mode is now a structural superset of `regex` (no structured-identifier misses) · composed-envelope `screen_ref` leg · `action_ref` byte-determinism (NFC + non-empty entity sets) · URL-redacted log hygiene · OpenSSF Scorecard workflow/badge + SLSA Build L3 provenance · independent multi-round security audit cleared |
+| **v0.9.0** | **Proof-carrying x402 evidence** — `capability-grant@1` attenuable spending grants + opt-in `payment-decision@1` decision refs with raw-offer digest binding, fail-closed offline verification, capability-chain provenance linkage, and PII-free emitted records — **latest release** |
+| Future | Deferred #23 prompt-injection / agent-bound response scanning threat-model work |
 
 See [PRESIDIO-REQ.md](PRESIDIO-REQ.md) for full deliberation and rationale.
 

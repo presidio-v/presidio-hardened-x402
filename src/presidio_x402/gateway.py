@@ -78,6 +78,8 @@ if TYPE_CHECKING:
         PaymentResponse,
         PaymentSigner,
     )
+    from .capability import VerifiedGrantChain
+    from .decision_ref import DecisionRefEmitter
     from .metrics import MetricsCollector
     from .mpa import MPAEngine
     from .screening_client import ScreeningClient
@@ -99,6 +101,15 @@ _parse_402_header = parse_402_header
 _amount_to_usd = amount_to_usd
 _safe_exc_message = safe_exc_message
 _resource_origin = resource_origin
+
+
+def _raw_header_bytes(headers: httpx.Headers, header_name: str) -> bytes | None:
+    """Return one header value as transport bytes when httpx retained them."""
+    target = header_name.lower().encode("ascii")
+    for name, value in headers.raw:
+        if name.lower() == target:
+            return bytes(value)
+    return None
 
 
 class HardenedX402Client:
@@ -175,6 +186,19 @@ class HardenedX402Client:
         :class:`~presidio_x402.bindings.x402.X402Binding` (HTTP 402 +
         ``X-PAYMENT``). Supply a custom binding to reuse the screening core on
         a different payment rail.
+    decision_ref_emitter:
+        Optional :class:`~presidio_x402.decision_ref.DecisionRefEmitter`. When
+        set, one signed ``presidio-hardened-x402/payment-decision@1`` record is
+        emitted per payment (immediately before signing), binding the per-control
+        gate verdicts, hashed inputs, and the effective policy hash into a
+        portable, offline-verifiable proof (Pillar II). ``None`` (default)
+        disables emission entirely — behaviour is byte-identical to prior
+        releases. No network I/O is performed on the emit path.
+    capability_chain:
+        Optional verified :class:`~presidio_x402.capability.VerifiedGrantChain`.
+        When the spending policy was projected from a capability chain, pass it so
+        the emitted decision-ref links the chain's terminal ``grant_hash`` as a
+        provenance parent (does nothing unless ``decision_ref_emitter`` is set).
     """
 
     def __init__(
@@ -196,6 +220,8 @@ class HardenedX402Client:
         screening_client: ScreeningClient | None = None,
         remote_screening: bool = False,
         binding: PaymentProtocolBinding | None = None,
+        decision_ref_emitter: DecisionRefEmitter | None = None,
+        capability_chain: VerifiedGrantChain | None = None,
     ) -> None:
         if remote_screening and screening_client is None:
             raise ValueError("remote_screening=True requires a screening_client instance")
@@ -241,6 +267,9 @@ class HardenedX402Client:
             trusted_wallets=self._trusted_wallets,
             screening_client=screening_client,
             remote_screening=remote_screening,
+            decision_ref_emitter=decision_ref_emitter,
+            capability_chain=capability_chain,
+            agent_id=agent_id,
         )
         logger.info("Presidio hardening applied — HardenedX402Client initialized")
 
@@ -295,6 +324,12 @@ class HardenedX402Client:
                 safe_url,
             )
             return resp
+        raw_offer_hash = None
+        raw_offer_bytes = _raw_header_bytes(resp.headers, self._binding.header_name)
+        if raw_offer_bytes is not None:
+            from .decision_ref import offer_hash
+
+            raw_offer_hash = offer_hash(raw_offer_bytes)
 
         try:
             details = self._binding.parse_payment_required(offer)
@@ -312,7 +347,9 @@ class HardenedX402Client:
         # Apply security controls; get (possibly modified) details + the replay
         # fingerprint back so a signing failure can roll the commit back.
         secure_details, fingerprint = await self._pipeline.apply(
-            details, mpa_signatures=mpa_signatures
+            details,
+            mpa_signatures=mpa_signatures,
+            raw_offer_hash=raw_offer_hash,
         )
 
         # Sign and retry
