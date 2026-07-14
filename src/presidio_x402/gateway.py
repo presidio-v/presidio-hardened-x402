@@ -316,12 +316,10 @@ class HardenedX402Client:
 
         offer = self._binding.payment_offer(resp.status_code, resp.headers)  # type: ignore[arg-type]
         if not offer:
-            safe_url, _ = self._pii_filter.scan_and_redact(url)
             logger.warning(
-                "%s response missing %s header from %s",
+                "%s response missing %s header; returning unpaid response",
                 self._binding.payment_required_status,
                 self._binding.header_name,
-                safe_url,
             )
             return resp
         raw_offer_hash = None

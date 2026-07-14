@@ -47,6 +47,12 @@ dependencies = [
     # the fix; requests allows urllib3<3,>=1.26 so 2.7.0 resolves cleanly against
     # httpx>=0.27.0. Audit 2026-06-14 (F1).
     "urllib3>=2.7.0",
+    # Transitive of Typer-rich CLIs in the audit extra graph; pin minimum to
+    # evict PYSEC-2026-2132 (click < 8.3.3 vulnerable). Audit 2026-07-14.
+    "click>=8.3.3",
+    # Transitive of presidio-analyzer -> spaCy; pin minimum to evict
+    # PYSEC-2026-3447 (setuptools < 83.0.0 vulnerable). Audit 2026-07-14.
+    "setuptools>=83.0.0",
 ]
 
 [project.optional-dependencies]

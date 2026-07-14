@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import httpx
 import pytest
@@ -125,6 +126,24 @@ async def test_402_without_payment_header_returned_as_is():
         async with _make_client() as client:
             resp = await client.get("https://api.example.com/v1/data")
         assert resp.status_code == 402
+
+
+@pytest.mark.asyncio
+async def test_402_without_payment_header_warning_omits_request_url(caplog):
+    """Missing payment-header diagnostics must not emit PII-bearing request URLs."""
+    pii_url = "https://api.example.com/user/alice@example.com?token=secret-token"
+    with respx.mock:
+        respx.get(pii_url).mock(return_value=httpx.Response(402))
+        async with _make_client() as client:
+            with caplog.at_level(logging.WARNING, logger="presidio_x402.gateway"):
+                resp = await client.get(pii_url)
+
+    assert resp.status_code == 402
+    messages = "\n".join(record.getMessage() for record in caplog.records)
+    assert "missing X-PAYMENT header" in messages
+    assert "alice@example.com" not in messages
+    assert "secret-token" not in messages
+    assert "https://api.example.com" not in messages
 
 
 @pytest.mark.asyncio
