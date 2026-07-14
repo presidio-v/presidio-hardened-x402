@@ -6,6 +6,21 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-07-14
+
+### Security
+- **Dependency audit remediation.** Added explicit minimum-safe floors for
+  `click>=8.3.3` (PYSEC-2026-2132) and `setuptools>=83.0.0`
+  (PYSEC-2026-3447), and refreshed `uv.lock` so the release-extra
+  `pip-audit` gate resolves a clean graph.
+- **Log exposure hardening.** The missing `X-PAYMENT` header warning no longer
+  includes the request URL, avoiding accidental clear-text logging of
+  PII-bearing paths or query strings. Regression coverage asserts that
+  email/token-shaped URL material is omitted.
+
+### Changed
+- Updated the pinned `astral-sh/setup-uv` GitHub Action from v8.3.0 to v8.3.2.
+
 ## [0.9.0] — 2026-07-05
 
 ### Added

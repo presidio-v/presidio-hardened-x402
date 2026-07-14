@@ -7,7 +7,7 @@
 [![CI](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml/badge.svg)](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/presidio-v/presidio-hardened-x402/badge)](https://securityscorecards.dev/viewer/?uri=github.com/presidio-v/presidio-hardened-x402)
 
-> v0.9.0 — proof-carrying x402 evidence: attenuable `capability-grant@1` spending grants plus opt-in `payment-decision@1` decision refs with raw-offer digest binding, fail-closed offline verification, capability-chain provenance linkage, and PII-free emitted records.
+> v0.9.1 — security patch: dependency-audit floors for `click`/`setuptools`, missing-payment-header log exposure hardening, and `setup-uv` v8.3.2 CI action pin.
 
 Security middleware for the [x402 payment protocol](https://www.x402.org/).
 
@@ -479,7 +479,8 @@ All exceptions are importable from `presidio_x402`.
 | v0.6.0 | **Production hardening + evidence substrate** — multi-tenant replay namespaces · enterprise audit sinks (S3 / Splunk / Datadog) · signed `evidence-ref@1` verification · SLSA/OIDC release provenance · digest-pinned Docker base + hash-pinned spaCy model · latency SLO and all-matrix coverage CI gates · OTel spans · policy hot-reload · startup key gates · human-pentest retest closure |
 | v0.7.0 | **SLO payment broker (library)** — x402 micropayments as runtime infrastructure bids: `SLOPaymentBroker` + `SLOPaymentPolicy` + evidence-anchored `ArchTranslucencyAdapter` + provisioning PII entities; cross-repo validated against `presidio-hardened-arch-translucency`. cs.DC preprint + empirical eval tracked separately |
 | v0.8.0 | PII completeness + supply-chain hardening (library) — `nlp` mode is now a structural superset of `regex` (no structured-identifier misses) · composed-envelope `screen_ref` leg · `action_ref` byte-determinism (NFC + non-empty entity sets) · URL-redacted log hygiene · OpenSSF Scorecard workflow/badge + SLSA Build L3 provenance · independent multi-round security audit cleared |
-| **v0.9.0** | **Proof-carrying x402 evidence** — `capability-grant@1` attenuable spending grants + opt-in `payment-decision@1` decision refs with raw-offer digest binding, fail-closed offline verification, capability-chain provenance linkage, and PII-free emitted records — **latest release** |
+| **v0.9.1** | **Security patch** — dependency-audit floors for `click` / `setuptools`, missing-payment-header log exposure hardening, and `setup-uv` v8.3.2 CI action pin — **latest release** |
+| v0.9.0 | Proof-carrying x402 evidence — `capability-grant@1` attenuable spending grants + opt-in `payment-decision@1` decision refs with raw-offer digest binding, fail-closed offline verification, capability-chain provenance linkage, and PII-free emitted records |
 | Future | Deferred #23 prompt-injection / agent-bound response scanning threat-model work |
 
 See [PRESIDIO-REQ.md](PRESIDIO-REQ.md) for full deliberation and rationale.
