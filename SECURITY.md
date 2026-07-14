@@ -104,7 +104,7 @@ See `PRESIDIO-REQ.md` for the full threat model and security design rationale.
 |--------|-----------|
 | The high-accuracy engine silently misses structured identifiers | `mode="nlp"` registers the structural recognizers (`US_SSN`, `PHONE_NUMBER`, `CREDIT_CARD`, `EMAIL_ADDRESS`, `IBAN`, `IP_ADDRESS`) as a superset of regex on top of NER — no structured identifier scores below threshold and slips through |
 | Non-deterministic `action_ref` (replay / attribution ambiguity) | `action_ref` rejects empty entity-type sets and NFC-normalizes fields before hashing — the same action always yields the same ref |
-| PII-bearing resource URL reaching a log sink | The missing-payment-header warning redacts the URL before it is logged |
+| PII-bearing resource URL reaching a log sink | The missing-payment-header warning omits the request URL entirely |
 
 ## Dependency Security
 
