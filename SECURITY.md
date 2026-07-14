@@ -4,11 +4,11 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.7.x   | ✓ (latest release) |
-| 0.6.x   | ✓ |
-| 0.5.x   | ✓ |
-| 0.4.x   | ✓ |
-| 0.3.x   | security fixes only |
+| 0.9.x   | ✓ (latest release) |
+| 0.8.x   | ✓ |
+| 0.7.x   | ✓ |
+| 0.6.x   | security fixes only |
+| 0.5.x and older | security fixes only |
 
 ## Reporting a Vulnerability
 

@@ -94,7 +94,7 @@ from .slo_broker import (
 )
 from .slo_policy import SLOPaymentPolicy
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 __all__ = [
     # Primary public API
     "HardenedX402Client",
