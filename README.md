@@ -487,6 +487,21 @@ See [PRESIDIO-REQ.md](PRESIDIO-REQ.md) for full deliberation and rationale.
 
 ---
 
+## Contributing and support
+
+- **Bug reports and feature requests** — open a
+  [GitHub issue](https://github.com/presidio-v/presidio-hardened-x402/issues).
+- **Security vulnerabilities** — do *not* open a public issue; follow the private reporting
+  process in [SECURITY.md](SECURITY.md).
+- **Code contributions** — see [CONTRIBUTING.md](CONTRIBUTING.md) for the pull-request process,
+  coding standards, and the test policy. Participation is governed by the
+  [Code of Conduct](CODE_OF_CONDUCT.md).
+
+Install from [PyPI](https://pypi.org/project/presidio-hardened-x402/):
+`pip install presidio-hardened-x402`.
+
+---
+
 ## License
 
 MIT
