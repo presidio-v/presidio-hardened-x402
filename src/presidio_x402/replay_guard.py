@@ -102,7 +102,16 @@ def _canonical_amount(amount: str) -> str:
         raise ValueError(f"Invalid payment amount {amount!r}: must be finite and non-negative")
     if value == 0:
         return "0"
-    return format(value.normalize(), "f")
+    # Strip trailing zeros without Decimal.normalize(). normalize() is a *context*
+    # operation bounded by the default 28-significant-digit precision, so an amount
+    # longer than that was silently rounded — distinct amounts differing only past
+    # the 28th digit canonicalised to the same string and therefore collided on the
+    # replay fingerprint. ``amount`` arrives from the server's 402 response, so it
+    # is attacker-influenced and must not be rounded. format(value, "f") is exact.
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
 
 
 def compute_fingerprint(

@@ -6,6 +6,21 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Replay-fingerprint collision on high-precision amounts.** `_canonical_amount`
+  stripped trailing zeros with `Decimal.normalize()`, a *context* operation bounded
+  by the default 28-significant-digit precision. Any amount longer than that was
+  silently rounded, so distinct amounts differing only past the 28th significant
+  digit canonicalised to the same string and produced the same replay fingerprint —
+  e.g. `…5555555` and `…5555556` (31 digits) both became
+  `5555555555555555555555555556000`. Across 5000 distinct 31-digit amounts, 4994
+  collided. `amount` originates in the server's 402 response and is therefore
+  attacker-influenced. Impact is fail-closed (a distinct payment could be rejected as
+  a duplicate) rather than a bypass. Canonicalisation is now context-free and exact.
+  **Amounts of 28 or fewer significant digits are unaffected — verified byte-identical
+  across 20 000 randomised inputs, so existing fingerprints do not change.** Found by
+  the Atheris `_canonical_amount` harness.
+
 ## [0.9.1] — 2026-07-14
 
 ### Security

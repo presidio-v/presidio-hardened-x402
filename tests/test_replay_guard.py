@@ -7,7 +7,7 @@ import time
 import pytest
 
 from presidio_x402.exceptions import ReplayDetectedError
-from presidio_x402.replay_guard import ReplayGuard, compute_fingerprint
+from presidio_x402.replay_guard import ReplayGuard, _canonical_amount, compute_fingerprint
 
 
 class TestComputeFingerprint:
@@ -97,6 +97,55 @@ class TestComputeFingerprint:
         )
         fp_legit = compute_fingerprint("https://a.com/x", "0xLegit", "1.00", "USDC", 300)
         assert fp_attacker != fp_legit
+
+    def test_high_precision_amounts_do_not_collide(self):
+        # Fuzzing regression: `_canonical_amount` used Decimal.normalize(), a
+        # *context* operation bounded by the default 28-significant-digit
+        # precision. Amounts longer than that were silently rounded, so these two
+        # distinct values both canonicalised to '5555555555555555555555555556000'
+        # and shared a fingerprint. `amount` comes from the server's 402 response,
+        # so it is attacker-influenced.
+        fp_a = compute_fingerprint(
+            "https://api.example.com", "0xabc", "5555555555555555555555555555555", "USDC", 300
+        )
+        fp_b = compute_fingerprint(
+            "https://api.example.com", "0xabc", "5555555555555555555555555555556", "USDC", 300
+        )
+        assert fp_a != fp_b
+
+
+class TestCanonicalAmount:
+    def test_preserves_value_beyond_default_context_precision(self):
+        # 31 significant digits — must survive canonicalisation unrounded.
+        amount = "5555555555555555555555555555555"
+        assert _canonical_amount(amount) == amount
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("1", "1"),
+            ("1.0", "1"),
+            ("1.5000", "1.5"),
+            ("0.100", "0.1"),
+            ("000123", "123"),
+            ("1E+3", "1000"),
+            ("0", "0"),
+            ("0.0", "0"),
+            ("12.340", "12.34"),
+        ],
+    )
+    def test_trailing_zero_stripping_is_unchanged(self, raw, expected):
+        # These equivalences predate the precision fix and must not regress:
+        # semantically equal amounts still share one canonical form.
+        assert _canonical_amount(raw) == expected
+
+    def test_rejects_non_decimal(self):
+        with pytest.raises(ValueError, match="not a decimal value"):
+            _canonical_amount("not-a-number")
+
+    def test_rejects_negative(self):
+        with pytest.raises(ValueError, match="finite and non-negative"):
+            _canonical_amount("-1.00")
 
 
 class TestReplayGuardMemory:
