@@ -6,6 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml/badge.svg)](https://github.com/presidio-v/presidio-hardened-x402/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/presidio-v/presidio-hardened-x402/badge)](https://securityscorecards.dev/viewer/?uri=github.com/presidio-v/presidio-hardened-x402)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13675/badge)](https://www.bestpractices.dev/projects/13675)
 
 > v0.9.1 — security patch: dependency-audit floors for `click`/`setuptools`, missing-payment-header log exposure hardening, and `setup-uv` v8.3.2 CI action pin.
 
