@@ -97,6 +97,11 @@ otel = [
 schema = [
     "jsonschema>=4.21.0",
 ]
+fuzz = [
+    # Atheris 3.x dropped Python 3.10 (last 3.10 wheel: 2.3.0); marker keeps the
+    # extra resolvable on the full support matrix while fuzz CI pins 3.12.
+    'atheris>=3.0; python_version >= "3.11"',
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",

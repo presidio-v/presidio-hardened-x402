@@ -20,8 +20,27 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install ruff
-      - run: ruff check src/ tests/
-      - run: ruff format --check src/ tests/
+      - run: ruff check src/ tests/ fuzz/
+      - run: ruff format --check src/ tests/ fuzz/
+
+  fuzz:
+    name: Fuzz (Atheris)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          # Atheris 3.x ships no cp310 wheel; the test matrix is unaffected.
+          python-version: "3.12"
+      - name: Install package + fuzz extra
+        run: pip install -e ".[fuzz]"
+      - name: Run fuzz harnesses (time-boxed)
+        run: |
+          for f in fuzz/fuzz_*.py; do
+            echo "::group::$f"
+            python "$f" -atheris_runs=25000 -max_total_time=60
+            echo "::endgroup::"
+          done
 
   test:
     name: Test (Python ${{ matrix.python-version }})

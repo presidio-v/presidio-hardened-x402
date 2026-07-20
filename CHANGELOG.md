@@ -21,6 +21,19 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   across 20 000 randomised inputs, so existing fingerprints do not change.** Found by
   the Atheris `_canonical_amount` harness.
 
+### Added
+- **Coverage-guided fuzzing of the canonicalisation and digest layer (Atheris).**
+  Four property harnesses under `fuzz/`, exercised in CI on every push and pull
+  request, time-boxed per harness. They assert the byte-determinism contracts the
+  evidence layer rests on rather than merely reaching for coverage:
+  `canonical_bytes` (determinism, JSON round-trip, type-aware injectivity, NFC/NFD
+  non-collapse, float fail-closed via `EvidenceError`), `compute_fingerprint` and
+  `_canonical_amount` (replay-guard canonicalisation), `compute_decision_ref`, and
+  `compute_action_ref`. Fuzzing dependencies live in a separate `fuzz` extra —
+  `pip install -e ".[fuzz]"` — and are not pulled in by `dev`. Atheris 3.x ships no
+  cp310 wheel, so the fuzz job pins Python 3.12; the 3.10–3.13 test matrix is
+  unchanged. Ruff now also lints `fuzz/`.
+
 ## [0.9.1] — 2026-07-14
 
 ### Security
