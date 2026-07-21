@@ -484,6 +484,22 @@ All exceptions are importable from `presidio_x402`.
 | v0.9.0 | Proof-carrying x402 evidence — `capability-grant@1` attenuable spending grants + opt-in `payment-decision@1` decision refs with raw-offer digest binding, fail-closed offline verification, capability-chain provenance linkage, and PII-free emitted records |
 | Future | Deferred #23 prompt-injection / agent-bound response scanning threat-model work |
 
+### Planned direction (next 12 months)
+
+Intended direction, not a commitment — priorities shift with the ecosystem and
+security findings:
+
+- **Toward v1.0** — stabilise the public API under [SEMVER.md](SEMVER.md) and
+  clear the mainnet release gate (KYB / signing / legal controls) for the paid
+  screening route.
+- **Prompt-injection / agent-bound response scanning** (deferred issue #23) —
+  extend the threat model beyond outbound payment metadata to untrusted
+  agent-facing responses.
+- **Broader rail coverage** — additional `PaymentProtocolBinding` implementations
+  as agentic payment rails consolidate.
+- **Evidence and conformance** — grow the partner conformance suite and the
+  proof-carrying evidence vocabulary alongside upstream standardisation.
+
 See [PRESIDIO-REQ.md](PRESIDIO-REQ.md) for full deliberation and rationale.
 
 ---
@@ -497,6 +513,9 @@ See [PRESIDIO-REQ.md](PRESIDIO-REQ.md) for full deliberation and rationale.
 - **Code contributions** — see [CONTRIBUTING.md](CONTRIBUTING.md) for the pull-request process,
   coding standards, and the test policy. Participation is governed by the
   [Code of Conduct](CODE_OF_CONDUCT.md).
+- **Architecture and governance** — [ARCHITECTURE.md](ARCHITECTURE.md) describes the
+  components, payment flow, and trust boundaries; [GOVERNANCE.md](GOVERNANCE.md) covers the
+  governance model, roles, and project continuity.
 
 Install from [PyPI](https://pypi.org/project/presidio-hardened-x402/):
 `pip install presidio-hardened-x402`.
