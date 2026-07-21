@@ -25,6 +25,10 @@ Include:
 You will receive an acknowledgement within 5 business days. We aim to release a patch
 within 30 days of a confirmed vulnerability.
 
+**Credit.** We credit reporters of valid vulnerabilities by name in the published
+GitHub Security Advisory and in the `CHANGELOG.md` entry for the fix, unless the
+reporter asks to remain anonymous.
+
 ## Security Controls
 
 presidio-hardened-x402 provides the following security controls for x402 payments:
@@ -145,6 +149,23 @@ requirement-by-requirement mapping (and the caveat that self-hosted runners
 would cap the level at L2) is maintained in the SDLC supply-chain report. We do
 not yet claim hermetic or reproducible builds — that is a stretch target beyond
 the L3 baseline, not an L3 requirement.
+
+### Obtaining the public signing keys
+
+- **Release artefacts (wheels/sdists)** are verified with Sigstore-backed build
+  provenance — no key to fetch manually. Run
+  `gh attestation verify <artefact> --repo presidio-v/presidio-hardened-x402`
+  (shown above); the trusted identity is the repository's OIDC signer.
+- **Git release tags** are SSH-signed with the organisation's ed25519 release
+  signing key, which is registered as a **signing key** on the maintainer's
+  GitHub account — so GitHub shows each release tag as **Verified** on the
+  Releases page and via the API
+  (`gh api repos/presidio-v/presidio-hardened-x402/git/tags/<sha> --jq .verification.verified`).
+  The public key is published in the repository's
+  [`allowed_signers`](allowed_signers) file; to verify a tag locally, run
+  `git -c gpg.ssh.allowedSignersFile=allowed_signers verify-tag <tag>`.
+- **PyPI releases** carry PEP 740 attestations published via Trusted Publishing;
+  `pip`/`uv` and the PyPI UI surface these automatically.
 
 ## Known Limitations
 

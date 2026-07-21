@@ -105,10 +105,24 @@ four.
 Write in the imperative mood ("add replay TTL bound", not "added" or "adds"). Explain *why*
 the change is being made where that is not obvious from the diff.
 
-## Licensing
+## Licensing and Developer Certificate of Origin (DCO)
 
-The project is MIT licensed. By contributing, you agree that your contribution is licensed
-under the same terms, and you confirm you have the right to submit it.
+The project is MIT licensed, and contributions are accepted under the same terms
+(inbound = outbound).
+
+To assert that you have the right to submit your contribution, every commit must
+be **signed off** under the [Developer Certificate of Origin](https://developercertificate.org/)
+1.1. Signing off means adding a `Signed-off-by` line to the commit message with
+your real name and email:
+
+```
+Signed-off-by: Jane Developer <jane@example.com>
+```
+
+`git commit -s` adds this line for you. By signing off you certify the DCO —
+in short, that you wrote the change or otherwise have the right to submit it
+under the project's MIT license. Pull requests whose commits are not signed off
+will be asked to amend before merge.
 
 ## Code of conduct
 
