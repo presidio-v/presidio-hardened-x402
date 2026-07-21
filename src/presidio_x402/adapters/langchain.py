@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """LangChain adapter for presidio-hardened-x402.
 
 Provides a drop-in :class:`HardenedX402Tool` that wraps

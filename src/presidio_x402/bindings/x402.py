@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """x402 protocol binding — HTTP 402 + ``X-PAYMENT`` header (x402 spec v1).
 
 This module owns every x402-specific assumption that used to live in the

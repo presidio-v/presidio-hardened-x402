@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Content-addressed ``action_ref`` derivation (action-ref-v1).
 
 ``action_ref`` is a deterministic, content-addressed identifier for an agent

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Atheris property fuzzer for the action-ref-v1 derivation.
 
 Targets :func:`presidio_x402.action_ref.compute_action_ref` and

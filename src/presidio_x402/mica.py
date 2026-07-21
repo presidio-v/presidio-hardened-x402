@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """MiCA/EU evidence module — signed compliance-supporting evidence (session-3 T3).
 
 Maps what the screening middleware **actually does** (audit-chained payment

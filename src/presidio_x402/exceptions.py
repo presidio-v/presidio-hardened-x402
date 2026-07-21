@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Exceptions raised by presidio-hardened-x402 security controls."""
 
 from __future__ import annotations

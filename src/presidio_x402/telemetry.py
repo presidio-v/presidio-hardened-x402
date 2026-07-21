@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Optional OpenTelemetry helpers for presidio_x402 security controls."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Structured, tamper-evident audit logging for x402 payment events.
 
 Emits JSON-L (newline-delimited JSON) audit events for every payment attempt.

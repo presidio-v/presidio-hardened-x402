@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Remote PII screening client — call the Presidio screening service instead of
 running the local :class:`~presidio_x402.pii_filter.PIIFilter`.
 

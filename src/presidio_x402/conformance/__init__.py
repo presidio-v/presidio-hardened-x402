@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Partner-runnable conformance suite for presidio-hardened-x402 (OEM embed kit).
 
 Run against your installed environment with::

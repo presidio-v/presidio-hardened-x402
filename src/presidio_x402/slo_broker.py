@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Market-based SLO enforcement — the SLO payment broker (v0.7.0).
 
 When infrastructure degrades, the agent autonomously pays for a capacity upgrade via

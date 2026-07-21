@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Policy-as-code schema validator for x402 spending policies.
 
 Validates policy configuration dicts against ``x402-policy-schema.json``

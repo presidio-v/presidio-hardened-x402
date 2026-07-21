@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """SOC2/GDPR-friendly compliance report generator for x402 audit logs.
 
 Reads a JSON-L audit log produced by :class:`~presidio_x402.audit_log.AuditLog`

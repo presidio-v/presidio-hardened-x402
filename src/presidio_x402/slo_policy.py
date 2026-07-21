@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """SLO-payment spending policy (v0.7.0).
 
 :class:`SLOPaymentPolicy` extends :class:`~presidio_x402.policy_engine.PolicyConfig`

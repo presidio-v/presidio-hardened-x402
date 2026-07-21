@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Decision-ref emission — per-payment proof-carrying decision records.
 
 A **decision-ref** is a signed, portable record of one gateway payment decision:
