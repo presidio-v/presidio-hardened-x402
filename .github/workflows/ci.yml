@@ -22,6 +22,14 @@ jobs:
       - run: pip install ruff
       - run: ruff check src/ tests/ fuzz/
       - run: ruff format --check src/ tests/ fuzz/
+      - name: Require SPDX + copyright header on every source file
+        run: |
+          missing=$(grep -rL "SPDX-License-Identifier" src/ fuzz/ --include='*.py' || true)
+          if [ -n "$missing" ]; then
+            echo "Source files missing an SPDX license header:"
+            echo "$missing"
+            exit 1
+          fi
 
   fuzz:
     name: Fuzz (Atheris)

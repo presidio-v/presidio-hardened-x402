@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """PII detection and redaction for x402 payment metadata.
 
 Scans payment metadata fields (resource URL, description, reason) using either:

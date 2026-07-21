@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Capability certificates — operator-signed, attenuable spending grants.
 
 Turns spending *authority* from configuration (``PolicyConfig`` read from env or

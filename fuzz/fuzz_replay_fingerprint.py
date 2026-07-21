@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Atheris property fuzzer for the x402 replay fingerprint canonicalisation.
 
 Targets :func:`presidio_x402.replay_guard._canonical_amount` and

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Shared data types for presidio-hardened-x402."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Conformance checks — see package docstring. No network; httpx.MockTransport only."""
 
 from __future__ import annotations

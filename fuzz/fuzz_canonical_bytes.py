@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Atheris property fuzzer for :func:`presidio_x402.mica.canonical_bytes`.
 
 ``canonical_bytes`` is the family strict-profile canonical JSON encoder (sorted

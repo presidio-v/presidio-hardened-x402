@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Prometheus metrics exporter for presidio-hardened-x402.
 
 Exposes counters and histograms for every security control activation.

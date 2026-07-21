@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Adapter: arch-translucency degradation signals → verified SLO triggers (v0.7.0).
 
 The :class:`~presidio_x402.slo_broker.SLOPaymentBroker` *moves money* on degradation

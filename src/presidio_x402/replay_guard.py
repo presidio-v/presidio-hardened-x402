@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Replay and duplicate payment detection for x402.
 
 Creates an HMAC-SHA256 fingerprint of the canonical payment fields and checks

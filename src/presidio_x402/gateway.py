@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """HardenedX402Client — async HTTP client with x402 payment support and Presidio security.
 
 Implements the x402 payment flow directly over httpx, with all security controls

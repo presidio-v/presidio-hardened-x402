@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Multi-party authorization (MPA) engine for high-value x402 payments.
 
 Enforces n-of-m approval requirements before large payments are executed.

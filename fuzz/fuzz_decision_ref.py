@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Atheris property fuzzer for :func:`presidio_x402.decision_ref.compute_decision_ref`.
 
 ``compute_decision_ref`` derives the thin, self-describing correlation id

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Sink-level secret redaction for the ``presidio_x402`` logger.
 
 The gateway, audit log, replay guard, and MPA engine all emit structured log

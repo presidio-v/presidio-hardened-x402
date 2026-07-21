@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """ScreeningPipeline — the rail-agnostic screening core (v0.5.0, session-3 T2).
 
 The patent-relevant four-control sequence (PII filter → trusted-wallet check →

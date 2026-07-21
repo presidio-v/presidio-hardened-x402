@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Spending policy enforcement for x402 payment requests.
 
 Blocks or throttles payments before execution based on configurable per-agent,

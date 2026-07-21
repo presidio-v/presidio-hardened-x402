@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """Payment-rail bindings for the presidio-hardened screening core.
 
 The screening core (:mod:`presidio_x402.core`) is **rail-agnostic**: PII
