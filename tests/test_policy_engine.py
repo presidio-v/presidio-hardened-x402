@@ -8,7 +8,21 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from presidio_x402.exceptions import PolicyViolationError
-from presidio_x402.policy_engine import PolicyConfig, PolicyEngine
+from presidio_x402.policy_engine import PolicyConfig, PolicyEngine, _decimal_usd
+
+
+class TestDecimalUSD:
+    def test_rejects_non_numeric(self):
+        with pytest.raises(ValueError, match="finite non-negative"):
+            _decimal_usd("not-a-number", "per_call_limit")
+
+    def test_rejects_negative(self):
+        with pytest.raises(ValueError, match="finite non-negative"):
+            _decimal_usd(-1, "per_call_limit")
+
+    def test_rejects_non_finite(self):
+        with pytest.raises(ValueError, match="finite non-negative"):
+            _decimal_usd("Infinity", "per_call_limit")
 
 
 class TestPolicyEnginePerCallLimit:
