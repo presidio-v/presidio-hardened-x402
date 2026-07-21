@@ -137,7 +137,11 @@ addopts = "--strict-markers --tb=short -q"
 
 [tool.coverage.run]
 source = ["src/presidio_x402"]
+branch = true
 
 [tool.coverage.report]
-fail_under = 90
+# Coverage floors are enforced in CI against explicit thresholds
+# (statement >= 90%, branch >= 80%) — see .github/workflows/ci.yml. With branch
+# coverage on, coverage's single blended fail_under would conflate the two, so
+# the per-metric gate lives in CI instead.
 show_missing = true
