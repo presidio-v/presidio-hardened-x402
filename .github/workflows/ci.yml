@@ -34,6 +34,9 @@ jobs:
           python-version: "3.12"
       - name: Install package + fuzz extra
         run: pip install -e ".[fuzz]"
+      # Dynamic analysis runs with runtime assertions enabled: Python is invoked
+      # without -O and PYTHONOPTIMIZE is unset, so `assert` statements in the
+      # harnesses and library are checked during fuzzing.
       - name: Run fuzz harnesses (time-boxed)
         run: |
           for f in fuzz/fuzz_*.py; do
@@ -56,7 +59,28 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]"
       - name: Run tests
-        run: pytest tests/ --cov=presidio_x402 --cov-report=xml --cov-fail-under=90
+        run: pytest tests/ --cov=presidio_x402 --cov-branch --cov-report=xml --cov-report=json --cov-report=term
+      - name: Enforce coverage floors (statement >= 90%, branch >= 80%)
+        run: |
+          python - <<'PY'
+          import json
+          import sys
+
+          totals = json.load(open("coverage.json"))["totals"]
+          statement = 100 * totals["covered_lines"] / totals["num_statements"]
+          branches = totals["num_branches"]
+          branch = 100 * totals["covered_branches"] / branches if branches else 100.0
+          print(f"statement coverage: {statement:.2f}%  (floor 90%)")
+          print(f"branch coverage:    {branch:.2f}%  (floor 80%)")
+
+          failures = []
+          if statement < 90:
+              failures.append(f"statement {statement:.2f}% < 90%")
+          if branch < 80:
+              failures.append(f"branch {branch:.2f}% < 80%")
+          if failures:
+              sys.exit("COVERAGE FAILURE: " + "; ".join(failures))
+          PY
       - name: Partner conformance suite (the OEM embed-kit guarantee, SEMVER.md)
         run: python -m presidio_x402.conformance
       - name: Upload coverage

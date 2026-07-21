@@ -22,6 +22,12 @@ existing issues first. For a bug, include:
 Please redact real payment metadata, wallet addresses, and personal data from anything you
 paste into a public issue.
 
+## New to the project?
+
+Issues labelled [`good first issue`](https://github.com/presidio-v/presidio-hardened-x402/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+are scoped to be approachable without deep knowledge of the codebase and are a good place to
+start.
+
 ## How changes are made
 
 All changes go through a pull request against `main`. Direct pushes to `main` are blocked by
@@ -32,6 +38,27 @@ branch protection, and every PR must pass the required status checks before it c
 3. Run the local verification block until it is clean.
 4. Update `CHANGELOG.md` under `## [Unreleased]`.
 5. Open a PR describing what changed and why.
+
+## Code review
+
+Every pull request — including a maintainer's own — is reviewed before it merges. This is
+not advisory: `main` requires an approving review from a code owner
+([CODEOWNERS](.github/CODEOWNERS)) who is **not** the author of the change, enforced by
+branch protection (required review, code-owner review, stale-approval dismissal, and
+last-push re-approval; admins are included).
+
+What a reviewer confirms before approving:
+
+- **Tests** — new or changed functionality ships with tests; bug fixes include a regression
+  test; the coverage floors hold.
+- **Security reasoning** — for changes to a security control (see below), the PR explains the
+  reasoning, and no existing default is weakened without an explicit rationale.
+- **Compatibility** — changes to anything in `presidio_x402.__all__`, audit event shapes, or
+  exception types follow [SEMVER.md](SEMVER.md); breaking changes are called out.
+- **Style and scope** — ruff is clean, the change is focused, and `CHANGELOG.md` is updated.
+
+Reviewers approve via GitHub's review flow. A change that needs rework is returned with
+specific requested changes rather than merged with caveats.
 
 ## Requirements for acceptable contributions
 
@@ -55,7 +82,7 @@ forms for the same dependency within one module.
 same pull request.** Bug fixes must include a regression test that fails before the fix and
 passes after it. This is enforced in review, and by the coverage gate.
 
-- coverage must stay at or above 90% (`--cov-fail-under=90`)
+- coverage floors are enforced in CI: **statement coverage ≥ 90%** and **branch coverage ≥ 80%**
 - the partner conformance suite must pass: `python -m presidio_x402.conformance`
 
 ### Security-sensitive changes
