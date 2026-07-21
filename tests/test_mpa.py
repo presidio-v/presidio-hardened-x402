@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
+import socket
 import time
 
 import httpx
@@ -797,3 +799,68 @@ class TestMPAWebhookOutboundHMAC:
 
         assert len(captured_requests) == 1
         assert "X-MPA-REQUEST-HMAC" not in captured_requests[0].headers
+
+
+class TestDecodeChunkedBody:
+    """Pure decoder for chunked MPA webhook response bodies (F-05 hardening)."""
+
+    def test_single_chunk(self):
+        assert mpa_mod._decode_chunked_body(b"5\r\nhello\r\n0\r\n") == b"hello"
+
+    def test_multiple_chunks(self):
+        assert mpa_mod._decode_chunked_body(b"3\r\nabc\r\n2\r\nde\r\n0\r\n") == b"abcde"
+
+    def test_missing_crlf_raises(self):
+        with pytest.raises(httpx.ProtocolError, match="Invalid chunked"):
+            mpa_mod._decode_chunked_body(b"5")
+
+    def test_bad_chunk_size_raises(self):
+        with pytest.raises(httpx.ProtocolError, match="Invalid chunk size"):
+            mpa_mod._decode_chunked_body(b"zz\r\ndata\r\n0\r\n")
+
+    def test_truncated_chunk_raises(self):
+        with pytest.raises(httpx.ProtocolError, match="Truncated"):
+            mpa_mod._decode_chunked_body(b"9\r\nhi\r\n0\r\n")
+
+    def test_bad_terminator_raises(self):
+        with pytest.raises(httpx.ProtocolError, match="Invalid chunk terminator"):
+            mpa_mod._decode_chunked_body(b"5\r\nhelloXX0\r\n")
+
+
+class TestResolveAndCheckHostPaths:
+    """Cover the DNS-failure, no-address, and dedup paths of host resolution by
+    patching the running loop's getaddrinfo (offline, deterministic)."""
+
+    @pytest.mark.asyncio
+    async def test_dns_failure_raises(self, monkeypatch):
+        loop = asyncio.get_running_loop()
+
+        async def boom(*args, **kwargs):
+            raise socket.gaierror("no such host")
+
+        monkeypatch.setattr(loop, "getaddrinfo", boom)
+        with pytest.raises(MPAWebhookURLError, match="DNS resolution failed"):
+            await mpa_mod._resolve_and_check_host("nonexistent.invalid")
+
+    @pytest.mark.asyncio
+    async def test_no_addresses_raises(self, monkeypatch):
+        loop = asyncio.get_running_loop()
+
+        async def empty(*args, **kwargs):
+            return []
+
+        monkeypatch.setattr(loop, "getaddrinfo", empty)
+        with pytest.raises(MPAWebhookURLError, match="no addresses"):
+            await mpa_mod._resolve_and_check_host("empty.invalid")
+
+    @pytest.mark.asyncio
+    async def test_public_addresses_deduplicated(self, monkeypatch):
+        loop = asyncio.get_running_loop()
+
+        async def dup(*args, **kwargs):
+            info = (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 443))
+            return [info, info]
+
+        monkeypatch.setattr(loop, "getaddrinfo", dup)
+        result = await mpa_mod._resolve_and_check_host("example.test")
+        assert result == ("93.184.216.34",)
