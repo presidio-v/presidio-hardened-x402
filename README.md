@@ -515,7 +515,8 @@ See [PRESIDIO-REQ.md](PRESIDIO-REQ.md) for full deliberation and rationale.
   [Code of Conduct](CODE_OF_CONDUCT.md).
 - **Architecture and governance** — [ARCHITECTURE.md](ARCHITECTURE.md) describes the
   components, payment flow, and trust boundaries; [GOVERNANCE.md](GOVERNANCE.md) covers the
-  governance model, roles, and project continuity.
+  governance model, roles, and project continuity; [ASSURANCE.md](ASSURANCE.md) is the
+  security assurance case.
 
 Install from [PyPI](https://pypi.org/project/presidio-hardened-x402/):
 `pip install presidio-hardened-x402`.

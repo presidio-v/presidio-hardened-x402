@@ -82,7 +82,10 @@ conformance suite: `python -m presidio_x402.conformance` (see SEMVER.md).
 
 ## Threat Model
 
-See `PRESIDIO-REQ.md` for the full threat model and security design rationale.
+See `PRESIDIO-REQ.md` for the full threat model and security design rationale, and
+[`ASSURANCE.md`](ASSURANCE.md) for the consolidated security assurance case (threat model,
+trust boundaries, secure-design argument, and how common implementation weaknesses are
+countered).
 
 ### v0.3.0 additions
 
