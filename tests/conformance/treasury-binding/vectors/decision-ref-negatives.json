@@ -1,0 +1,294 @@
+{
+  "description": "The two family negatives, as complete signed envelopes. Both are cryptographically valid — the signature verifies — and both MUST still be rejected. A content type proves its worth by what it rejects: a verifier that checks only the signature admits both of these.",
+  "generated_at": "2026-07-26",
+  "trust_store": {
+    "presidio-hardened-x402-policy": {
+      "alg": "ed25519",
+      "public_key": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+    }
+  },
+  "vectors": [
+    {
+      "envelope": {
+        "artifact_hash": "4d34360ed2218616d483bbe6b7a832be6620b5a85efe2d26a73bd7468c8d2caa",
+        "attested_content": {
+          "schema": "presidio-hardened-x402/payment-decision@1"
+        },
+        "decision_ref": "63c67bf2fed3a74fc0e2d56cc673f612d50ea59392bc27c43c6db85dd9926e07",
+        "decision_ref_preimage": {
+          "artifact_hash": "4d34360ed2218616d483bbe6b7a832be6620b5a85efe2d26a73bd7468c8d2caa",
+          "artifact_type": "presidio-hardened-x402/payment-decision@1",
+          "policy_version": "presidio-x402.policy.v1",
+          "verdict": "ALLOW"
+        },
+        "decision_ref_preimage_fields": [
+          "artifact_hash",
+          "artifact_type",
+          "policy_version",
+          "verdict"
+        ],
+        "disclaimer": "Proof-carrying record of one x402 payment decision under a declared predicate: it is tamper-evident (signed) and admissible (verdict = f(controls) recomputes). It does NOT prove the process was uncompromised or that the declared controls are the real controls (no TEE claim).",
+        "evidence": [
+          {
+            "claimed_at": "2026-07-26T12:00:00.000Z",
+            "content_hash": "4d34360ed2218616d483bbe6b7a832be6620b5a85efe2d26a73bd7468c8d2caa",
+            "item_id": "63c67bf2fed3a74fc0e2d56cc673f612d50ea59392bc27c43c6db85dd9926e07",
+            "key_id": "presidio-v/presidio-evidence:trust-store:x402-policy-2026q3",
+            "ledger_ref": "x402-decision:63c67bf2fed3a74fc0e2d56cc673f612d50ea59392bc27c43c6db85dd9926e07",
+            "signature": "2162770ccdb37035d48d8093dd623812fbc67c0aa8055d1df5746b65283c48f34a77c504637bc007c5bc666c50ddb88e48efc5198017d6d6d3fd402dd452410d",
+            "signer": "presidio-hardened-x402-policy",
+            "source": "presidio-hardened-x402-policy",
+            "source_version": "0.10.0"
+          }
+        ],
+        "generated_at": "2026-07-26T12:00:00.000Z",
+        "key_id": "presidio-v/presidio-evidence:trust-store:x402-policy-2026q3",
+        "payment_decision": {
+          "actor": {
+            "binding": "x402",
+            "network": "base-sepolia",
+            "payment_signer": "0x00000000000000000000000000000000c0ffee00"
+          },
+          "agent_id": "did:presidio:x402:conformance-agent",
+          "controls": {
+            "mpa": {
+              "required": false,
+              "verdict": "NOT_REQUIRED"
+            },
+            "pii": {
+              "entities": [
+                "EMAIL_ADDRESS"
+              ],
+              "mutated": true,
+              "verdict": "PII_REDACTED"
+            },
+            "policy": {
+              "policy_snapshot_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "verdict": "ALLOW"
+            },
+            "replay": {
+              "fingerprint_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+              "verdict": "FRESH"
+            },
+            "trusted_wallet": {
+              "verdict": "TRUSTED"
+            }
+          },
+          "issued_at": "2026-07-26T12:00:00.000Z",
+          "payment": {
+            "amount": "0.010000",
+            "currency": "USDC",
+            "details_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+            "offer_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "pay_to": "0x00000000000000000000000000000000c0ffee00",
+            "resource_origin": "https://conformance.invalid"
+          },
+          "policy_version": "presidio-x402.policy.v1",
+          "provenance": {
+            "parents": [],
+            "prior_decision_refs": []
+          },
+          "schema": "presidio-hardened-x402/payment-decision@1",
+          "verdict": "ALLOW"
+        },
+        "provenance": {
+          "parents": [],
+          "prior_decision_refs": []
+        },
+        "schema": "presidio-hardened/evidence-ref@1",
+        "signing_algorithm": "ed25519",
+        "source": "presidio-hardened-x402-policy",
+        "source_version": "0.10.0",
+        "use_case": "x402-payment-decision"
+      },
+      "expect": "accept",
+      "id": "treasury-decision-baseline",
+      "note": "Signed by a policy identity distinct from the payment wallet; verdict recomputes from controls."
+    },
+    {
+      "envelope": {
+        "artifact_hash": "4d34360ed2218616d483bbe6b7a832be6620b5a85efe2d26a73bd7468c8d2caa",
+        "attested_content": {
+          "schema": "presidio-hardened-x402/payment-decision@1"
+        },
+        "decision_ref": "63c67bf2fed3a74fc0e2d56cc673f612d50ea59392bc27c43c6db85dd9926e07",
+        "decision_ref_preimage": {
+          "artifact_hash": "4d34360ed2218616d483bbe6b7a832be6620b5a85efe2d26a73bd7468c8d2caa",
+          "artifact_type": "presidio-hardened-x402/payment-decision@1",
+          "policy_version": "presidio-x402.policy.v1",
+          "verdict": "ALLOW"
+        },
+        "decision_ref_preimage_fields": [
+          "artifact_hash",
+          "artifact_type",
+          "policy_version",
+          "verdict"
+        ],
+        "disclaimer": "Proof-carrying record of one x402 payment decision under a declared predicate: it is tamper-evident (signed) and admissible (verdict = f(controls) recomputes). It does NOT prove the process was uncompromised or that the declared controls are the real controls (no TEE claim).",
+        "evidence": [
+          {
+            "claimed_at": "2026-07-26T12:00:00.000Z",
+            "content_hash": "4d34360ed2218616d483bbe6b7a832be6620b5a85efe2d26a73bd7468c8d2caa",
+            "item_id": "63c67bf2fed3a74fc0e2d56cc673f612d50ea59392bc27c43c6db85dd9926e07",
+            "key_id": "presidio-v/presidio-evidence:trust-store:x402-policy-2026q3",
+            "ledger_ref": "x402-decision:63c67bf2fed3a74fc0e2d56cc673f612d50ea59392bc27c43c6db85dd9926e07",
+            "signature": "5c95fd77fa26ddd21f6ecf6b2d08bc8124fab35a4e703b070ee4c777edadd6cff4f5199eefbd33f3276e1bfcf46674f99ef457f528c52aa88e8242a0247ea300",
+            "signer": "0x00000000000000000000000000000000c0ffee00",
+            "source": "0x00000000000000000000000000000000c0ffee00",
+            "source_version": "0.10.0"
+          }
+        ],
+        "generated_at": "2026-07-26T12:00:00.000Z",
+        "key_id": "presidio-v/presidio-evidence:trust-store:x402-policy-2026q3",
+        "payment_decision": {
+          "actor": {
+            "binding": "x402",
+            "network": "base-sepolia",
+            "payment_signer": "0x00000000000000000000000000000000c0ffee00"
+          },
+          "agent_id": "did:presidio:x402:conformance-agent",
+          "controls": {
+            "mpa": {
+              "required": false,
+              "verdict": "NOT_REQUIRED"
+            },
+            "pii": {
+              "entities": [
+                "EMAIL_ADDRESS"
+              ],
+              "mutated": true,
+              "verdict": "PII_REDACTED"
+            },
+            "policy": {
+              "policy_snapshot_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "verdict": "ALLOW"
+            },
+            "replay": {
+              "fingerprint_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+              "verdict": "FRESH"
+            },
+            "trusted_wallet": {
+              "verdict": "TRUSTED"
+            }
+          },
+          "issued_at": "2026-07-26T12:00:00.000Z",
+          "payment": {
+            "amount": "0.010000",
+            "currency": "USDC",
+            "details_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+            "offer_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "pay_to": "0x00000000000000000000000000000000c0ffee00",
+            "resource_origin": "https://conformance.invalid"
+          },
+          "policy_version": "presidio-x402.policy.v1",
+          "provenance": {
+            "parents": [],
+            "prior_decision_refs": []
+          },
+          "schema": "presidio-hardened-x402/payment-decision@1",
+          "verdict": "ALLOW"
+        },
+        "provenance": {
+          "parents": [],
+          "prior_decision_refs": []
+        },
+        "schema": "presidio-hardened/evidence-ref@1",
+        "signing_algorithm": "ed25519",
+        "source": "0x00000000000000000000000000000000c0ffee00",
+        "source_version": "0.10.0",
+        "use_case": "x402-payment-decision"
+      },
+      "expect": "reject",
+      "failure_mode": "signer_equals_runtime",
+      "id": "decision-signer-equals-runtime",
+      "note": "The signer resolves to the actor's own payment wallet. The signature verifies and the verdict recomputes; admission is what fails. Self-approval is not a second opinion.",
+      "trust_store_override": {
+        "0x00000000000000000000000000000000c0ffee00": {
+          "alg": "ed25519",
+          "public_key": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+        }
+      }
+    },
+    {
+      "envelope": {
+        "artifact_hash": "215a7c3e509eca2fb29d9a1d450cdedbca9d9f5d6cb57da6aadb439925fe7429",
+        "attested_content": {
+          "schema": "presidio-hardened-x402/payment-decision@1"
+        },
+        "decision_ref": "0ac21516afda683775922eaa4270f24535b8352f63c3080580812d0f9acefade",
+        "evidence": [
+          {
+            "claimed_at": "2026-07-26T12:00:00.000Z",
+            "content_hash": "215a7c3e509eca2fb29d9a1d450cdedbca9d9f5d6cb57da6aadb439925fe7429",
+            "item_id": "0ac21516afda683775922eaa4270f24535b8352f63c3080580812d0f9acefade",
+            "key_id": "presidio-v/presidio-evidence:trust-store:x402-policy-2026q3",
+            "ledger_ref": "x402-decision:0ac21516afda683775922eaa4270f24535b8352f63c3080580812d0f9acefade",
+            "signature": "a5dd8e6409bd3bb6e54c8b940c974d50d86e183b65c971f1d360015d862c602b7cafa16618ab27c5465efb2a5d97aaab7b26a888353d5d8cdd0a57bc2a396502",
+            "signer": "presidio-hardened-x402-policy",
+            "source": "presidio-hardened-x402-policy",
+            "source_version": "0.10.0"
+          }
+        ],
+        "generated_at": "2026-07-26T12:00:00.000Z",
+        "key_id": "presidio-v/presidio-evidence:trust-store:x402-policy-2026q3",
+        "payment_decision": {
+          "actor": {
+            "binding": "x402",
+            "network": "base-sepolia",
+            "payment_signer": "0x00000000000000000000000000000000c0ffee00"
+          },
+          "agent_id": "did:presidio:x402:conformance-agent",
+          "controls": {
+            "mpa": {
+              "required": false,
+              "verdict": "NOT_REQUIRED"
+            },
+            "pii": {
+              "entities": [
+                "EMAIL_ADDRESS"
+              ],
+              "mutated": true,
+              "verdict": "PII_REDACTED"
+            },
+            "policy": {
+              "policy_snapshot_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "verdict": "VIOLATION"
+            },
+            "replay": {
+              "fingerprint_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+              "verdict": "FRESH"
+            },
+            "trusted_wallet": {
+              "verdict": "TRUSTED"
+            }
+          },
+          "issued_at": "2026-07-26T12:00:00.000Z",
+          "payment": {
+            "amount": "0.010000",
+            "currency": "USDC",
+            "details_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+            "offer_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "pay_to": "0x00000000000000000000000000000000c0ffee00",
+            "resource_origin": "https://conformance.invalid"
+          },
+          "policy_version": "presidio-x402.policy.v1",
+          "provenance": {
+            "parents": [],
+            "prior_decision_refs": []
+          },
+          "schema": "presidio-hardened-x402/payment-decision@1",
+          "verdict": "ALLOW"
+        },
+        "schema": "presidio-hardened/evidence-ref@1",
+        "signing_algorithm": "ed25519",
+        "source": "presidio-hardened-x402-policy",
+        "source_version": "0.10.0",
+        "use_case": "x402-payment-decision"
+      },
+      "expect": "reject",
+      "failure_mode": "verdict_not_recomputable",
+      "id": "decision-verdict-not-recomputable",
+      "note": "controls.policy.verdict = VIOLATION, so f(controls) = DENY, while the record claims ALLOW. Signed over the tampered content, so the hash and the signature both check out — only recomputation catches it."
+    }
+  ]
+}

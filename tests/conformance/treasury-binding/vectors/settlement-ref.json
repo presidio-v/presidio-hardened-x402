@@ -1,0 +1,171 @@
+{
+  "description": "The settlement-ref@1 join record: a signed, off-chain statement that one decision authorized one settlement. Commits to five values and nothing else — no calldata digest and no precedence timestamp, both of which are unsatisfiable over an ERC-3009 settlement, and no payer address, which the join does not need.",
+  "generated_at": "2026-07-26",
+  "golden": {
+    "canonical_hex": "7b226465636973696f6e5f726566223a2236336336376266326665643361373466633065326435366363363733663631326435306561353933393262633237633433633664623835646439393236653037222c226973737565645f6174223a22323032362d30372d32365431323a30303a30302e3030305a222c22736368656d61223a22707265736964696f2d68617264656e65642d783430322f736574746c656d656e742d7265664031222c22736574746c656d656e74223a7b22626c6f636b5f6e756d626572223a31393238343431312c22636861696e223a226569703135353a3834353332222c226c6f675f696e646578223a372c2274785f68617368223a22307861626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162227d7d",
+    "canonical_utf8": "{\"decision_ref\":\"63c67bf2fed3a74fc0e2d56cc673f612d50ea59392bc27c43c6db85dd9926e07\",\"issued_at\":\"2026-07-26T12:00:00.000Z\",\"schema\":\"presidio-hardened-x402/settlement-ref@1\",\"settlement\":{\"block_number\":19284411,\"chain\":\"eip155:84532\",\"log_index\":7,\"tx_hash\":\"0xabababababababababababababababababababababababababababababababab\"}}",
+    "content": {
+      "decision_ref": "63c67bf2fed3a74fc0e2d56cc673f612d50ea59392bc27c43c6db85dd9926e07",
+      "issued_at": "2026-07-26T12:00:00.000Z",
+      "schema": "presidio-hardened-x402/settlement-ref@1",
+      "settlement": {
+        "block_number": 19284411,
+        "chain": "eip155:84532",
+        "log_index": 7,
+        "tx_hash": "0xabababababababababababababababababababababababababababababababab"
+      }
+    },
+    "content_hash": "426827c5d9c50af6a3f6351f5e6ed5d618c5074eff529ef3b471b18abb0a0b71",
+    "envelope": {
+      "artifact_hash": "426827c5d9c50af6a3f6351f5e6ed5d618c5074eff529ef3b471b18abb0a0b71",
+      "attested_content": {
+        "schema": "presidio-hardened-x402/settlement-ref@1"
+      },
+      "decision_ref": "63c67bf2fed3a74fc0e2d56cc673f612d50ea59392bc27c43c6db85dd9926e07",
+      "disclaimer": "Signed off-chain join record: the x402 policy signer asserts that the named decision authorized the named settlement. It is NOT an on-chain anchor and proves nothing about the transaction beyond the signer's assertion; the transaction itself must be observed independently on the chain.",
+      "evidence": [
+        {
+          "claimed_at": "2026-07-26T12:00:00.000Z",
+          "content_hash": "426827c5d9c50af6a3f6351f5e6ed5d618c5074eff529ef3b471b18abb0a0b71",
+          "item_id": "426827c5d9c50af6a3f6351f5e6ed5d618c5074eff529ef3b471b18abb0a0b71",
+          "key_id": "presidio-v/presidio-evidence:trust-store:x402-policy-2026q3",
+          "ledger_ref": "x402-settlement:426827c5d9c50af6a3f6351f5e6ed5d618c5074eff529ef3b471b18abb0a0b71",
+          "signature": "73309870f3f5ac2eca5ec8842d9287804f86a8e395e123d290241de0913194d8c1abd33b39f20e16d69e3f243077920f4e709906ba6590fd9ba569aaa4398701",
+          "signer": "presidio-hardened-x402-policy",
+          "source": "presidio-hardened-x402-policy",
+          "source_version": "0.10.0"
+        }
+      ],
+      "generated_at": "2026-07-26T12:00:00.000Z",
+      "key_id": "presidio-v/presidio-evidence:trust-store:x402-policy-2026q3",
+      "schema": "presidio-hardened/evidence-ref@1",
+      "settlement": {
+        "decision_ref": "63c67bf2fed3a74fc0e2d56cc673f612d50ea59392bc27c43c6db85dd9926e07",
+        "issued_at": "2026-07-26T12:00:00.000Z",
+        "schema": "presidio-hardened-x402/settlement-ref@1",
+        "settlement": {
+          "block_number": 19284411,
+          "chain": "eip155:84532",
+          "log_index": 7,
+          "tx_hash": "0xabababababababababababababababababababababababababababababababab"
+        }
+      },
+      "settlement_key": "eip155:84532|0xabababababababababababababababababababababababababababababababab|7",
+      "settlement_ref": "426827c5d9c50af6a3f6351f5e6ed5d618c5074eff529ef3b471b18abb0a0b71",
+      "signing_algorithm": "ed25519",
+      "source": "presidio-hardened-x402-policy",
+      "source_version": "0.10.0",
+      "use_case": "x402-settlement-join"
+    },
+    "public_key_hex": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+    "settlement_key": "eip155:84532|0xabababababababababababababababababababababababababababababababab|7",
+    "signature_hex": "73309870f3f5ac2eca5ec8842d9287804f86a8e395e123d290241de0913194d8c1abd33b39f20e16d69e3f243077920f4e709906ba6590fd9ba569aaa4398701",
+    "signing_message_canonical": "{\"content_hash\":\"426827c5d9c50af6a3f6351f5e6ed5d618c5074eff529ef3b471b18abb0a0b71\",\"signer\":\"presidio-hardened-x402-policy\"}"
+  },
+  "normalisation": [
+    {
+      "canonical": "0xabababababababababababababababababababababababababababababababab",
+      "chain": "eip155:84532",
+      "input": "0xABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB",
+      "name": "evm-tx-hash-case",
+      "note": "Case is normalised, not merely accepted, so two operators exporting the same settlement produce byte-identical join records."
+    }
+  ],
+  "reject": [
+    {
+      "name": "block-number-above-i64-max",
+      "note": "Representable in Python, not in an i64. Bounded by schema so both sides reject rather than one accepting silently.",
+      "reject_reason": "integer-out-of-range",
+      "settlement": {
+        "block_number": 9223372036854775808,
+        "chain": "eip155:84532",
+        "log_index": 0,
+        "tx_hash": "0xabababababababababababababababababababababababababababababababab"
+      }
+    },
+    {
+      "name": "log-index-above-u64-max",
+      "note": "Above u64::MAX as well as i64::MAX — rejected by the same bound.",
+      "reject_reason": "integer-out-of-range",
+      "settlement": {
+        "block_number": 1,
+        "chain": "eip155:84532",
+        "log_index": 18446744073709551616,
+        "tx_hash": "0xabababababababababababababababababababababababababababababababab"
+      }
+    },
+    {
+      "name": "negative-block-number",
+      "note": "A block height is unsigned.",
+      "reject_reason": "integer-out-of-range",
+      "settlement": {
+        "block_number": -1,
+        "chain": "eip155:84532",
+        "log_index": 0,
+        "tx_hash": "0xabababababababababababababababababababababababababababababababab"
+      }
+    },
+    {
+      "name": "float-log-index",
+      "note": "Refused rather than truncated to 7.",
+      "reject_reason": "float",
+      "settlement": {
+        "block_number": 1,
+        "chain": "eip155:84532",
+        "log_index": 7.0,
+        "tx_hash": "0xabababababababababababababababababababababababababababababababab"
+      }
+    },
+    {
+      "name": "boolean-log-index",
+      "note": "bool is an int subclass in Python; True is not a log index.",
+      "reject_reason": "integer-out-of-range",
+      "settlement": {
+        "block_number": 1,
+        "chain": "eip155:84532",
+        "log_index": true,
+        "tx_hash": "0xabababababababababababababababababababababababababababababababab"
+      }
+    },
+    {
+      "name": "chain-not-caip2",
+      "note": "A rail nickname is not a chain id. The mapping happens at capture time; the committed value is always CAIP-2.",
+      "reject_reason": "chain-not-caip2",
+      "settlement": {
+        "block_number": 1,
+        "chain": "base-sepolia",
+        "log_index": 0,
+        "tx_hash": "0xabababababababababababababababababababababababababababababababab"
+      }
+    },
+    {
+      "name": "tx-hash-not-evm",
+      "note": "eip155 transaction hashes are 0x + 64 hex.",
+      "reject_reason": "tx-hash-malformed",
+      "settlement": {
+        "block_number": 1,
+        "chain": "eip155:84532",
+        "log_index": 0,
+        "tx_hash": "0xdeadbeef"
+      }
+    },
+    {
+      "name": "missing-log-index",
+      "note": "The settlement echo does not carry a log index, so an operator who skips the chain lookup lands here. Required, not optional: without it there is no key for the one-settlement-one-leg invariant.",
+      "reject_reason": "incomplete",
+      "settlement": {
+        "block_number": 1,
+        "chain": "eip155:84532",
+        "tx_hash": "0xabababababababababababababababababababababababababababababababab"
+      }
+    }
+  ],
+  "schema_id": "presidio-hardened-x402/settlement-ref@1",
+  "settlement_key_definition": "chain|tx_hash|log_index, '|' separated. This is the uniqueness key a downstream ledger enforces 'at most one settlement-ref per (period, key)' on. block_number is deliberately excluded: it is implied by the transaction hash, and including it would let a wrong-but-plausible height mint a second distinct key for one settlement.",
+  "trust_store": {
+    "presidio-hardened-x402-policy": {
+      "alg": "ed25519",
+      "public_key": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+    }
+  }
+}
