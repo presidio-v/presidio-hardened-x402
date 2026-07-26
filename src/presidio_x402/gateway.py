@@ -73,6 +73,8 @@ from .policy_engine import PolicyConfig, PolicyEngine
 from .replay_guard import ReplayGuard
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
     from ._types import (
         AuditWriter,
         PaymentDetails,
@@ -85,6 +87,7 @@ if TYPE_CHECKING:
     from .metrics import MetricsCollector
     from .mpa import MPAEngine
     from .screening_client import ScreeningClient
+    from .treasury_binding import SettlementWriter
 
 logger = logging.getLogger("presidio_x402.gateway")
 
@@ -103,6 +106,23 @@ _parse_402_header = parse_402_header
 _amount_to_usd = amount_to_usd
 _safe_exc_message = safe_exc_message
 _resource_origin = resource_origin
+
+
+def _decision_ref_collector(sink: list[str]) -> Callable[[Mapping[str, object]], None]:
+    """A request-local callback that records the emitted ``decision_ref``.
+
+    Deliberately a closure over a caller-owned list rather than state on the
+    client: one :class:`HardenedX402Client` serves many concurrent requests, and
+    a shared "last decision-ref" attribute would let request A's settlement
+    receipt be signed against request B's decision.
+    """
+
+    def collect(envelope: Mapping[str, object]) -> None:
+        ref = envelope.get("decision_ref")
+        if isinstance(ref, str) and ref:
+            sink.append(ref)
+
+    return collect
 
 
 def _raw_header_bytes(headers: httpx.Headers, header_name: str) -> bytes | None:
@@ -201,6 +221,16 @@ class HardenedX402Client:
         When the spending policy was projected from a capability chain, pass it so
         the emitted decision-ref links the chain's terminal ``grant_hash`` as a
         provenance parent (does nothing unless ``decision_ref_emitter`` is set).
+    settlement_writer:
+        Optional :class:`~presidio_x402.treasury_binding.SettlementWriter`. When
+        set, the settlement facts the resource server echoes on the paid response
+        (``PAYMENT-RESPONSE``/``X-PAYMENT-RESPONSE``/``X-PAYMENT-RECEIPT``) are
+        parsed and written out, correlated with this payment's ``decision_ref``
+        when a ``decision_ref_emitter`` is also configured. That record is the
+        input to ``python -m presidio_x402.treasury_binding export``. ``None``
+        (default) skips capture entirely. Capture is strictly observational: it
+        runs *after* the paid response is in hand, performs no network I/O, and
+        can never change the payment outcome.
     """
 
     def __init__(
@@ -224,6 +254,7 @@ class HardenedX402Client:
         binding: PaymentProtocolBinding | None = None,
         decision_ref_emitter: DecisionRefEmitter | None = None,
         capability_chain: VerifiedGrantChain | None = None,
+        settlement_writer: SettlementWriter | None = None,
     ) -> None:
         if remote_screening and screening_client is None:
             raise ValueError("remote_screening=True requires a screening_client instance")
@@ -241,6 +272,7 @@ class HardenedX402Client:
         self._mpa = mpa_engine
         self._metrics = metrics_collector
         self._binding = binding or X402Binding()
+        self._settlement_writer = settlement_writer
         # Store allowlisted wallet addresses lower-cased: EVM addresses are
         # case-insensitive (EIP-55 checksum casing is optional), so comparing
         # verbatim would reject a valid checksummed/lower-case variant and cause
@@ -346,10 +378,19 @@ class HardenedX402Client:
 
         # Apply security controls; get (possibly modified) details + the replay
         # fingerprint back so a signing failure can roll the commit back.
+        # The decision-ref of *this* payment is captured into a request-local
+        # closure (never onto self) so concurrent requests through one client
+        # cannot correlate a settlement receipt with each other's decision.
+        decision_refs: list[str] = []
         secure_details, fingerprint = await self._pipeline.apply(
             details,
             mpa_signatures=mpa_signatures,
             raw_offer_hash=raw_offer_hash,
+            on_decision_ref=(
+                _decision_ref_collector(decision_refs)
+                if self._settlement_writer is not None
+                else None
+            ),
         )
 
         # Sign and retry
@@ -388,6 +429,11 @@ class HardenedX402Client:
         kwargs["headers"] = headers
         resp = await self._httpx.request(method, url, **kwargs)
 
+        # Observational only, strictly after the paid response: capture the
+        # settlement echo and correlate it with this payment's decision-ref.
+        if self._settlement_writer is not None:
+            self._record_settlement(resp.headers, decision_refs[0] if decision_refs else None)
+
         paid_usd = amount_to_usd(secure_details.amount, secure_details.currency)
         self._audit.emit(
             "PAYMENT_ALLOWED",
@@ -412,6 +458,29 @@ class HardenedX402Client:
 
     async def aclose(self) -> None:
         await self._httpx.aclose()
+
+    def _record_settlement(self, headers: httpx.Headers, decision_ref: str | None) -> None:
+        """Parse the settlement echo and hand it to the configured writer.
+
+        Best-effort by contract, exactly like decision-ref emission: the payment
+        has already completed, so a malformed receipt, an exotic binding, or a
+        writer that raises must never turn a successful payment into an
+        exception. The failure is logged and the response is returned unchanged.
+        """
+        try:
+            capture = getattr(self._binding, "settlement_receipt", None)
+            if capture is None:
+                return
+            receipt = capture(headers)
+            if receipt is None:
+                return
+            from .treasury_binding import settlement_facts_record
+
+            self._settlement_writer.write(  # type: ignore[union-attr]
+                settlement_facts_record(receipt, decision_ref=decision_ref)
+            )
+        except Exception:
+            logger.exception("settlement receipt capture failed (payment outcome unaffected)")
 
     async def _invoke_signer(self, details: PaymentDetails) -> PaymentResponse:
         """Call the signer, supporting both callables and objects with a ``sign`` method."""

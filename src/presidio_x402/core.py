@@ -36,6 +36,8 @@ from .replay_guard import ReplayGuard, compute_fingerprint
 from .telemetry import security_control_span, set_span_attribute
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
     from ._types import PaymentDetails
     from .audit_log import AuditLog
     from .capability import VerifiedGrantChain
@@ -166,6 +168,7 @@ class ScreeningPipeline:
         *,
         mpa_signatures: dict[str, str] | None = None,
         raw_offer_hash: str | None = None,
+        on_decision_ref: Callable[[Mapping[str, object]], None] | None = None,
     ) -> tuple[PaymentDetails, str]:
         """Apply PIIFilter → PolicyEngine → ReplayGuard → MPAEngine → AuditLog.
 
@@ -174,6 +177,15 @@ class ScreeningPipeline:
         metadata fields if ``pii_action="redact"``, plus the replay fingerprint
         recorded for this payment so the caller can roll it back if signing
         fails.
+
+        ``on_decision_ref``, when given, is called once with the emitted
+        decision-ref envelope (nothing is called if emission is disabled or
+        fails). It exists so a caller can correlate *this* payment's decision-ref
+        with the settlement receipt it later observes, without the pipeline
+        holding per-payment state that concurrent calls would race on — the
+        caller's closure owns the value. Like the emitter itself it must not
+        perform network I/O and must not raise; a raising callback is caught and
+        logged with the emission.
 
         Raises on policy violation, replay, PII block, or MPA denial/timeout.
         On MPA denial/timeout the spend + replay commit is rolled back before
@@ -489,7 +501,12 @@ class ScreeningPipeline:
         # Emit the signed payment-decision@1 record immediately before returning
         # to the caller, which signs next. No network I/O on this path.
         if self._decision_emitter is not None and decision_controls is not None:
-            self._emit_decision_ref(details, decision_controls, raw_offer_hash=raw_offer_hash)
+            self._emit_decision_ref(
+                details,
+                decision_controls,
+                raw_offer_hash=raw_offer_hash,
+                on_decision_ref=on_decision_ref,
+            )
 
         return details, fingerprint
 
@@ -499,6 +516,7 @@ class ScreeningPipeline:
         controls: object,
         *,
         raw_offer_hash: str | None = None,
+        on_decision_ref: Callable[[Mapping[str, object]], None] | None = None,
     ) -> None:
         """Build and write one payment-decision@1 record (opt-in path only).
 
@@ -516,7 +534,7 @@ class ScreeningPipeline:
                 currency=details.currency,
                 network=details.network,
             )
-            self._decision_emitter.emit(  # type: ignore[union-attr]
+            envelope = self._decision_emitter.emit(  # type: ignore[union-attr]
                 agent_id=self._agent_id or "",
                 payment_signer=details.pay_to,
                 network=details.network,
@@ -531,5 +549,7 @@ class ScreeningPipeline:
                 controls=controls,  # type: ignore[arg-type]
                 parents=capability_parents(self._capability_chain),
             )
+            if on_decision_ref is not None:
+                on_decision_ref(envelope)
         except Exception:
             logger.exception("decision-ref emission failed (payment outcome unaffected)")
