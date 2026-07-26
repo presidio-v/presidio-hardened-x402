@@ -6,6 +6,90 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+> Releases as **0.10.0**; `pyproject.toml` is bumped ahead of the tag.
+
+### Added
+- **Treasury binding — `settlement-ref@1`, a signed off-chain join record.** A
+  `payment-decision@1` record says *why* a payment was allowed but carries no
+  transaction hash, so it cannot be reconciled against the settlement it
+  authorized. The new artifact closes that gap: a signed `evidence-ref@1`
+  envelope, under the same policy signer, committing to `{decision_ref, chain
+  (CAIP-2), tx_hash, block_number, log_index}` and nothing else. It is
+  deliberately **not** the on-chain anchor an earlier design sketched — an
+  ERC-3009 settlement's calldata carries no decision digest, so a
+  `calldata_digest` check would verify nothing, and a "decision precedes
+  settlement" check compares the settlement's own block time with itself. The
+  record asserts only what the signer can: *this decision, that transaction,
+  signed*. The stronger pre-settlement on-chain commitment remains available as
+  a future opt-in mode; it costs an extra chain transaction per payment.
+- **`presidio_x402.treasury_binding` — fail-closed bundle export + offline
+  verify, with a CLI.** `export` re-runs the *whole* decision-ref verification —
+  signature included, which is why a trust store is a required argument rather
+  than an optional one — and refuses to emit a bundle for an envelope that does
+  not verify, a non-terminal `REFER` verdict, an out-of-bound caller identity
+  string, out-of-domain settlement facts, or a join that would be signed by an
+  identity other than the decision's own signer. `DENY` *is* exportable on
+  purpose: a settlement that happened despite a DENY is the anomaly an auditor
+  most needs to see. The bundle carries **no key material** — `trust_store_ref`
+  names the signer and key id, and the verifier resolves both against its own
+  pinned store, because a bundle-supplied public key would make verification
+  trust-on-first-use and defeat the pin. The signing key is read from a file or
+  `PRESIDIO_X402_EVIDENCE_KEY`, never from `argv`, which is world-readable in
+  `ps` output. Exit 0 verified / 1 fail-closed with a distinct reason / 2 usage.
+- **Client-side settlement-receipt capture (opt-in `settlement_writer=`).** The
+  paid response's `PAYMENT-RESPONSE` / `X-PAYMENT-RESPONSE` /
+  `X-PAYMENT-RECEIPT` echo is parsed into rail-agnostic settlement facts and
+  correlated with that payment's `decision_ref`. Documented honestly: **the echo
+  carries the transaction hash and the network, not a block number and not a log
+  index**, so those come back `null`, the record is flagged `"complete": false`,
+  and completing them from a chain or indexer lookup is an operator step. They
+  are required rather than optional because without a log index there is no key
+  on which a ledger can enforce one-settlement-one-leg. Capture is strictly
+  observational — it runs after the paid response is in hand, performs no
+  network I/O, and cannot change a payment outcome. The `decision_ref` is
+  captured through a request-local closure, never client state, so concurrent
+  requests through one client cannot correlate a receipt with each other's
+  decision.
+- **Caller-identity value bounds on the export and verify paths.** `agent_id`,
+  `actor.payment_signer`, `pay_to`, `resource_origin` and `mpa.approval_refs`
+  are caller-supplied strings, and a wallet address is pseudonymous personal
+  data to a GDPR-minded auditor. They are bounded by length and charset (no
+  control, format, surrogate, private-use or unassigned code point — a charset
+  bound, not an ASCII allowlist, so an international agent id stays legal). The
+  bound is re-applied on read, so a bundle from a laxer producer still fails.
+  This replaces the overclaim that the record is PII-free: only the `controls{}`
+  block is structurally PII-free.
+- **Cross-language conformance vectors** under
+  `tests/conformance/treasury-binding/`, with `PROVENANCE.json` and a
+  deterministic generator. They are the *normative* contract between this
+  repository's Python canonicaliser and the sibling Rust one — x402 is Python,
+  the ledger is Rust, and nothing is imported across that boundary, so the
+  contract is the bytes. Covers the axes that can actually diverge: non-ASCII
+  escaping (emoji, combining marks, U+007F, C0 controls), non-ASCII key ordering
+  (equal by construction — pinned so a toolchain change cannot break it
+  silently), lone surrogates, non-string object keys, integers past `i64::MAX`,
+  floats, and the depth boundary at 128/129 with the depth definition pinned
+  alongside it. Plus the two family negatives as complete signed envelopes: both
+  verify cryptographically and both must still be rejected.
+
+### Changed
+- **`mica.canonical_bytes` now fails closed across its whole input domain.** A
+  string carrying an unpaired surrogate raised a bare `UnicodeEncodeError` from
+  the UTF-8 encode step — an interpreter accident escaping a boundary whose
+  callers catch `EvidenceError` — and now raises `EvidenceError`. Non-string
+  object keys are also rejected: `json.dumps` sorts integer keys *numerically*
+  and only then stringifies them (`1, 2, 10`), while every sibling canonicaliser
+  sorts the strings (`"1", "10", "2"`), which is a silent cross-language hash
+  divergence. Neither change affects any valid input, so no emitted bytes move;
+  the float guard and the key guard now share one walk instead of two.
+- `ScreeningPipeline.apply()` accepts an optional `on_decision_ref` callback
+  (additive keyword) so a caller can correlate the emitted decision-ref with a
+  settlement observed later, without the pipeline holding per-payment state that
+  concurrent calls would race on.
+- `PaymentProtocolBinding` gains an *optional*, duck-typed
+  `settlement_receipt(headers)` method. The gateway probes for it with `getattr`
+  and skips capture when absent, so third-party bindings keep working unchanged.
+
 ### Fixed
 - **Replay-fingerprint collision on high-precision amounts.** `_canonical_amount`
   stripped trailing zeros with `Decimal.normalize()`, a *context* operation bounded

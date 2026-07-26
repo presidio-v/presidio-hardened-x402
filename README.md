@@ -419,6 +419,49 @@ format and `decision_ref` derivation are pinned by the conformance fixture under
 `tests/conformance/decision-ref/` and the design note
 `plan/presidio-evidence-decision-ref-design.md`.
 
+## Treasury binding (`settlement-ref@1`) — v0.10.0
+
+A decision-ref says *why* a payment was allowed. Reconciling it into a ledger's
+close also needs *which settlement it authorized* — and the shipped
+`payment-decision@1` record carries no transaction hash. **`settlement-ref@1`** is
+that join: a signed, off-chain statement, under the same policy signer, committing
+to `{decision_ref, chain (CAIP-2), tx_hash, block_number, log_index}`.
+
+```python
+from presidio_x402 import FileSettlementWriter, HardenedX402Client
+
+client = HardenedX402Client(
+    payment_signer=signer,
+    decision_ref_emitter=emitter,                       # as above
+    settlement_writer=FileSettlementWriter("settlements.jsonl"),
+)
+# The paid response's PAYMENT-RESPONSE echo is parsed and correlated with this
+# payment's decision_ref. It carries the tx hash and network — NOT a block number
+# or log index, so the record is written with "complete": false and those two
+# fields are completed by the operator from a chain lookup.
+```
+
+```bash
+python -m presidio_x402.treasury_binding export decision.json \
+    --settlement settle.json --trust trust.json --key-file policy.key > bundle.json
+python -m presidio_x402.treasury_binding verify bundle.json trust.json   # exit 0 iff verified
+```
+
+Export is fail-closed: it re-runs the full decision-ref verification (signature
+included — which is why `--trust` is required) and refuses a non-verifying
+envelope, a non-terminal `REFER` verdict, an out-of-bound identity string, or a
+join signed by an identity other than the decision's own signer. The bundle
+carries **no key material**: `trust_store_ref` names the signer and key id, and
+the verifier resolves both against its own pinned store — a bundle-supplied key
+would make verification trust-on-first-use.
+
+**Honest bound.** This is an off-chain join, not an on-chain anchor: an ERC-3009
+settlement's calldata carries no decision digest, so there is nothing on chain to
+check it against. It asserts only what the signer can — *this decision, that
+transaction, signed*. Bundle shape, ingest contract and residual risks:
+[`docs/treasury-binding.md`](docs/treasury-binding.md); the cross-language byte
+contract: `tests/conformance/treasury-binding/`.
+
 ### Provisioning Metadata Redaction
 
 Capacity-upgrade requests can reveal workload type, data classification, or access pattern.
@@ -482,6 +525,7 @@ All exceptions are importable from `presidio_x402`.
 | v0.8.0 | PII completeness + supply-chain hardening (library) — `nlp` mode is now a structural superset of `regex` (no structured-identifier misses) · composed-envelope `screen_ref` leg · `action_ref` byte-determinism (NFC + non-empty entity sets) · URL-redacted log hygiene · OpenSSF Scorecard workflow/badge + SLSA Build L3 provenance · independent multi-round security audit cleared |
 | **v0.9.1** | **Security patch** — dependency-audit floors for `click` / `setuptools`, missing-payment-header log exposure hardening, and `setup-uv` v8.3.2 CI action pin — **latest release** |
 | v0.9.0 | Proof-carrying x402 evidence — `capability-grant@1` attenuable spending grants + opt-in `payment-decision@1` decision refs with raw-offer digest binding, fail-closed offline verification, capability-chain provenance linkage, and PII-free emitted records |
+| v0.10.0 | **Treasury binding** — `settlement-ref@1` signed off-chain join record + fail-closed bundle export/verify CLI · client-side settlement-receipt capture · caller-identity value bounds · cross-language conformance vectors (non-ASCII escaping, lone surrogates, non-string keys, `i64` bounds, depth 128/129) |
 | Future | Deferred #23 prompt-injection / agent-bound response scanning threat-model work |
 
 ### Planned direction (next 12 months)
