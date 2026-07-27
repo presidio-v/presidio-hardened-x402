@@ -521,6 +521,52 @@ public-chain anchor (`decision-anchor@1`) is deferred, not implemented.
 
 ---
 
+## v0.10.0 Requirements (treasury binding) — **delivered 2026-07-27**
+
+Additive, opt-in consumer of the v0.9.0 evidence surface. It correlates an x402
+payment decision to its on-chain settlement so an audit-grade ledger
+(`presidio-hardened-treasury`) can reconcile agent spend. The binding is by shared
+wire format + cross-language conformance vectors, never by import.
+
+### Delivered
+
+- [x] **`settlement-ref@1` — a signed off-chain join record.** A family
+  `evidence-ref@1` envelope, under the same policy signer as the decision, committing
+  to exactly `{decision_ref, chain (CAIP-2), tx_hash, block_number, log_index}`.
+  Deliberately **not** the on-chain `decision-anchor@1` an earlier design sketched —
+  an ERC-3009 settlement's calldata carries no decision digest, so that check would
+  verify nothing. Implemented in `src/presidio_x402/treasury_binding.py`.
+- [x] **Fail-closed bundle `export` + offline `verify`, with a CLI.** `export`
+  re-runs the *whole* decision-ref verification (signature included — the trust store
+  is a required argument) and refuses a non-verifying envelope, a non-terminal
+  `REFER`, an out-of-bound caller identity, out-of-domain settlement facts, or a join
+  signed by a non-decision signer. Bundles carry **no key material**. CLI exit codes:
+  0 verified / 1 fail-closed (distinct reason) / 2 usage.
+- [x] **Mirror-consistency.** Every unsigned mirror of a join fact — on the bundle
+  *and* on the settlement envelope — must be present and equal to what the signed
+  envelopes prove, or the bundle is rejected (`summary_mismatch`).
+- [x] **Client-side settlement-receipt capture** (opt-in `settlement_writer=`) from
+  the paid `PAYMENT-RESPONSE` header; `block_number` / `log_index` are
+  operator-supplied (not on the wire).
+- [x] **Cross-language canonicalization conformance vectors** — the byte-interop
+  contract for a Rust consumer: non-ASCII escaping, lone surrogates (typed error, not
+  `UnicodeEncodeError`), non-string keys, `i64` bounds, float/NaN/Infinity rejection,
+  depth 128 accept / 129 reject. `mica.canonical_bytes` now fails closed across its
+  whole input domain.
+
+### Bounds and deferrals
+
+- The one-settlement-one-leg **uniqueness invariant is the consuming ledger's to
+  enforce**, and rests on an operator-supplied `log_index` the signature does not
+  attest; a ledger must corroborate it against its own chain observation.
+- **End-to-end reconciliation** depends on the treasury-side companion change
+  (Ed25519 trust store + inbound evidence class + Rust conformance test), tracked at
+  `presidio-hardened-treasury#49`; until it lands, bundles are marked
+  `"ingest_status": "treasury-ingest-pending"`.
+- The stronger pre-settlement on-chain anchor remains a future opt-in mode.
+
+---
+
 ## Security Model
 
 The threat model for presidio-hardened-x402 addresses the following adversaries:

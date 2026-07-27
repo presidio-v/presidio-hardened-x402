@@ -6,7 +6,7 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-> Releases as **0.10.0**; `pyproject.toml` is bumped ahead of the tag.
+## [0.10.0] — 2026-07-27
 
 ### Added
 - **Treasury binding — `settlement-ref@1`, a signed off-chain join record.** A
