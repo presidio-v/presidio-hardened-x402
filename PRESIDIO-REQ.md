@@ -567,6 +567,43 @@ wire format + cross-language conformance vectors, never by import.
 
 ---
 
+## v0.11.0 Requirements (capability enforcement) — **delivered 2026-07-27**
+
+Additive, **opt-in, default-off** consumer of the v0.9.0 capability surface. It makes each
+outgoing payment prove it is authorised by a verified `capability-grant@1` chain *before*
+signing/transmission. The runnable E2 harness for the Computational Jurisprudence evaluation
+paper (CJ-EVAL Phase A2 + B2).
+
+### Delivered
+
+- [x] **`CapabilityEnforcer` — pre-transmission `capability-grant@1` enforcement.** A thin
+  `ScreeningPipeline` stage placed between the trusted-wallet allowlist and the policy engine
+  (`PII → trusted-wallet → capability → policy → replay → MPA`) — a pure predicate ahead of the
+  stateful gates, so a denial needs no compensating rollback. It **reuses** the released pieces:
+  `verify_chain` / `VerifiedGrantChain.check_payment` (per-call cap, endpoint prefix, validity
+  window), `policy_config_from_chain`, and `decision_ref` for a block-time signed
+  `payment-decision@1` DENY parent-linked to the chain's terminal `grant_hash`. A capability
+  denial recomputes to `DENY` under the existing five-control schema — the `payment-decision@1`
+  vectors are untouched. Implemented in `src/presidio_x402/capability_enforcer.py`
+  (`CapabilityEnforcer`, `StageTiming`); wired into `ScreeningPipeline` / `HardenedX402Client`
+  via the additive `capability_enforcer=` parameter.
+- [x] **Default-off invariant.** When `capability_enforcer=` is unset, no capability code runs,
+  no `perf_counter` is called, and `apply()` is byte-identical to prior releases. No network I/O
+  on any path.
+- [x] **`StageTiming`** per-stage breakdown (`redaction | capability verification | evidence
+  write`) via `ScreeningPipeline.apply(stage_timings=…)`, for the CJ-EVAL harnesses
+  (`experiments/e2_replay.py`, `e2_chains.py`, `e2_violations.py`).
+
+### Bounds
+
+- Enforces the shipped `@1` caveat fragment (`max_per_call_usd`, `endpoint_prefixes`, validity
+  window); **jurisdiction is not representable in `@1` and is not enforced.** Aggregate budgets
+  (`daily_limit_usd`, `window_seconds`) remain the `PolicyEngine` ledger's responsibility.
+- Measures the *released* grant@1 artifact end-to-end; **ZK-tier numbers remain literature-cited**
+  (CJ-EVAL Phase C). See `plan/e2-capability-enforcer-design.md`.
+
+---
+
 ## Security Model
 
 The threat model for presidio-hardened-x402 addresses the following adversaries:
