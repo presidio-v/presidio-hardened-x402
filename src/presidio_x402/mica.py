@@ -70,35 +70,68 @@ class EvidenceError(X402Error):
 # ---------------------------------------------------------------------------
 
 
-def _reject_floats(payload: object) -> None:
-    """Strict-profile guard (ADR-0001 D1): floats are non-deterministic across
-    encoders, so a hash over them is not portable between the family producers.
-    Reject any float anywhere in the structure rather than emit an unverifiable
-    ``content_hash``. ``bool`` is an ``int`` subclass and is allowed."""
+def _reject_uncanonicalisable(payload: object) -> None:
+    """Strict-profile domain guard (ADR-0001 D1) — one walk, fail-closed.
+
+    Rejects the two structural inputs that would otherwise produce bytes a
+    sibling family implementation cannot reproduce:
+
+    * **floats** — non-deterministic across encoders, so a hash over them is not
+      portable between the family producers. ``bool`` is an ``int`` subclass and
+      is allowed.
+    * **non-string object keys** — ``json.dumps`` sorts integer keys *numerically*
+      and only then stringifies them, while every sibling canonicaliser models
+      object keys as strings and sorts them lexicographically: ``{1: "a", 10:
+      "b", 2: "c"}`` would encode in a different order here than anywhere else.
+      That is a silent cross-language hash divergence, and the strict profile has
+      no non-string keys, so reject rather than emit an unverifiable
+      ``content_hash``.
+    """
     if isinstance(payload, float):
         raise EvidenceError(
             "canonical encoding rejects floats (treasury-strict profile); use "
             "integers or pre-formatted decimal strings so the hash stays portable"
         )
     if isinstance(payload, Mapping):
-        for value in payload.values():
-            _reject_floats(value)
+        for key, value in payload.items():
+            if not isinstance(key, str):
+                raise EvidenceError(
+                    "canonical encoding rejects non-string object keys "
+                    f"({type(key).__name__}); the strict profile models object keys as "
+                    "strings, and coercing them here would order differently than in a "
+                    "sibling implementation"
+                )
+            _reject_uncanonicalisable(value)
     elif isinstance(payload, (list, tuple)):
         for value in payload:
-            _reject_floats(value)
+            _reject_uncanonicalisable(value)
 
 
 def canonical_bytes(payload: object) -> bytes:
     """Deterministic canonical JSON — must byte-match every family producer.
 
     Strict profile (ADR-0001 D1): sorted keys, ``(",", ":")`` separators, UTF-8,
-    ``ensure_ascii=False``, **floats rejected**. Conformance-pinned to the vendored
-    golden vectors in ``tests/evidence-vectors/canonical-json/``.
+    ``ensure_ascii=False``, **floats and non-string object keys rejected**.
+    Conformance-pinned to the vendored golden vectors in
+    ``tests/evidence-vectors/canonical-json/``.
+
+    Fail-closed across the whole input domain: a string carrying an unpaired
+    surrogate (reachable from ``json.loads('"\\ud800"')``, or from a
+    ``surrogateescape`` decode) has no UTF-8 encoding and is rejected as an
+    :class:`EvidenceError` rather than escaping as a bare ``UnicodeEncodeError``.
+    A sibling implementation whose string type cannot hold a lone surrogate
+    rejects the same input, so this is *error parity*, not a local quirk.
     """
-    _reject_floats(payload)
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
-        "utf-8"
-    )
+    _reject_uncanonicalisable(payload)
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    try:
+        return encoded.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise EvidenceError(
+            "canonical encoding rejects strings that are not valid Unicode "
+            f"(unpaired surrogate at position {exc.start}); the strict profile "
+            "encodes UTF-8 and has no representation for one"
+        ) from exc
 
 
 def sha256_hex(payload: object) -> str:

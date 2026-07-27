@@ -111,7 +111,7 @@ def _amount_decimal(value: object, field_name: str) -> Decimal:
     Integer inputs are interpreted as micro-USD (1e-6 USD) so a caveat can be
     expressed in atomic units without a float ever entering the wire form. A
     string is a plain decimal USD amount (``"0.05"``). This mirrors the
-    family float rule (``mica._reject_floats``) and ``policy_engine._decimal_usd``.
+    family float rule (``mica._reject_uncanonicalisable``) and ``policy_engine._decimal_usd``.
     """
     if isinstance(value, bool):  # bool is an int subclass — never an amount
         raise CapabilityError(f"{field_name} must not be a boolean")

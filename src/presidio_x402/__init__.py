@@ -95,8 +95,18 @@ from .slo_broker import (
     X402CapacityProvider,
 )
 from .slo_policy import SLOPaymentPolicy
+from .treasury_binding import (
+    SETTLEMENT_REF_SCHEMA_ID,
+    TREASURY_BUNDLE_SCHEMA_ID,
+    FileSettlementWriter,
+    NullSettlementWriter,
+    SettlementFacts,
+    TreasuryBindingError,
+    export_bundle,
+    verify_bundle,
+)
 
-__version__ = "0.9.1"
+__version__ = "0.10.0"
 __all__ = [
     # Primary public API
     "HardenedX402Client",
@@ -134,6 +144,15 @@ __all__ = [
     "verify_decision_ref",
     "f_controls",
     "PAYMENT_DECISION_SCHEMA_ID",
+    # Treasury binding (settlement-ref@1 + treasury-bundle@1) — v0.10.0
+    "SettlementFacts",
+    "export_bundle",
+    "verify_bundle",
+    "TreasuryBindingError",
+    "NullSettlementWriter",
+    "FileSettlementWriter",
+    "SETTLEMENT_REF_SCHEMA_ID",
+    "TREASURY_BUNDLE_SCHEMA_ID",
     # Multi-party authorization
     "MPAConfig",
     "MPAApproverConfig",

@@ -1,0 +1,164 @@
+{
+  "accept": [
+    {
+      "canonical_hex": "7b2261223a2231222c2262223a2232227d",
+      "canonical_utf8": "{\"a\":\"1\",\"b\":\"2\"}",
+      "expect": "accept",
+      "kind": "inline",
+      "name": "ascii-baseline",
+      "note": "sorted keys, no spaces — the profile's floor.",
+      "payload": {
+        "a": "1",
+        "b": "2"
+      },
+      "sha256": "21f76dfbfe6dfe21f762080ef484112cf2952974cef30741fd1931e1c6d92112"
+    },
+    {
+      "canonical_hex": "7b2263302d636f6e74726f6c223a226c696e655c7530303031627265616b222c22636f6d62696e696e67223a2265cc8167616c697465cc81222c2264656c223a226265666f72657f6166746572222c22656d6f6a69223a227061796d656e7420f09f92b820736574746c6564222c22707265636f6d706f736564223a22c3a967616c6974c3a9222c227461622d6e65776c696e65223a22615c74625c6e635c72645c62655c6666227d",
+      "canonical_utf8": "{\"c0-control\":\"line\\u0001break\",\"combining\":\"égalité\",\"del\":\"beforeafter\",\"emoji\":\"payment 💸 settled\",\"precomposed\":\"égalité\",\"tab-newline\":\"a\\tb\\nc\\rd\\be\\ff\"}",
+      "expect": "accept",
+      "kind": "inline",
+      "name": "non-ascii-escaping",
+      "note": "THE high-attention axis (R1). Both sides must pass non-ASCII through as raw UTF-8, use the short forms \\b \\f \\n \\r \\t, and \\u00xx-escape other C0 controls. U+007F DEL is NOT escaped by either side. NFC and NFD spellings of the same grapheme are distinct byte sequences and must not fold together.",
+      "payload": {
+        "c0-control": "line\u0001break",
+        "combining": "égalité",
+        "del": "beforeafter",
+        "emoji": "payment 💸 settled",
+        "precomposed": "égalité",
+        "tab-newline": "a\tb\nc\rd\be\ff"
+      },
+      "sha256": "2e41bb93099a273d147a0af8c42fe0d7873d4e54c994d6dacc367ba4c2258356"
+    },
+    {
+      "canonical_hex": "7b2261223a352c227a65627261223a312c22c3a96375223a322c22c3bc626572223a332c22e4b8ad223a347d",
+      "canonical_utf8": "{\"a\":5,\"zebra\":1,\"écu\":2,\"über\":3,\"中\":4}",
+      "expect": "accept",
+      "kind": "inline",
+      "name": "non-ascii-keys",
+      "note": "Key ordering is proven-equal, not assumed: UTF-8 byte-lexicographic order IS code-point order by construction, so Python's sort_keys (code point) and a Rust String sort (UTF-8 bytes) agree. Pinned so a future toolchain change cannot silently break the equality.",
+      "payload": {
+        "a": 5,
+        "zebra": 1,
+        "écu": 2,
+        "über": 3,
+        "中": 4
+      },
+      "sha256": "8e7110ffef8f8c082d211342921d17265007868791ef1b6d30249e51200a47ea"
+    },
+    {
+      "canonical_hex": "7b226936345f6d6178223a393232333337323033363835343737353830372c226f6e65223a312c227a65726f223a307d",
+      "canonical_utf8": "{\"i64_max\":9223372036854775807,\"one\":1,\"zero\":0}",
+      "expect": "accept",
+      "kind": "inline",
+      "name": "integer-boundaries",
+      "note": "The largest integer the shared profile admits. Anything above it is schema-rejected on the settlement-ref (see settlement-ref.json).",
+      "payload": {
+        "i64_max": 9223372036854775807,
+        "one": 1,
+        "zero": 0
+      },
+      "sha256": "44d26709088307ff7dba764df73aef8ecd07cfdd576810008fda2d2bfc8632f6"
+    },
+    {
+      "canonical_hex": "7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a2278227d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d",
+      "construct": {
+        "depth": 128,
+        "key": "a",
+        "leaf": "x",
+        "op": "nested-object"
+      },
+      "expect": "accept",
+      "kind": "construct",
+      "name": "nested-depth-128",
+      "note": "Depth boundary, accepted side. Leaf at depth 128 with the top-level value at depth 0.",
+      "sha256": "70c885f92a071e0e17a5127ded31de9aff63160fe3a364fe0e4e98a78f27b5fa"
+    }
+  ],
+  "depth_definition": "The top-level value is at depth 0; every step into a nested object or array adds 1. A value at depth 128 is accepted; a value at depth 129 is rejected. Pin this definition before grading the boundary vectors — an off-by-one in the definition grades the two cases in opposite directions.",
+  "description": "Cross-language canonical-JSON contract for the treasury binding. Profile: sorted keys, (\",\", \":\") separators, UTF-8, ensure_ascii=False, floats and non-string keys rejected. 'canonical_hex' is the hex dump of the expected bytes so no whitespace or escaping question is left to interpretation.",
+  "generated_at": "2026-07-26",
+  "reject": [
+    {
+      "expect": "reject",
+      "kind": "inline",
+      "name": "float-anywhere",
+      "note": "Floats are not portable across encoders; both sides refuse rather than emit an unverifiable content_hash.",
+      "payload": {
+        "amount": 0.1
+      },
+      "reject_reason": "float",
+      "rejects_at": {
+        "python": "encode",
+        "rust": "encode"
+      }
+    },
+    {
+      "expect": "reject",
+      "kind": "inline",
+      "name": "float-nested-in-array",
+      "note": "3.0 is a float even though it is integral — the guard is by type.",
+      "payload": {
+        "xs": [
+          1,
+          2,
+          3.0
+        ]
+      },
+      "reject_reason": "float",
+      "rejects_at": {
+        "python": "encode",
+        "rust": "encode"
+      }
+    },
+    {
+      "expect": "reject",
+      "kind": "raw-json",
+      "name": "lone-surrogate",
+      "note": "RFC 8259 permits the escape, so the TEXT is well-formed JSON, but the value has no UTF-8 encoding. The two sides reject at different layers — Rust cannot even parse it into a String; Python parses it and fails to encode — so the contract is that BOTH reject, with a typed error, not that both reject in the same place. Python raises EvidenceError (never a bare UnicodeEncodeError).",
+      "payload_json": "{\"k\":\"\\ud800\"}",
+      "reject_reason": "lone-surrogate",
+      "rejects_at": {
+        "python": "encode",
+        "rust": "parse"
+      }
+    },
+    {
+      "construct": {
+        "keys": [
+          1,
+          10,
+          2
+        ],
+        "op": "int-keyed-object",
+        "value": "v"
+      },
+      "expect": "reject",
+      "kind": "construct",
+      "name": "non-string-object-key",
+      "note": "Unreachable from JSON text — JSON has no non-string keys — so this is a PRODUCER-side guard, not a parse-side one. It matters because Python's json.dumps would sort integer keys numerically (1, 2, 10) and only then stringify, while every sibling sorts the strings ('1', '10', '2'): a silent hash divergence. Rust cannot construct the input at all, so 'both reject' holds trivially on that side.",
+      "reject_reason": "non-string-key",
+      "rejects_at": {
+        "python": "encode",
+        "rust": "unrepresentable"
+      }
+    },
+    {
+      "construct": {
+        "depth": 129,
+        "key": "a",
+        "leaf": "x",
+        "op": "nested-object"
+      },
+      "expect": "reject",
+      "kind": "construct",
+      "name": "nested-depth-129",
+      "note": "Depth boundary, rejected side. Python's canonicaliser itself has no depth cap (the interpreter's recursion limit is not a contract), so the bound is enforced by treasury_binding.check_canonical_depth on the export path — which is the only path whose output a sibling canonicaliser ever sees.",
+      "reject_reason": "too-deep",
+      "rejects_at": {
+        "python": "bound",
+        "rust": "encode"
+      }
+    }
+  ]
+}

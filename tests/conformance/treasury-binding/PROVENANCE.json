@@ -1,0 +1,21 @@
+{
+  "files": {
+    "canonical-bytes.json": "3bfde947d51f5729a7935d717c62fc5eeb1e52b8abc0956838c565655c723d91",
+    "decision-ref-negatives.json": "a32e57b1c18c1e1a0b90b53eebab6cd6491d791762d4e0f2c3724837eb829441",
+    "settlement-ref.json": "6e8d4a9cda412049d64eebb7b7ff0773b87b8c5fa18c25f32b7e96e32d74af1a"
+  },
+  "generated_at": "2026-07-26",
+  "generator": "tests/conformance/treasury-binding/build_vectors.py",
+  "note": "Authored here (not vendored) and vendored INTO the sibling Rust repository, where an equivalent test must reproduce every sha256 and accept every pinned signature. Regenerate with build_vectors.py; a hash that moves without a generator change means a vector was edited in place.",
+  "schema_ids": [
+    "presidio-hardened/evidence-ref@1",
+    "presidio-hardened-x402/payment-decision@1",
+    "presidio-hardened-x402/settlement-ref@1"
+  ],
+  "source_repo": "presidio-hardened-x402",
+  "test_key": {
+    "private_key_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+    "public_key_hex": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+    "signer": "presidio-hardened-x402-policy"
+  }
+}
