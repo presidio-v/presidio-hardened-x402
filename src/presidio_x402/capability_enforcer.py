@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PRESIDIO Group
 """CapabilityEnforcer — pre-transmission capability-grant@1 enforcement stage.
 
 An explicit, opt-in :class:`~presidio_x402.core.ScreeningPipeline` stage that
