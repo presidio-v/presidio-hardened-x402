@@ -18,6 +18,7 @@ existing gateway test suite is the conformance proof.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Literal
@@ -41,6 +42,7 @@ if TYPE_CHECKING:
     from ._types import PaymentDetails
     from .audit_log import AuditLog
     from .capability import VerifiedGrantChain
+    from .capability_enforcer import CapabilityEnforcer, StageTiming
     from .decision_ref import DecisionRefEmitter
     from .metrics import MetricsCollector
     from .mpa import MPAEngine
@@ -125,6 +127,7 @@ class ScreeningPipeline:
         remote_screening: bool = False,
         decision_ref_emitter: DecisionRefEmitter | None = None,
         capability_chain: VerifiedGrantChain | None = None,
+        capability_enforcer: CapabilityEnforcer | None = None,
         agent_id: str | None = None,
     ) -> None:
         if remote_screening and screening_client is None:
@@ -145,6 +148,12 @@ class ScreeningPipeline:
         # prior releases. See presidio_x402.decision_ref.
         self._decision_emitter = decision_ref_emitter
         self._capability_chain = capability_chain
+        # Capability enforcement is strictly opt-in: when the enforcer is None (the
+        # default) NO capability code path runs and apply() is byte-identical to
+        # prior releases. It slots in as an explicit stage between the trusted-wallet
+        # allowlist and the policy engine — see apply(). See
+        # presidio_x402.capability_enforcer.
+        self._capability_enforcer = capability_enforcer
         self._agent_id = agent_id
 
     def rollback(self, *, resource_url: str, amount_usd: float, fingerprint: str) -> None:
@@ -169,6 +178,8 @@ class ScreeningPipeline:
         mpa_signatures: dict[str, str] | None = None,
         raw_offer_hash: str | None = None,
         on_decision_ref: Callable[[Mapping[str, object]], None] | None = None,
+        stage_timings: StageTiming | None = None,
+        presented_chain: list[dict[str, object]] | None = None,
     ) -> tuple[PaymentDetails, str]:
         """Apply PIIFilter → PolicyEngine → ReplayGuard → MPAEngine → AuditLog.
 
@@ -215,6 +226,10 @@ class ScreeningPipeline:
         # ------------------------------------------------------------------
         # 1. PII Filter (local regex/NLP or remote screening service)
         # ------------------------------------------------------------------
+        # Per-stage redaction timing is measured only when a StageTiming sink is
+        # provided (E2 harness); when it is None no perf_counter call is made and
+        # the path is byte-identical to prior releases.
+        red_t0 = time.perf_counter_ns() if stage_timings is not None else 0
         with security_control_span(
             "pii_filter",
             amount_usd=amount_usd,
@@ -316,6 +331,9 @@ class ScreeningPipeline:
                     self._metrics.record_pii_detection(entity_types, "warn")
             set_span_attribute(pii_span, "presidio_x402.outcome", "allowed")
 
+        if stage_timings is not None:
+            stage_timings.redaction_ns = time.perf_counter_ns() - red_t0
+
         # Record the PII verdict for the decision-ref (success path: never
         # PII_BLOCKED, since that raises above). Only entity-type LABELS enter
         # here — the screened strings never do (PII-freedom by construction).
@@ -360,6 +378,55 @@ class ScreeningPipeline:
                 raise X402PaymentError(
                     f"pay_to wallet {details.pay_to!r} not in trusted allowlist"
                 )
+
+        # ------------------------------------------------------------------
+        # 2.5 Capability enforcement (capability-grant@1, pre-transmission)
+        # ------------------------------------------------------------------
+        # Opt-in explicit stage. Placed AFTER PII redaction + trusted-wallet and
+        # BEFORE the policy/replay gates on purpose: capability authorisation is a
+        # pure, side-effect-free predicate over (url, amount, time), so denying it
+        # here — before the stateful policy ledger records spend and before a
+        # replay fingerprint is committed — needs no compensating rollback. The
+        # caveats ARE the spending authority (they project to PolicyConfig via the
+        # existing bridge); enforcing them just-in-time is the E2 cross. Uses the
+        # ORIGINAL (pre-redaction) URL so endpoint-prefix matching sees the real
+        # host/path, exactly as the replay fingerprint and wallet allowlist do.
+        if self._capability_enforcer is not None:
+            from .capability import CapabilityError
+
+            cap_entities = sorted({e.entity_type for e in pii_entities})
+            if not cap_entities:
+                cap_pii_verdict, cap_pii_mutated = "PII_NONE", False
+            elif self._pii_action == "redact":
+                cap_pii_verdict, cap_pii_mutated = "PII_REDACTED", True
+            elif self._pii_action == "warn":
+                cap_pii_verdict, cap_pii_mutated = "PII_WARNED", False
+            else:
+                cap_pii_verdict, cap_pii_mutated = "PII_NONE", False
+            try:
+                self._capability_enforcer.enforce(
+                    details,
+                    amount_usd,
+                    resource_url=original_resource_url,
+                    presented_chain=presented_chain,
+                    timing=stage_timings,
+                    pii_verdict=cap_pii_verdict,
+                    pii_entities=cap_entities,
+                    pii_mutated=cap_pii_mutated,
+                )
+            except CapabilityError as exc:
+                safe_msg, _ = self._pii_filter.scan_and_redact(safe_exc_message(exc))
+                self._audit.emit(
+                    "CAPABILITY_BLOCKED",
+                    resource_url=clean_url,
+                    amount_usd=amount_usd,
+                    network=details.network,
+                    outcome="blocked",
+                    error_message=safe_msg,
+                )
+                if self._metrics:
+                    self._metrics.record_payment_blocked("capability", amount_usd)
+                raise
 
         # ------------------------------------------------------------------
         # 3. Policy Engine
@@ -501,12 +568,15 @@ class ScreeningPipeline:
         # Emit the signed payment-decision@1 record immediately before returning
         # to the caller, which signs next. No network I/O on this path.
         if self._decision_emitter is not None and decision_controls is not None:
+            ev_t0 = time.perf_counter_ns() if stage_timings is not None else 0
             self._emit_decision_ref(
                 details,
                 decision_controls,
                 raw_offer_hash=raw_offer_hash,
                 on_decision_ref=on_decision_ref,
             )
+            if stage_timings is not None:
+                stage_timings.evidence_write_ns = time.perf_counter_ns() - ev_t0
 
         return details, fingerprint
 
