@@ -88,6 +88,20 @@ that stops one settled payment from being counted into two closes.
 transaction hash, and including it would let a wrong-but-plausible height mint a
 second distinct key for one settlement.
 
+**The uniqueness invariant is the consumer's to enforce, and the key is only as
+trustworthy as `log_index`.** x402 does not — and cannot — enforce
+one-settlement-one-leg: that check lives in the treasury ledger
+(`presidio-hardened-treasury#49`, still pending, hence `treasury-ingest-pending`).
+And `log_index` is an *operator-supplied* fact — the on-wire settlement receipt
+carries only the transaction hash and network, not the log index — so a producer
+who is themselves inside the threat model (the operator, per the plan's L-layer
+mapping) can emit two valid bundles for one on-chain settlement under two
+different `log_index` values. The signature binds the *decision↔settlement*
+assertion; it does **not** attest that `log_index` is the real chain log index.
+A consuming ledger must therefore corroborate `log_index` against its own
+independent chain observation before treating the key as unique — never on the
+bundle's word alone. (Threat T-TB-2.)
+
 ## Producing a bundle
 
 ### 1. Capture the settlement facts

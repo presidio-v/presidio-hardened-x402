@@ -160,7 +160,14 @@ def test_bundle_carries_no_key_material(bundle_fixture):
 
 
 def test_export_is_idempotent_for_a_fixed_issue_time(bundle_fixture):
-    """Same decision + same settlement + same clock ⇒ byte-identical bundle."""
+    """Same decision + settlement + issued_at ⇒ identical *signed core*.
+
+    The interop-relevant identity — the settlement content, its content hash, and
+    the detached signature — is deterministic. The bundle wrapper is not:
+    ``generated_at`` / ``claimed_at`` are wall-clock and independent of
+    ``issued_at``, so full-bundle bytes are not reproducible. Correlation and
+    verification key off the signed core, which is what this pins.
+    """
     priv, trust, decision_env, bundle = bundle_fixture
     again = export_bundle(
         decision_env,
@@ -960,6 +967,41 @@ def test_verify_rejects_each_lying_summary_field(bundle_fixture, field: str):
     lying = json.loads(json.dumps(bundle))
     lying[field] = "0" * 64 if field != "verdict" else "DENY"
     result = verify_bundle(lying, trust)
+    assert not result.ok and result.reason == REASON_SUMMARY_MISMATCH
+
+
+@pytest.mark.parametrize(
+    "field", ["settlement_ref", "artifact_hash", "settlement_key", "decision_ref"]
+)
+def test_verify_rejects_a_lying_settlement_envelope_companion(bundle_fixture, field: str):
+    """The trap lives one level down too: the settlement envelope's companion
+    mirrors are unsigned. Tampering one leaves the signed content intact — the
+    signature still verifies — but a consumer reading the companion in isolation
+    would act on a forged join fact. Disagreement is a rejection."""
+    _priv, trust, _decision_env, bundle = bundle_fixture
+    lying = json.loads(json.dumps(bundle))
+    lying["settlement_ref_envelope"][field] = "0" * 64
+    result = verify_bundle(lying, trust)
+    assert not result.ok and result.reason == REASON_SUMMARY_MISMATCH
+
+
+@pytest.mark.parametrize(
+    ("obj", "field"),
+    [
+        ("bundle", "settlement_key"),
+        ("bundle", "decision_ref"),
+        ("settlement_ref_envelope", "settlement_key"),
+        ("settlement_ref_envelope", "artifact_hash"),
+    ],
+)
+def test_verify_rejects_an_absent_mirror(bundle_fixture, obj: str, field: str):
+    """An absent mirror is as dangerous as a wrong one: a consumer reads it as
+    None and may skip the uniqueness dedupe entirely. Presence is required."""
+    _priv, trust, _decision_env, bundle = bundle_fixture
+    stripped = json.loads(json.dumps(bundle))
+    target = stripped if obj == "bundle" else stripped[obj]
+    del target[field]
+    result = verify_bundle(stripped, trust)
     assert not result.ok and result.reason == REASON_SUMMARY_MISMATCH
 
 

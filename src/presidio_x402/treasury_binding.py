@@ -558,8 +558,12 @@ def build_settlement_evidence(
         "generated_at": claimed_at,
         "attested_content": {"schema": SETTLEMENT_REF_SCHEMA_ID},
         "evidence": [ref],
-        # Companion data (ignored by generic evidence-ref@1 verifiers; consumed
-        # by verify_settlement_ref below):
+        # Companion mirrors of the signed join facts, for a consumer's
+        # convenience. They are UNSIGNED: a generic evidence-ref@1 verifier
+        # ignores them, and verify_settlement_ref treats envelope["settlement"]
+        # as the sole authority. verify_bundle re-derives each from the signed
+        # content and rejects any that is absent or disagrees (mirror-consistency
+        # check), so a consumer must never trust these in isolation.
         "signing_algorithm": algorithm,
         "settlement": dict(content),
         "artifact_hash": a_hash,
@@ -720,12 +724,14 @@ def verify_bundle(
        a *different* trusted party is not the decision signer's assertion, and
        admitting it would let any trust-store member re-point any decision at any
        transaction.
-    7. **summary consistency** — the bundle's top-level mirror fields
-       (``decision_ref``, ``settlement_ref``, ``settlement_key``, ``verdict``)
-       must agree with what the envelopes prove (``summary_mismatch``). Nothing
-       above reads them, but a consumer enforcing uniqueness on
-       ``settlement_key`` does, and a mirror that can disagree with what it
-       mirrors is a trap.
+    7. **mirror consistency** — every unsigned mirror of a join fact must be
+       *present and equal* to what the signed envelopes prove
+       (``summary_mismatch``): the bundle's top-level fields (``decision_ref``,
+       ``settlement_ref``, ``settlement_key``, ``verdict``) **and** the settlement
+       envelope's companion fields (``settlement_ref``, ``artifact_hash``,
+       ``settlement_key``, ``decision_ref``). Nothing above reads them, but a
+       consumer enforcing uniqueness on ``settlement_key`` does — and a mirror
+       that can disagree with, or go missing from, what it mirrors is a trap.
 
     Never raises to the caller.
     """
@@ -818,29 +824,44 @@ def verify_bundle(
         settlement_content.get("settlement") if isinstance(settlement_content, Mapping) else {}
     )
 
-    # The bundle's top-level summary fields are a convenience mirror of what the
-    # envelopes already prove, and nothing above reads them — every value this
-    # function reports is re-derived. But a consumer that *does* read them (the
-    # uniqueness invariant is enforced on settlement_key) would otherwise act on
-    # an unchecked string: swapping in a settlement-ref for a different
-    # transaction leaves a stale key that still names the old one. A mirror that
-    # can disagree with what it mirrors is a trap, so a disagreement is a
-    # rejection.
-    summary = {
+    # Every join fact is mirrored outside the signed content for a consumer's
+    # convenience — once at the bundle top level, and again as companion fields on
+    # the settlement envelope (settlement_ref/artifact_hash/settlement_key/
+    # decision_ref). None of these copies is signed, and nothing above reads them:
+    # every value this function reports is re-derived from the signed envelopes.
+    # But a mirror that can disagree with what it mirrors is a trap. An *absent*
+    # mirror a consumer reads as None and may skip its uniqueness dedupe on; a
+    # *swapped* one points a real settlement at the wrong transaction. So each
+    # mirror — on the bundle AND on the settlement envelope — must be present and
+    # equal to the derived truth; anything else is a rejection.
+    derived = {
         "decision_ref": decision.decision_ref,
         "settlement_ref": settlement_ref,
         "settlement_key": facts.settlement_key,
         "verdict": decision.verdict,
     }
-    stale = {
-        name: bundle.get(name)
-        for name, derived in summary.items()
-        if name in bundle and bundle.get(name) != derived
-    }
-    if stale:
+    # (field name on the object, the object, the derived key it must equal)
+    mirrors: list[tuple[str, Mapping[str, object], str]] = [
+        ("decision_ref", bundle, "decision_ref"),
+        ("settlement_ref", bundle, "settlement_ref"),
+        ("settlement_key", bundle, "settlement_key"),
+        ("verdict", bundle, "verdict"),
+        ("decision_ref", settlement_envelope, "decision_ref"),
+        ("settlement_ref", settlement_envelope, "settlement_ref"),
+        ("artifact_hash", settlement_envelope, "settlement_ref"),
+        ("settlement_key", settlement_envelope, "settlement_key"),
+    ]
+    bad: dict[str, object] = {}
+    for name, obj, key in mirrors:
+        where = "bundle" if obj is bundle else "settlement_ref_envelope"
+        if name not in obj:
+            bad[f"{where}.{name}"] = "<absent>"
+        elif obj.get(name) != derived[key]:
+            bad[f"{where}.{name}"] = obj.get(name)
+    if bad:
         return _fail(
             REASON_SUMMARY_MISMATCH,
-            detail=f"declared {stale} but derived {summary}",
+            detail=f"unsigned mirror disagrees with signed truth: {bad} vs derived {derived}",
             decision_ref=decision.decision_ref,
             settlement_ref=settlement_ref,
             settlement_key=facts.settlement_key,
