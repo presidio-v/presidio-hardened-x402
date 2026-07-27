@@ -924,7 +924,7 @@ class DecisionRefEmitter:
     fails closed on self-approval.
     """
 
-    signing_key: str
+    signing_key: str = field(repr=False)  # keep key material out of repr/tracebacks/debug logs
     signer: str = DEFAULT_DECISION_SIGNER
     algorithm: str = "ed25519"
     key_id: str | None = None

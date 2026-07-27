@@ -560,3 +560,11 @@ def test_conformance_module_exits_with_runner_code(monkeypatch):
     monkeypatch.setattr(runner, "main", lambda: 7)
     with pytest.raises(SystemExit, match="7"):
         runpy.run_module("presidio_x402.conformance.__main__", run_name="__main__")
+
+
+def test_emitter_repr_hides_signing_key(policy_signer):
+    # F1 (CWE-312): the Ed25519 private key must never surface via repr/tracebacks/debug logs.
+    signer, priv, _pub, _trust = policy_signer
+    emitter = DecisionRefEmitter(signing_key=priv, signer=signer, key_id="k1")
+    assert priv not in repr(emitter)
+    assert emitter.signing_key == priv  # still readable by the code that needs it
