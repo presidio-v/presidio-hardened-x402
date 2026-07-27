@@ -6,6 +6,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-07-27
+
+### Security
+- **`DecisionRefEmitter` no longer leaks its signing key via `repr` (F1, CWE-312).**
+  The Ed25519 private key in `signing_key` surfaced through the auto-generated
+  dataclass `repr`, so debug logging of the emitter or any traceback holding it
+  exposed key material. The field is now `field(repr=False)` — still required and
+  readable by the signing path, but absent from `repr`/tracebacks/debug logs. A
+  regression test asserts the key is not in `repr()`. (`asdict()` still emits the
+  field — inherent to dataclasses; `repr` was the finding's exposure vector.)
+
 ## [0.10.0] — 2026-07-27
 
 ### Added
