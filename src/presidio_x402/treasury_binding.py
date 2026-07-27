@@ -211,6 +211,10 @@ def check_identity_bounds(content: Mapping[str, object]) -> None:
     This does **not** claim the record is PII-free. It claims the record cannot
     carry an unbounded or non-printable caller string into an auditor's hands.
     """
+    if not isinstance(content, Mapping):
+        raise TreasuryBindingError(
+            f"decision content must be an object, got {type(content).__name__}"
+        )
     check_canonical_depth(content)
     _check_identity_string(
         content.get("agent_id"), "agent_id", IDENTITY_BOUNDS["agent_id"], allow_empty=True
@@ -595,6 +599,7 @@ REASON_JOIN_MISMATCH = "join_mismatch"
 REASON_SIGNER_MISMATCH = "signer_mismatch"
 REASON_NON_TERMINAL_VERDICT = "non_terminal_verdict"
 REASON_IDENTITY_BOUNDS = "identity_bounds"
+REASON_SUMMARY_MISMATCH = "summary_mismatch"
 
 
 @dataclass(frozen=True)
@@ -715,6 +720,12 @@ def verify_bundle(
        a *different* trusted party is not the decision signer's assertion, and
        admitting it would let any trust-store member re-point any decision at any
        transaction.
+    7. **summary consistency** — the bundle's top-level mirror fields
+       (``decision_ref``, ``settlement_ref``, ``settlement_key``, ``verdict``)
+       must agree with what the envelopes prove (``summary_mismatch``). Nothing
+       above reads them, but a consumer enforcing uniqueness on
+       ``settlement_key`` does, and a mirror that can disagree with what it
+       mirrors is a trap.
 
     Never raises to the caller.
     """
@@ -806,6 +817,38 @@ def verify_bundle(
     facts = SettlementFacts.from_mapping(
         settlement_content.get("settlement") if isinstance(settlement_content, Mapping) else {}
     )
+
+    # The bundle's top-level summary fields are a convenience mirror of what the
+    # envelopes already prove, and nothing above reads them — every value this
+    # function reports is re-derived. But a consumer that *does* read them (the
+    # uniqueness invariant is enforced on settlement_key) would otherwise act on
+    # an unchecked string: swapping in a settlement-ref for a different
+    # transaction leaves a stale key that still names the old one. A mirror that
+    # can disagree with what it mirrors is a trap, so a disagreement is a
+    # rejection.
+    summary = {
+        "decision_ref": decision.decision_ref,
+        "settlement_ref": settlement_ref,
+        "settlement_key": facts.settlement_key,
+        "verdict": decision.verdict,
+    }
+    stale = {
+        name: bundle.get(name)
+        for name, derived in summary.items()
+        if name in bundle and bundle.get(name) != derived
+    }
+    if stale:
+        return _fail(
+            REASON_SUMMARY_MISMATCH,
+            detail=f"declared {stale} but derived {summary}",
+            decision_ref=decision.decision_ref,
+            settlement_ref=settlement_ref,
+            settlement_key=facts.settlement_key,
+            verdict=decision.verdict,
+            checked=tuple(checked),
+        )
+    checked.append("summary")
+
     return BundleVerification(
         ok=True,
         decision_ref=decision.decision_ref,

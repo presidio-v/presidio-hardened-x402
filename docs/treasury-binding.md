@@ -152,7 +152,15 @@ python -m presidio_x402.treasury_binding verify bundle.json trust.json   # exit 
 
 Exit 0 verified, 1 fail-closed with a distinct reason, 2 usage error. Layers, in
 order, first failure wins: `structure → decision → terminal → identity →
-settlement → signer`.
+settlement → signer → summary`.
+
+The last layer is worth naming. The bundle's top-level `decision_ref`,
+`settlement_ref`, `settlement_key` and `verdict` are a convenience mirror of what
+the envelopes already prove, and verification never *reads* them — every value it
+reports is re-derived. But a consumer enforcing uniqueness reads
+`settlement_key`, so a mirror that can disagree with what it mirrors is a trap:
+swap in a settlement-ref for a different transaction and the stale key still
+names the old one. Disagreement is therefore a rejection, not a warning.
 
 ## Privacy bound, stated honestly
 

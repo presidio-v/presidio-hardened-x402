@@ -45,6 +45,7 @@ from presidio_x402.treasury_binding import (
     REASON_SETTLEMENT_BAD_SIGNATURE,
     REASON_SETTLEMENT_HASH_MISMATCH,
     REASON_SIGNER_MISMATCH,
+    REASON_SUMMARY_MISMATCH,
     FileSettlementWriter,
     SettlementFacts,
     TreasuryBindingError,
@@ -139,6 +140,7 @@ def test_exported_bundle_verifies_end_to_end(bundle_fixture):
         "identity",
         "settlement",
         "signer",
+        "summary",
     )
 
 
@@ -926,3 +928,44 @@ def test_non_evm_transaction_ids_are_accepted_verbatim():
     assert facts.tx_hash.startswith("5VER")
     with pytest.raises(TreasuryBindingError, match="bounded ASCII"):
         SettlementFacts(chain="solana:x", tx_hash="tx with spaces", block_number=1, log_index=0)
+
+
+def test_verify_rejects_a_bundle_whose_summary_contradicts_its_envelopes(bundle_fixture):
+    """A mirror that can disagree with what it mirrors is a trap.
+
+    Nothing in verification *reads* the top-level summary — every reported value
+    is re-derived from the envelopes. But a consumer enforcing the
+    one-settlement-one-leg invariant reads `settlement_key`, so a swapped
+    settlement-ref that leaves a stale key pointing at the old transaction would
+    let the same settlement be counted twice. Disagreement is a rejection.
+    """
+    priv, trust, decision_env, bundle = bundle_fixture
+    other = export_bundle(
+        decision_env,
+        _facts(tx_hash="0x" + "cd" * 32, block_number=2, log_index=1),
+        trust_store=trust,
+        signing_key=priv,
+    )
+    swapped = json.loads(json.dumps(bundle))
+    swapped["settlement_ref_envelope"] = other["settlement_ref_envelope"]
+    result = verify_bundle(swapped, trust)
+    assert not result.ok and result.reason == REASON_SUMMARY_MISMATCH
+    # …and the reported key is the derived one, never the stale declared one.
+    assert result.settlement_key == f"eip155:84532|{'0x' + 'cd' * 32}|1"
+
+
+@pytest.mark.parametrize("field", ["decision_ref", "settlement_ref", "settlement_key", "verdict"])
+def test_verify_rejects_each_lying_summary_field(bundle_fixture, field: str):
+    _priv, trust, _decision_env, bundle = bundle_fixture
+    lying = json.loads(json.dumps(bundle))
+    lying[field] = "0" * 64 if field != "verdict" else "DENY"
+    result = verify_bundle(lying, trust)
+    assert not result.ok and result.reason == REASON_SUMMARY_MISMATCH
+
+
+def test_identity_bounds_refuses_a_non_object_with_a_typed_error():
+    """A fail-closed boundary owes its caller a typed refusal, not an
+    AttributeError from three frames down."""
+    for bad in (None, "a string", 42, []):
+        with pytest.raises(TreasuryBindingError, match="must be an object"):
+            check_identity_bounds(bad)

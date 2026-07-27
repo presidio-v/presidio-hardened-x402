@@ -59,6 +59,14 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   bound is re-applied on read, so a bundle from a laxer producer still fails.
   This replaces the overclaim that the record is PII-free: only the `controls{}`
   block is structurally PII-free.
+- **Bundle summary fields are cross-checked against the envelopes.** The
+  top-level `decision_ref`, `settlement_ref`, `settlement_key` and `verdict` are
+  a mirror of what the envelopes prove; verification never reads them and
+  re-derives everything. But a consumer enforcing "one settlement, one leg" reads
+  `settlement_key`, so a mirror that can disagree with what it mirrors is a trap
+  — swapping in a settlement-ref for another transaction leaves a stale key
+  naming the old one. A disagreement is now a distinct fail-closed reason
+  (`summary_mismatch`), not a warning.
 - **Cross-language conformance vectors** under
   `tests/conformance/treasury-binding/`, with `PROVENANCE.json` and a
   deterministic generator. They are the *normative* contract between this
