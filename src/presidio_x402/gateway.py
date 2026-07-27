@@ -83,6 +83,7 @@ if TYPE_CHECKING:
         PaymentSigner,
     )
     from .capability import VerifiedGrantChain
+    from .capability_enforcer import CapabilityEnforcer
     from .decision_ref import DecisionRefEmitter
     from .metrics import MetricsCollector
     from .mpa import MPAEngine
@@ -254,6 +255,7 @@ class HardenedX402Client:
         binding: PaymentProtocolBinding | None = None,
         decision_ref_emitter: DecisionRefEmitter | None = None,
         capability_chain: VerifiedGrantChain | None = None,
+        capability_enforcer: CapabilityEnforcer | None = None,
         settlement_writer: SettlementWriter | None = None,
     ) -> None:
         if remote_screening and screening_client is None:
@@ -303,6 +305,7 @@ class HardenedX402Client:
             remote_screening=remote_screening,
             decision_ref_emitter=decision_ref_emitter,
             capability_chain=capability_chain,
+            capability_enforcer=capability_enforcer,
             agent_id=agent_id,
         )
         logger.info("Presidio hardening applied — HardenedX402Client initialized")

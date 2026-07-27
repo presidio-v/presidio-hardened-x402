@@ -49,6 +49,7 @@ from .capability import (
     policy_config_from_chain,
     verify_chain,
 )
+from .capability_enforcer import CapabilityEnforcer, StageTiming
 from .compliance_report import ComplianceReport
 from .core import ScreeningPipeline
 from .decision_ref import (
@@ -126,6 +127,9 @@ __all__ = [
     "Caveats",
     "CapabilityError",
     "CAPABILITY_SCHEMA_ID",
+    # Capability enforcement stage (E2 / CJ-EVAL Phase A+B) — Pillar I on the path
+    "CapabilityEnforcer",
+    "StageTiming",
     # MiCA/EU signed evidence (evidence-ref@1 wire format)
     "build_evidence",
     "Obligation",

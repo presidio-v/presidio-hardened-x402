@@ -6,6 +6,32 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-07-27
+
+### Added
+- **`CapabilityEnforcer` — `capability-grant@1` enforced on the payment path (E2 /
+  CJ-EVAL Phase A+B).** A thin, **opt-in, default-off** `ScreeningPipeline` stage
+  that makes each outgoing x402 payment prove it is authorised by a verified
+  `presidio-hardened/capability-grant@1` chain **before** signing/transmission. It
+  slots in between the trusted-wallet allowlist and the policy engine (`PII →
+  trusted-wallet → capability → policy → replay → MPA`) — a pure predicate placed
+  ahead of the stateful gates, so a block needs no compensating rollback. It
+  **reuses** the released pieces rather than reimplementing them: `verify_chain` /
+  `VerifiedGrantChain.check_payment` (per-call cap, endpoint prefix, validity
+  window), `policy_config_from_chain`, and `decision_ref` for a block-time signed
+  `payment-decision@1` DENY parent-linked to the chain's terminal `grant_hash`. Two
+  modes: a *configured* pre-verified chain, or *per-call* verification of a
+  presented chain. When unset, **no capability code runs and behaviour is
+  byte-identical** to prior releases; no network I/O on any path. New
+  `presidio_x402.capability_enforcer` module (`CapabilityEnforcer`, `StageTiming`),
+  wired into `ScreeningPipeline` / `HardenedX402Client` via the additive
+  `capability_enforcer=` parameter. `ScreeningPipeline.apply(stage_timings=…)`
+  optionally reports the monotonic per-stage breakdown `redaction | capability
+  verification | evidence write`. Measures the *released* grant@1 artifact
+  end-to-end; ZK-tier numbers remain literature-cited (CJ-EVAL Phase C). See
+  `plan/e2-capability-enforcer-design.md` and the harnesses under `experiments/`
+  (`e2_replay.py`, `e2_chains.py`, `e2_violations.py` + `e2_violations.jsonl`).
+
 ## [0.10.1] — 2026-07-27
 
 ### Security
