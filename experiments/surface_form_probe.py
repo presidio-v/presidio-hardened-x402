@@ -73,17 +73,29 @@ CASES: list[tuple[str, bool, str]] = [
 ]
 
 
-def run(min_score: float) -> dict:
-    """Scan every probe case and record whether EMAIL_ADDRESS was reported."""
+# The paper's recommended configuration is the six entity types the sweep sweeps.
+# The library's default (``entities=None``) additionally enables structural recognisers
+# such as URL and IP_ADDRESS. The two behave very differently on encoded input, so the
+# probe reports both rather than letting "all entities" stand for either.
+SWEPT_SIX = [
+    "EMAIL_ADDRESS",
+    "PERSON",
+    "PHONE_NUMBER",
+    "US_SSN",
+    "CREDIT_CARD",
+    "IBAN_CODE",
+]
+
+
+def _scan(entities, min_score: float) -> list[dict]:
     from presidio_x402.pii_filter import PIIFilter
 
-    pii_filter = PIIFilter(mode="nlp", entities=None, min_score=min_score)
-
-    cases = []
+    pii_filter = PIIFilter(mode="nlp", entities=entities, min_score=min_score)
+    out = []
     for variant, in_corpus, text in CASES:
         redacted, ents = pii_filter.scan_and_redact(text)
         types = sorted({e.entity_type for e in ents})
-        cases.append(
+        out.append(
             {
                 "variant": variant,
                 "in_corpus": in_corpus,
@@ -91,16 +103,39 @@ def run(min_score: float) -> dict:
                 "redacted": redacted,
                 "entities": types,
                 "email_detected": "EMAIL_ADDRESS" in types,
+                # Did anything at all change? An unchanged string means the value is
+                # transmitted verbatim; a changed one means some recogniser fired.
+                "field_altered": redacted != text,
             }
         )
+    return out
 
-    encoded = [c for c in cases if not c["in_corpus"]]
+
+def run(min_score: float) -> dict:
+    """Scan every probe case under both the swept and the default entity sets."""
+    blocks = {}
+    for key, entities in (("recommended_six", SWEPT_SIX), ("library_default", None)):
+        cases = _scan(entities, min_score)
+        encoded = [c for c in cases if not c["in_corpus"]]
+        blocks[key] = {
+            "entities": SWEPT_SIX if entities else "library default (adds URL, IP_ADDRESS, ...)",
+            "n_cases": len(cases),
+            "n_encoded_cases": len(encoded),
+            "n_encoded_detected": sum(1 for c in encoded if c["email_detected"]),
+            "n_encoded_field_altered": sum(1 for c in encoded if c["field_altered"]),
+            "cases": cases,
+        }
+
+    six = blocks["recommended_six"]
     return {
-        "config": {"mode": "nlp", "entities": "all", "min_score": min_score},
-        "n_cases": len(cases),
-        "n_encoded_cases": len(encoded),
-        "n_encoded_detected": sum(1 for c in encoded if c["email_detected"]),
-        "cases": cases,
+        "config": {"mode": "nlp", "min_score": min_score},
+        # Top-level keys describe the paper's recommended configuration.
+        "n_cases": six["n_cases"],
+        "n_encoded_cases": six["n_encoded_cases"],
+        "n_encoded_detected": six["n_encoded_detected"],
+        "n_encoded_field_altered": six["n_encoded_field_altered"],
+        "by_configuration": blocks,
+        "cases": six["cases"],
     }
 
 
@@ -116,14 +151,22 @@ def main() -> None:
     with args.out.open("w", encoding="utf-8") as fh:
         json.dump(result, fh, indent=2)
 
-    print(f"=== Email surface-form probe (nlp, all entities, min_score={args.min_score}) ===")
-    for c in result["cases"]:
-        mark = "DETECT" if c["email_detected"] else " MISS "
-        tag = "corpus" if c["in_corpus"] else "encoded"
-        print(f"  [{mark}] ({tag}) {c['variant']:<42} entities={','.join(c['entities']) or '-'}")
-    print(
-        f"\n  encoded forms detected: {result['n_encoded_detected']}/{result['n_encoded_cases']}"
-    )
+    print(f"=== Email surface-form probe (nlp, min_score={args.min_score}) ===")
+    for key, blk in result["by_configuration"].items():
+        print(f"\n-- {key} --")
+        for c in blk["cases"]:
+            mark = "DETECT" if c["email_detected"] else " MISS "
+            tag = "corpus" if c["in_corpus"] else "encoded"
+            alt = "altered" if c["field_altered"] else "VERBATIM"
+            print(
+                f"  [{mark}] ({tag}) {c['variant']:<42} "
+                f"{alt:<9} entities={','.join(c['entities']) or '-'}"
+            )
+        print(
+            f"  encoded: EMAIL_ADDRESS detected {blk['n_encoded_detected']}"
+            f"/{blk['n_encoded_cases']}, field altered "
+            f"{blk['n_encoded_field_altered']}/{blk['n_encoded_cases']}"
+        )
     print(f"\nResults written to {args.out}")
 
 

@@ -1,95 +1,286 @@
 {
   "config": {
     "mode": "nlp",
-    "entities": "all",
     "min_score": 0.5
   },
   "n_cases": 8,
   "n_encoded_cases": 6,
   "n_encoded_detected": 0,
+  "n_encoded_field_altered": 1,
+  "by_configuration": {
+    "recommended_six": {
+      "entities": [
+        "EMAIL_ADDRESS",
+        "PERSON",
+        "PHONE_NUMBER",
+        "US_SSN",
+        "CREDIT_CARD",
+        "IBAN_CODE"
+      ],
+      "n_cases": 8,
+      "n_encoded_cases": 6,
+      "n_encoded_detected": 0,
+      "n_encoded_field_altered": 1,
+      "cases": [
+        {
+          "variant": "bare (control, in corpus)",
+          "in_corpus": true,
+          "input": "https://api.example.com/v1/users/alice.martin@example.com/exports",
+          "redacted": "https://<REDACTED>/exports",
+          "entities": [
+            "EMAIL_ADDRESS"
+          ],
+          "email_detected": true,
+          "field_altered": true
+        },
+        {
+          "variant": "query param (control, in corpus)",
+          "in_corpus": true,
+          "input": "https://api.example.com/v1/records?user=alice.martin@example.com",
+          "redacted": "https://<REDACTED>",
+          "entities": [
+            "EMAIL_ADDRESS"
+          ],
+          "email_detected": true,
+          "field_altered": true
+        },
+        {
+          "variant": "percent-encoded @ (%40), path segment",
+          "in_corpus": false,
+          "input": "https://api.example.com/v1/users/alice.martin%40example.com/exports",
+          "redacted": "https://api.example.com/v1/users/alice.martin%40example.com/exports",
+          "entities": [],
+          "email_detected": false,
+          "field_altered": false
+        },
+        {
+          "variant": "percent-encoded @ (%40), query value",
+          "in_corpus": false,
+          "input": "https://api.example.com/v1/records?user=alice.martin%40example.com",
+          "redacted": "https://api.example.com/v1/records?user=alice.martin%40example.com",
+          "entities": [],
+          "email_detected": false,
+          "field_altered": false
+        },
+        {
+          "variant": "percent-encoded @ and dot (%40, %2E)",
+          "in_corpus": false,
+          "input": "https://api.example.com/v1/users/alice%2Emartin%40example%2Ecom/exports",
+          "redacted": "https://api.example.com/v1/users/alice%2Emartin%40example%2Ecom/exports",
+          "entities": [],
+          "email_detected": false,
+          "field_altered": false
+        },
+        {
+          "variant": "double-encoded @ (%2540)",
+          "in_corpus": false,
+          "input": "https://api.example.com/v1/users/alice.martin%2540example.com/exports",
+          "redacted": "https://api.example.com/v1/users/alice.martin%2540example.com/exports",
+          "entities": [],
+          "email_detected": false,
+          "field_altered": false
+        },
+        {
+          "variant": "uppercase percent-encoding in mailto",
+          "in_corpus": false,
+          "input": "mailto:alice.martin%40example.com",
+          "redacted": "<REDACTED>:alice.martin%40example.com",
+          "entities": [
+            "PERSON"
+          ],
+          "email_detected": false,
+          "field_altered": true
+        },
+        {
+          "variant": "plus-encoded local part (%2B tag)",
+          "in_corpus": false,
+          "input": "https://api.example.com/v1/users/alice.martin%2Bapi%40example.com/exports",
+          "redacted": "https://api.example.com/v1/users/alice.martin%2Bapi%40example.com/exports",
+          "entities": [],
+          "email_detected": false,
+          "field_altered": false
+        }
+      ]
+    },
+    "library_default": {
+      "entities": "library default (adds URL, IP_ADDRESS, ...)",
+      "n_cases": 8,
+      "n_encoded_cases": 6,
+      "n_encoded_detected": 0,
+      "n_encoded_field_altered": 6,
+      "cases": [
+        {
+          "variant": "bare (control, in corpus)",
+          "in_corpus": true,
+          "input": "https://api.example.com/v1/users/alice.martin@example.com/exports",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "EMAIL_ADDRESS",
+            "URL"
+          ],
+          "email_detected": true,
+          "field_altered": true
+        },
+        {
+          "variant": "query param (control, in corpus)",
+          "in_corpus": true,
+          "input": "https://api.example.com/v1/records?user=alice.martin@example.com",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "EMAIL_ADDRESS",
+            "URL"
+          ],
+          "email_detected": true,
+          "field_altered": true
+        },
+        {
+          "variant": "percent-encoded @ (%40), path segment",
+          "in_corpus": false,
+          "input": "https://api.example.com/v1/users/alice.martin%40example.com/exports",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "URL"
+          ],
+          "email_detected": false,
+          "field_altered": true
+        },
+        {
+          "variant": "percent-encoded @ (%40), query value",
+          "in_corpus": false,
+          "input": "https://api.example.com/v1/records?user=alice.martin%40example.com",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "URL"
+          ],
+          "email_detected": false,
+          "field_altered": true
+        },
+        {
+          "variant": "percent-encoded @ and dot (%40, %2E)",
+          "in_corpus": false,
+          "input": "https://api.example.com/v1/users/alice%2Emartin%40example%2Ecom/exports",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "URL"
+          ],
+          "email_detected": false,
+          "field_altered": true
+        },
+        {
+          "variant": "double-encoded @ (%2540)",
+          "in_corpus": false,
+          "input": "https://api.example.com/v1/users/alice.martin%2540example.com/exports",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "URL"
+          ],
+          "email_detected": false,
+          "field_altered": true
+        },
+        {
+          "variant": "uppercase percent-encoding in mailto",
+          "in_corpus": false,
+          "input": "mailto:alice.martin%40example.com",
+          "redacted": "<REDACTED>:<REDACTED>rtin%<REDACTED>",
+          "entities": [
+            "PERSON",
+            "URL"
+          ],
+          "email_detected": false,
+          "field_altered": true
+        },
+        {
+          "variant": "plus-encoded local part (%2B tag)",
+          "in_corpus": false,
+          "input": "https://api.example.com/v1/users/alice.martin%2Bapi%40example.com/exports",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "URL"
+          ],
+          "email_detected": false,
+          "field_altered": true
+        }
+      ]
+    }
+  },
   "cases": [
     {
       "variant": "bare (control, in corpus)",
       "in_corpus": true,
       "input": "https://api.example.com/v1/users/alice.martin@example.com/exports",
-      "redacted": "<REDACTED>",
+      "redacted": "https://<REDACTED>/exports",
       "entities": [
-        "EMAIL_ADDRESS",
-        "URL"
+        "EMAIL_ADDRESS"
       ],
-      "email_detected": true
+      "email_detected": true,
+      "field_altered": true
     },
     {
       "variant": "query param (control, in corpus)",
       "in_corpus": true,
       "input": "https://api.example.com/v1/records?user=alice.martin@example.com",
-      "redacted": "<REDACTED>",
+      "redacted": "https://<REDACTED>",
       "entities": [
-        "EMAIL_ADDRESS",
-        "URL"
+        "EMAIL_ADDRESS"
       ],
-      "email_detected": true
+      "email_detected": true,
+      "field_altered": true
     },
     {
       "variant": "percent-encoded @ (%40), path segment",
       "in_corpus": false,
       "input": "https://api.example.com/v1/users/alice.martin%40example.com/exports",
-      "redacted": "<REDACTED>",
-      "entities": [
-        "URL"
-      ],
-      "email_detected": false
+      "redacted": "https://api.example.com/v1/users/alice.martin%40example.com/exports",
+      "entities": [],
+      "email_detected": false,
+      "field_altered": false
     },
     {
       "variant": "percent-encoded @ (%40), query value",
       "in_corpus": false,
       "input": "https://api.example.com/v1/records?user=alice.martin%40example.com",
-      "redacted": "<REDACTED>",
-      "entities": [
-        "URL"
-      ],
-      "email_detected": false
+      "redacted": "https://api.example.com/v1/records?user=alice.martin%40example.com",
+      "entities": [],
+      "email_detected": false,
+      "field_altered": false
     },
     {
       "variant": "percent-encoded @ and dot (%40, %2E)",
       "in_corpus": false,
       "input": "https://api.example.com/v1/users/alice%2Emartin%40example%2Ecom/exports",
-      "redacted": "<REDACTED>",
-      "entities": [
-        "URL"
-      ],
-      "email_detected": false
+      "redacted": "https://api.example.com/v1/users/alice%2Emartin%40example%2Ecom/exports",
+      "entities": [],
+      "email_detected": false,
+      "field_altered": false
     },
     {
       "variant": "double-encoded @ (%2540)",
       "in_corpus": false,
       "input": "https://api.example.com/v1/users/alice.martin%2540example.com/exports",
-      "redacted": "<REDACTED>",
-      "entities": [
-        "URL"
-      ],
-      "email_detected": false
+      "redacted": "https://api.example.com/v1/users/alice.martin%2540example.com/exports",
+      "entities": [],
+      "email_detected": false,
+      "field_altered": false
     },
     {
       "variant": "uppercase percent-encoding in mailto",
       "in_corpus": false,
       "input": "mailto:alice.martin%40example.com",
-      "redacted": "<REDACTED>:<REDACTED>rtin%<REDACTED>",
+      "redacted": "<REDACTED>:alice.martin%40example.com",
       "entities": [
-        "PERSON",
-        "URL"
+        "PERSON"
       ],
-      "email_detected": false
+      "email_detected": false,
+      "field_altered": true
     },
     {
       "variant": "plus-encoded local part (%2B tag)",
       "in_corpus": false,
       "input": "https://api.example.com/v1/users/alice.martin%2Bapi%40example.com/exports",
-      "redacted": "<REDACTED>",
-      "entities": [
-        "URL"
-      ],
-      "email_detected": false
+      "redacted": "https://api.example.com/v1/users/alice.martin%2Bapi%40example.com/exports",
+      "entities": [],
+      "email_detected": false,
+      "field_altered": false
     }
   ]
 }

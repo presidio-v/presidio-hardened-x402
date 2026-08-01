@@ -157,6 +157,9 @@ def run(min_score: float) -> dict:
     """Run every demo case through the recommended PIIFilter configuration."""
     from presidio_x402.pii_filter import PIIFilter
 
+    # The library default entity set, not the six types the corpus sweep sweeps: the
+    # live endpoints carry IP addresses and URLs, which are outside the corpus taxonomy.
+    # Recorded explicitly in the output so the two configurations are never conflated.
     pii_filter = PIIFilter(mode="nlp", entities=None, min_score=min_score)
 
     cases = []
@@ -200,7 +203,11 @@ def run(min_score: float) -> dict:
     )
 
     return {
-        "config": {"mode": "nlp", "entities": "all", "min_score": min_score},
+        "config": {
+            "mode": "nlp",
+            "entity_set": "library default (adds URL, IP_ADDRESS beyond the corpus six)",
+            "min_score": min_score,
+        },
         "n_cases": len(cases),
         "n_planted_detected": n_planted,
         "n_redacted": n_redacted,

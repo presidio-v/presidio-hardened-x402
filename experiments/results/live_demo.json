@@ -1,7 +1,7 @@
 {
   "config": {
     "mode": "nlp",
-    "entities": "all",
+    "entity_set": "library default (adds URL, IP_ADDRESS beyond the corpus six)",
     "min_score": 0.5
   },
   "n_cases": 7,
