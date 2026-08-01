@@ -4,10 +4,10 @@
     "entity_set": "library default (adds URL, IP_ADDRESS beyond the corpus six)",
     "min_score": 0.5
   },
-  "n_cases": 7,
+  "n_cases": 9,
   "n_planted_detected": 6,
-  "n_redacted": 7,
-  "n_cases_with_url_entity": 7,
+  "n_redacted": 9,
+  "n_cases_with_url_entity": 9,
   "n_cases_url_alongside_planted": 4,
   "entity_types_intercepted": [
     "CREDIT_CARD",
@@ -216,6 +216,56 @@
         "description": {
           "input": "Password strength scoring",
           "redacted": "Password strength scoring",
+          "entities": []
+        }
+      }
+    },
+    {
+      "case": "password-strength (documented value)",
+      "pattern": "P1",
+      "carrier_field": "resource_url",
+      "planted_entity": "PASSWORD",
+      "planted_detected": false,
+      "entities_detected": [
+        "URL"
+      ],
+      "action": "REDACT",
+      "fields": {
+        "resource_url": {
+          "input": "https://x402.fatihai.app/api/password-strength?password=Hunter2!swordfish",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "URL"
+          ]
+        },
+        "description": {
+          "input": "Password strength scoring",
+          "redacted": "Password strength scoring",
+          "entities": []
+        }
+      }
+    },
+    {
+      "case": "user-data API, encoded",
+      "pattern": "P3",
+      "carrier_field": "resource_url",
+      "planted_entity": "EMAIL_ADDRESS",
+      "planted_detected": false,
+      "entities_detected": [
+        "URL"
+      ],
+      "action": "REDACT",
+      "fields": {
+        "resource_url": {
+          "input": "https://api.example.com/v1/user/alice.martin%40corp.io/profile",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "URL"
+          ]
+        },
+        "description": {
+          "input": "User profile export",
+          "redacted": "User profile export",
           "entities": []
         }
       }

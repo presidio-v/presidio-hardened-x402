@@ -12,6 +12,13 @@ The probe recorded only the ``resource``/``description`` strings the endpoints a
 returned; the planted values here model what those fields would carry once a caller
 supplies input to the documented parameter of each endpoint.
 
+Two cases are deliberately adversarial to this middleware rather than flattering to it:
+``password-strength`` plants the value its parameter actually documents -- a password,
+for which no recogniser exists in any configuration -- and ``user-data API, encoded``
+plants the percent-encoded form of an address that the unencoded case recovers. Both are
+expected to miss. They are included because a demonstration that only plants detectable
+types measures the plant, not the filter.
+
 Usage::
 
     python -m experiments.live_demo
@@ -147,6 +154,30 @@ DEMO_CASES: list[DemoCase] = [
         fields={
             "resource_url": "https://x402.fatihai.app/api/password-strength?password=415-555-0182",
             "description": "Password strength scoring",
+            "reason": "",
+        },
+    ),
+    DemoCase(
+        case="password-strength (documented value)",
+        pattern="P1",
+        carrier_field="resource_url",
+        planted="PASSWORD",
+        fields={
+            "resource_url": (
+                "https://x402.fatihai.app/api/password-strength?password=Hunter2!swordfish"
+            ),
+            "description": "Password strength scoring",
+            "reason": "",
+        },
+    ),
+    DemoCase(
+        case="user-data API, encoded",
+        pattern="P3",
+        carrier_field="resource_url",
+        planted="EMAIL_ADDRESS",
+        fields={
+            "resource_url": "https://api.example.com/v1/user/alice.martin%40corp.io/profile",
+            "description": "User profile export",
             "reason": "",
         },
     ),

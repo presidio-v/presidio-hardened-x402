@@ -7,6 +7,7 @@
   "n_encoded_cases": 6,
   "n_encoded_detected": 0,
   "n_encoded_field_altered": 1,
+  "n_encoded_address_survives": 6,
   "by_configuration": {
     "recommended_six": {
       "entities": [
@@ -21,6 +22,7 @@
       "n_encoded_cases": 6,
       "n_encoded_detected": 0,
       "n_encoded_field_altered": 1,
+      "n_encoded_address_survives": 6,
       "cases": [
         {
           "variant": "bare (control, in corpus)",
@@ -31,7 +33,8 @@
             "EMAIL_ADDRESS"
           ],
           "email_detected": true,
-          "field_altered": true
+          "field_altered": true,
+          "address_survives": false
         },
         {
           "variant": "query param (control, in corpus)",
@@ -42,7 +45,8 @@
             "EMAIL_ADDRESS"
           ],
           "email_detected": true,
-          "field_altered": true
+          "field_altered": true,
+          "address_survives": false
         },
         {
           "variant": "percent-encoded @ (%40), path segment",
@@ -51,7 +55,8 @@
           "redacted": "https://api.example.com/v1/users/alice.martin%40example.com/exports",
           "entities": [],
           "email_detected": false,
-          "field_altered": false
+          "field_altered": false,
+          "address_survives": true
         },
         {
           "variant": "percent-encoded @ (%40), query value",
@@ -60,7 +65,8 @@
           "redacted": "https://api.example.com/v1/records?user=alice.martin%40example.com",
           "entities": [],
           "email_detected": false,
-          "field_altered": false
+          "field_altered": false,
+          "address_survives": true
         },
         {
           "variant": "percent-encoded @ and dot (%40, %2E)",
@@ -69,7 +75,8 @@
           "redacted": "https://api.example.com/v1/users/alice%2Emartin%40example%2Ecom/exports",
           "entities": [],
           "email_detected": false,
-          "field_altered": false
+          "field_altered": false,
+          "address_survives": true
         },
         {
           "variant": "double-encoded @ (%2540)",
@@ -78,7 +85,8 @@
           "redacted": "https://api.example.com/v1/users/alice.martin%2540example.com/exports",
           "entities": [],
           "email_detected": false,
-          "field_altered": false
+          "field_altered": false,
+          "address_survives": true
         },
         {
           "variant": "uppercase percent-encoding in mailto",
@@ -89,7 +97,8 @@
             "PERSON"
           ],
           "email_detected": false,
-          "field_altered": true
+          "field_altered": true,
+          "address_survives": true
         },
         {
           "variant": "plus-encoded local part (%2B tag)",
@@ -98,7 +107,8 @@
           "redacted": "https://api.example.com/v1/users/alice.martin%2Bapi%40example.com/exports",
           "entities": [],
           "email_detected": false,
-          "field_altered": false
+          "field_altered": false,
+          "address_survives": true
         }
       ]
     },
@@ -108,6 +118,7 @@
       "n_encoded_cases": 6,
       "n_encoded_detected": 0,
       "n_encoded_field_altered": 6,
+      "n_encoded_address_survives": 0,
       "cases": [
         {
           "variant": "bare (control, in corpus)",
@@ -119,7 +130,8 @@
             "URL"
           ],
           "email_detected": true,
-          "field_altered": true
+          "field_altered": true,
+          "address_survives": false
         },
         {
           "variant": "query param (control, in corpus)",
@@ -131,7 +143,8 @@
             "URL"
           ],
           "email_detected": true,
-          "field_altered": true
+          "field_altered": true,
+          "address_survives": false
         },
         {
           "variant": "percent-encoded @ (%40), path segment",
@@ -142,7 +155,8 @@
             "URL"
           ],
           "email_detected": false,
-          "field_altered": true
+          "field_altered": true,
+          "address_survives": false
         },
         {
           "variant": "percent-encoded @ (%40), query value",
@@ -153,7 +167,8 @@
             "URL"
           ],
           "email_detected": false,
-          "field_altered": true
+          "field_altered": true,
+          "address_survives": false
         },
         {
           "variant": "percent-encoded @ and dot (%40, %2E)",
@@ -164,7 +179,8 @@
             "URL"
           ],
           "email_detected": false,
-          "field_altered": true
+          "field_altered": true,
+          "address_survives": false
         },
         {
           "variant": "double-encoded @ (%2540)",
@@ -175,7 +191,8 @@
             "URL"
           ],
           "email_detected": false,
-          "field_altered": true
+          "field_altered": true,
+          "address_survives": false
         },
         {
           "variant": "uppercase percent-encoding in mailto",
@@ -187,7 +204,8 @@
             "URL"
           ],
           "email_detected": false,
-          "field_altered": true
+          "field_altered": true,
+          "address_survives": false
         },
         {
           "variant": "plus-encoded local part (%2B tag)",
@@ -198,7 +216,8 @@
             "URL"
           ],
           "email_detected": false,
-          "field_altered": true
+          "field_altered": true,
+          "address_survives": false
         }
       ]
     }
@@ -213,7 +232,8 @@
         "EMAIL_ADDRESS"
       ],
       "email_detected": true,
-      "field_altered": true
+      "field_altered": true,
+      "address_survives": false
     },
     {
       "variant": "query param (control, in corpus)",
@@ -224,7 +244,8 @@
         "EMAIL_ADDRESS"
       ],
       "email_detected": true,
-      "field_altered": true
+      "field_altered": true,
+      "address_survives": false
     },
     {
       "variant": "percent-encoded @ (%40), path segment",
@@ -233,7 +254,8 @@
       "redacted": "https://api.example.com/v1/users/alice.martin%40example.com/exports",
       "entities": [],
       "email_detected": false,
-      "field_altered": false
+      "field_altered": false,
+      "address_survives": true
     },
     {
       "variant": "percent-encoded @ (%40), query value",
@@ -242,7 +264,8 @@
       "redacted": "https://api.example.com/v1/records?user=alice.martin%40example.com",
       "entities": [],
       "email_detected": false,
-      "field_altered": false
+      "field_altered": false,
+      "address_survives": true
     },
     {
       "variant": "percent-encoded @ and dot (%40, %2E)",
@@ -251,7 +274,8 @@
       "redacted": "https://api.example.com/v1/users/alice%2Emartin%40example%2Ecom/exports",
       "entities": [],
       "email_detected": false,
-      "field_altered": false
+      "field_altered": false,
+      "address_survives": true
     },
     {
       "variant": "double-encoded @ (%2540)",
@@ -260,7 +284,8 @@
       "redacted": "https://api.example.com/v1/users/alice.martin%2540example.com/exports",
       "entities": [],
       "email_detected": false,
-      "field_altered": false
+      "field_altered": false,
+      "address_survives": true
     },
     {
       "variant": "uppercase percent-encoding in mailto",
@@ -271,7 +296,8 @@
         "PERSON"
       ],
       "email_detected": false,
-      "field_altered": true
+      "field_altered": true,
+      "address_survives": true
     },
     {
       "variant": "plus-encoded local part (%2B tag)",
@@ -280,7 +306,8 @@
       "redacted": "https://api.example.com/v1/users/alice.martin%2Bapi%40example.com/exports",
       "entities": [],
       "email_detected": false,
-      "field_altered": false
+      "field_altered": false,
+      "address_survives": true
     }
   ]
 }

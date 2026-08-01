@@ -34,6 +34,8 @@ RESULTS_DIR = Path(__file__).parent / "results"
 _LOCAL = "alice.martin"
 _DOMAIN = "example.com"
 _ADDR = f"{_LOCAL}@{_DOMAIN}"
+_LOCAL_STEM = "alice"
+_DOMAIN_STEM = "example"
 
 # (variant, in-corpus?, text). ``in_corpus`` marks the forms the seeded corpus already
 # exercises, so the probe reports the encoded forms against a known-good control.
@@ -106,6 +108,13 @@ def _scan(entities, min_score: float) -> list[dict]:
                 # Did anything at all change? An unchanged string means the value is
                 # transmitted verbatim; a changed one means some recogniser fired.
                 "field_altered": redacted != text,
+                # The question that actually matters: does the address itself survive?
+                # A recogniser may fire elsewhere in the string (the "mailto" scheme
+                # matched as a PERSON, say) while leaving the address intact. Checked
+                # by substring rather than by equality, because each case encodes the
+                # address differently; both halves surviving means the value is still
+                # readable by whoever receives the field.
+                "address_survives": _LOCAL_STEM in redacted and _DOMAIN_STEM in redacted,
             }
         )
     return out
@@ -123,6 +132,7 @@ def run(min_score: float) -> dict:
             "n_encoded_cases": len(encoded),
             "n_encoded_detected": sum(1 for c in encoded if c["email_detected"]),
             "n_encoded_field_altered": sum(1 for c in encoded if c["field_altered"]),
+            "n_encoded_address_survives": sum(1 for c in encoded if c["address_survives"]),
             "cases": cases,
         }
 
@@ -134,6 +144,7 @@ def run(min_score: float) -> dict:
         "n_encoded_cases": six["n_encoded_cases"],
         "n_encoded_detected": six["n_encoded_detected"],
         "n_encoded_field_altered": six["n_encoded_field_altered"],
+        "n_encoded_address_survives": six["n_encoded_address_survives"],
         "by_configuration": blocks,
         "cases": six["cases"],
     }
@@ -165,7 +176,8 @@ def main() -> None:
         print(
             f"  encoded: EMAIL_ADDRESS detected {blk['n_encoded_detected']}"
             f"/{blk['n_encoded_cases']}, field altered "
-            f"{blk['n_encoded_field_altered']}/{blk['n_encoded_cases']}"
+            f"{blk['n_encoded_field_altered']}/{blk['n_encoded_cases']}, "
+            f"ADDRESS SURVIVES {blk['n_encoded_address_survives']}/{blk['n_encoded_cases']}"
         )
     print(f"\nResults written to {args.out}")
 
