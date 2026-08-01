@@ -52,8 +52,18 @@ ALL_ENTITY_TYPES = [
     "IBAN_CODE",
 ]
 
-# We sweep these entity subsets: all individual types + the full set
-_ENTITY_SUBSETS: list[list[str]] = [[et] for et in ALL_ENTITY_TYPES] + [ALL_ENTITY_TYPES]
+# The three most prevalent entity types in the corpus (PERSON 321, EMAIL 313,
+# IBAN 96 of 875 labels). Swept as its own subset so the entity-set parsimony
+# hypothesis (H4) is answered by a deposited configuration rather than by an
+# after-the-fact arithmetic on the full-set per-entity counts.
+TOP3_ENTITY_TYPES = ["EMAIL_ADDRESS", "PERSON", "IBAN_CODE"]
+
+# We sweep these entity subsets: all individual types + the top-3 subset + the full set
+_ENTITY_SUBSETS: list[list[str]] = [
+    *([et] for et in ALL_ENTITY_TYPES),
+    TOP3_ENTITY_TYPES,
+    ALL_ENTITY_TYPES,
+]
 
 # min_score thresholds — only relevant for nlp mode
 _MIN_SCORES = [0.30, 0.40, 0.50, 0.60, 0.70]

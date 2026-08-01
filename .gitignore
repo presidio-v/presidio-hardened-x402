@@ -49,5 +49,20 @@ MANIFEST
 # Generated corpus data (large; tracked via corpus_meta.json instead)
 corpus/corpus.jsonl
 
-# Experiment results (generated; committed selectively)
-experiments/results/
+# Experiment results (generated). Ignore by default, but the files backing a
+# published claim are tracked explicitly — a reviewer of ARRAY-D-26-02236 found
+# that the bootstrap CIs and transformer baseline were cited in the paper but
+# absent from the repository, because a blanket ignore here meant they were
+# never added. Anything the Data Availability statement names belongs below.
+experiments/results/*
+!experiments/results/sweep_results_both.jsonl
+!experiments/results/sweep_results_v2.jsonl
+!experiments/results/sweep_results_v3.jsonl
+!experiments/results/latency_results.json
+!experiments/results/bootstrap_ci.json
+!experiments/results/baseline_comparison.json
+!experiments/results/baseline_eval.jsonl
+!experiments/results/baseline_latency.json
+!experiments/results/person_breakdown.json
+!experiments/results/live_demo.json
+!experiments/results/surface_form_probe.json
