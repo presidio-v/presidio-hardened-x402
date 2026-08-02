@@ -1,0 +1,274 @@
+{
+  "config": {
+    "mode": "nlp",
+    "entity_set": "library default (adds URL, IP_ADDRESS beyond the corpus six)",
+    "min_score": 0.5
+  },
+  "n_cases": 9,
+  "n_planted_detected": 6,
+  "n_redacted": 9,
+  "n_cases_with_url_entity": 9,
+  "n_cases_url_alongside_planted": 4,
+  "entity_types_intercepted": [
+    "CREDIT_CARD",
+    "EMAIL_ADDRESS",
+    "IP_ADDRESS",
+    "PHONE_NUMBER",
+    "US_SSN"
+  ],
+  "cases": [
+    {
+      "case": "ip-info",
+      "pattern": "P1",
+      "carrier_field": "resource_url",
+      "planted_entity": "IP_ADDRESS",
+      "planted_detected": true,
+      "entities_detected": [
+        "IP_ADDRESS",
+        "URL"
+      ],
+      "action": "REDACT",
+      "fields": {
+        "resource_url": {
+          "input": "https://x402.fatihai.app/api/ip-info?ip=203.0.113.42",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "IP_ADDRESS",
+            "URL"
+          ]
+        },
+        "description": {
+          "input": "IP geolocation lookup",
+          "redacted": "IP geolocation lookup",
+          "entities": []
+        }
+      }
+    },
+    {
+      "case": "user-data API",
+      "pattern": "P3",
+      "carrier_field": "resource_url",
+      "planted_entity": "EMAIL_ADDRESS",
+      "planted_detected": true,
+      "entities_detected": [
+        "EMAIL_ADDRESS",
+        "URL"
+      ],
+      "action": "REDACT",
+      "fields": {
+        "resource_url": {
+          "input": "https://api.example.com/v1/user/alice.martin@corp.io/profile",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "EMAIL_ADDRESS",
+            "URL"
+          ]
+        },
+        "description": {
+          "input": "User profile export",
+          "redacted": "User profile export",
+          "entities": []
+        }
+      }
+    },
+    {
+      "case": "verify-email",
+      "pattern": "P2",
+      "carrier_field": "reason",
+      "planted_entity": "EMAIL_ADDRESS",
+      "planted_detected": true,
+      "entities_detected": [
+        "EMAIL_ADDRESS",
+        "URL"
+      ],
+      "action": "REDACT",
+      "fields": {
+        "resource_url": {
+          "input": "https://x402.fatihai.app/api/verify-email",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "URL"
+          ]
+        },
+        "description": {
+          "input": "Email deliverability verification",
+          "redacted": "Email deliverability verification",
+          "entities": []
+        },
+        "reason": {
+          "input": "email=alice.martin@corp.io; session=sess-7f21a",
+          "redacted": "<REDACTED>; session=sess-7f21a",
+          "entities": [
+            "EMAIL_ADDRESS",
+            "URL"
+          ]
+        }
+      }
+    },
+    {
+      "case": "medical API",
+      "pattern": "P3",
+      "carrier_field": "reason",
+      "planted_entity": "US_SSN",
+      "planted_detected": true,
+      "entities_detected": [
+        "URL",
+        "US_SSN"
+      ],
+      "action": "REDACT",
+      "fields": {
+        "resource_url": {
+          "input": "https://api.medrecords.io/patient/records/export",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "URL"
+          ]
+        },
+        "description": {
+          "input": "Medical record export",
+          "redacted": "Medical record export",
+          "entities": []
+        },
+        "reason": {
+          "input": "patient_ref=312-45-6789",
+          "redacted": "patient_ref=<REDACTED>",
+          "entities": [
+            "US_SSN"
+          ]
+        }
+      }
+    },
+    {
+      "case": "billing API",
+      "pattern": "P3",
+      "carrier_field": "description",
+      "planted_entity": "CREDIT_CARD",
+      "planted_detected": true,
+      "entities_detected": [
+        "CREDIT_CARD",
+        "PERSON",
+        "URL"
+      ],
+      "action": "REDACT",
+      "fields": {
+        "resource_url": {
+          "input": "https://api.example.com/v1/billing/statement",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "URL"
+          ]
+        },
+        "description": {
+          "input": "Statement for card 4111111111111111 held by Maria Garcia",
+          "redacted": "Statement for card <REDACTED> held by <REDACTED>",
+          "entities": [
+            "CREDIT_CARD",
+            "PERSON"
+          ]
+        }
+      }
+    },
+    {
+      "case": "whois lookup",
+      "pattern": "P1",
+      "carrier_field": "resource_url",
+      "planted_entity": "PERSON",
+      "planted_detected": false,
+      "entities_detected": [
+        "URL"
+      ],
+      "action": "REDACT",
+      "fields": {
+        "resource_url": {
+          "input": "https://x402.fatihai.app/api/whois?registrant=john-smith",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "URL"
+          ]
+        },
+        "description": {
+          "input": "Domain registration lookup",
+          "redacted": "Domain registration lookup",
+          "entities": []
+        }
+      }
+    },
+    {
+      "case": "password-strength",
+      "pattern": "P1",
+      "carrier_field": "resource_url",
+      "planted_entity": "PHONE_NUMBER",
+      "planted_detected": true,
+      "entities_detected": [
+        "PHONE_NUMBER",
+        "URL"
+      ],
+      "action": "REDACT",
+      "fields": {
+        "resource_url": {
+          "input": "https://x402.fatihai.app/api/password-strength?password=415-555-0182",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "PHONE_NUMBER",
+            "URL"
+          ]
+        },
+        "description": {
+          "input": "Password strength scoring",
+          "redacted": "Password strength scoring",
+          "entities": []
+        }
+      }
+    },
+    {
+      "case": "password-strength (documented value)",
+      "pattern": "P1",
+      "carrier_field": "resource_url",
+      "planted_entity": "PASSWORD",
+      "planted_detected": false,
+      "entities_detected": [
+        "URL"
+      ],
+      "action": "REDACT",
+      "fields": {
+        "resource_url": {
+          "input": "https://x402.fatihai.app/api/password-strength?password=Hunter2!swordfish",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "URL"
+          ]
+        },
+        "description": {
+          "input": "Password strength scoring",
+          "redacted": "Password strength scoring",
+          "entities": []
+        }
+      }
+    },
+    {
+      "case": "user-data API, encoded",
+      "pattern": "P3",
+      "carrier_field": "resource_url",
+      "planted_entity": "EMAIL_ADDRESS",
+      "planted_detected": false,
+      "entities_detected": [
+        "URL"
+      ],
+      "action": "REDACT",
+      "fields": {
+        "resource_url": {
+          "input": "https://api.example.com/v1/user/alice.martin%40corp.io/profile",
+          "redacted": "<REDACTED>",
+          "entities": [
+            "URL"
+          ]
+        },
+        "description": {
+          "input": "User profile export",
+          "redacted": "User profile export",
+          "entities": []
+        }
+      }
+    }
+  ]
+}

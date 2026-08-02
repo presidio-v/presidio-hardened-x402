@@ -1,0 +1,247 @@
+{
+  "best_regex": {
+    "mode": "regex",
+    "entities": [
+      "CREDIT_CARD",
+      "EMAIL_ADDRESS",
+      "IBAN_CODE",
+      "PERSON",
+      "PHONE_NUMBER",
+      "US_SSN"
+    ],
+    "min_score": 0.5,
+    "n_samples": 2000,
+    "overlap_mode": "partial",
+    "elapsed_s": 0.015,
+    "per_entity": [
+      {
+        "entity_type": "PERSON",
+        "tp": 0,
+        "fp": 0,
+        "fn": 321,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      {
+        "entity_type": "US_SSN",
+        "tp": 85,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      {
+        "entity_type": "EMAIL_ADDRESS",
+        "tp": 313,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      {
+        "entity_type": "IBAN_CODE",
+        "tp": 96,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      {
+        "entity_type": "CREDIT_CARD",
+        "tp": 28,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      {
+        "entity_type": "PHONE_NUMBER",
+        "tp": 25,
+        "fp": 0,
+        "fn": 7,
+        "precision": 1.0,
+        "recall": 0.7812,
+        "f1": 0.8772
+      }
+    ],
+    "micro_precision": 1.0,
+    "micro_recall": 0.6251,
+    "micro_f1": 0.7693,
+    "sample_precision": 1.0,
+    "sample_recall": 0.6792,
+    "sample_f1": 0.8089,
+    "sample_tp": 489,
+    "sample_fp": 0,
+    "sample_fn": 231,
+    "sample_tn": 1280
+  },
+  "best_nlp": {
+    "mode": "nlp",
+    "entities": [
+      "CREDIT_CARD",
+      "EMAIL_ADDRESS",
+      "IBAN_CODE",
+      "PERSON",
+      "PHONE_NUMBER",
+      "US_SSN"
+    ],
+    "min_score": 0.3,
+    "n_samples": 2000,
+    "overlap_mode": "partial",
+    "elapsed_s": 7.721,
+    "per_entity": [
+      {
+        "entity_type": "PERSON",
+        "tp": 177,
+        "fp": 21,
+        "fn": 144,
+        "precision": 0.8939,
+        "recall": 0.5514,
+        "f1": 0.6821
+      },
+      {
+        "entity_type": "US_SSN",
+        "tp": 78,
+        "fp": 0,
+        "fn": 7,
+        "precision": 1.0,
+        "recall": 0.9176,
+        "f1": 0.9571
+      },
+      {
+        "entity_type": "EMAIL_ADDRESS",
+        "tp": 313,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      {
+        "entity_type": "IBAN_CODE",
+        "tp": 96,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      {
+        "entity_type": "CREDIT_CARD",
+        "tp": 28,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      {
+        "entity_type": "PHONE_NUMBER",
+        "tp": 32,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      }
+    ],
+    "micro_precision": 0.9718,
+    "micro_recall": 0.8274,
+    "micro_f1": 0.8938,
+    "sample_precision": 1.0,
+    "sample_recall": 0.8611,
+    "sample_f1": 0.9254,
+    "sample_tp": 620,
+    "sample_fp": 0,
+    "sample_fn": 100,
+    "sample_tn": 1280
+  },
+  "best_piiranha": {
+    "backend": "piiranha",
+    "model": "iiiorg/piiranha-v1-detect-personal-information",
+    "entities": [
+      "CREDIT_CARD",
+      "EMAIL_ADDRESS",
+      "IBAN_CODE",
+      "PERSON",
+      "PHONE_NUMBER",
+      "US_SSN"
+    ],
+    "min_score": 0.4,
+    "n_samples": 2000,
+    "overlap_mode": "partial",
+    "device": "cpu",
+    "elapsed_s": 285.654,
+    "per_entity": [
+      {
+        "entity_type": "PERSON",
+        "tp": 99,
+        "fp": 46,
+        "fn": 222,
+        "precision": 0.6828,
+        "recall": 0.3084,
+        "f1": 0.4249
+      },
+      {
+        "entity_type": "US_SSN",
+        "tp": 58,
+        "fp": 0,
+        "fn": 27,
+        "precision": 1.0,
+        "recall": 0.6824,
+        "f1": 0.8112
+      },
+      {
+        "entity_type": "EMAIL_ADDRESS",
+        "tp": 1,
+        "fp": 1,
+        "fn": 312,
+        "precision": 0.5,
+        "recall": 0.0032,
+        "f1": 0.0063
+      },
+      {
+        "entity_type": "IBAN_CODE",
+        "tp": 0,
+        "fp": 0,
+        "fn": 96,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      {
+        "entity_type": "CREDIT_CARD",
+        "tp": 17,
+        "fp": 0,
+        "fn": 11,
+        "precision": 1.0,
+        "recall": 0.6071,
+        "f1": 0.7556
+      },
+      {
+        "entity_type": "PHONE_NUMBER",
+        "tp": 32,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      }
+    ],
+    "micro_precision": 0.815,
+    "micro_recall": 0.2366,
+    "micro_f1": 0.3667,
+    "sample_precision": 1.0,
+    "sample_recall": 0.2736,
+    "sample_f1": 0.4297,
+    "sample_tp": 197,
+    "sample_fp": 0,
+    "sample_fn": 523,
+    "sample_tn": 1280
+  }
+}
