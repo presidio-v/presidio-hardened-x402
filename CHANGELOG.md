@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.1] — 2026-08-02
+
 ### Fixed
 - **`PIIFilter` missed percent-encoded PII — a silent redaction bypass.**
   `_normalise` closed the Unicode evasion paths (NFKC, invisible codepoints,
