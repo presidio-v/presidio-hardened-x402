@@ -90,17 +90,121 @@ _HYPHEN_FOLD = str.maketrans(
 )
 
 
+# Maximum number of percent-decoding rounds applied before matching. One round
+# recovers ordinary escapes (``%40`` → ``@``); two recover double-encoded ones
+# (``%2540`` → ``%40`` → ``@``). The cap is hard rather than "decode until
+# stable" — unbounded iteration would turn the decoder into an amplification
+# vector on hostile input.
+_MAX_PERCENT_DECODE_ROUNDS = 2
+
+# A well-formed percent escape. Used as a cheap presence test so input without
+# escapes — the common case — skips the decoding pass entirely.
+_PERCENT_ESCAPE = re.compile(r"%[0-9A-Fa-f]{2}")
+
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+
+
 def _normalise(text: str) -> str:
     """Canonicalise *text* to foil regex-evasion via Unicode encoding tricks.
 
     Steps: NFKC → strip invisible codepoints → fold Cyrillic homoglyphs and
     hyphen-like characters to ASCII equivalents.
+
+    Percent-decoding is deliberately *not* one of these steps: the result of
+    ``_normalise`` is returned to the caller, and decoding escapes there would
+    rewrite benign ones and change URL semantics (``%2F`` is not ``/``). It is
+    handled separately by :func:`_percent_decode`, whose output is used for
+    matching only.
     """
     text = unicodedata.normalize("NFKC", text)
     text = "".join(c for c in text if ord(c) not in _INVISIBLE_CODEPOINTS)
     text = text.translate(_HOMOGLYPH_FOLD)
     text = text.translate(_HYPHEN_FOLD)
     return text
+
+
+def _decode_percent_once(text: str) -> tuple[str, list[int]]:
+    """Apply one round of percent-decoding, returning the result and an index map.
+
+    ``index_map[i]`` is the offset in *text* at which decoded character ``i``
+    originates, and ``index_map[len(decoded)] == len(text)``. A decoded span
+    ``[a, b)`` therefore maps back to ``[index_map[a], index_map[b])``.
+
+    Malformed escapes (``%zz``, a trailing ``%``) are copied through verbatim
+    rather than raising: the filter is fail-closed on exceptions, so a decode
+    error would block an otherwise legitimate payment.
+    """
+    out: list[str] = []
+    index_map: list[int] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if (
+            text[i] == "%"
+            and i + 2 < n
+            and text[i + 1] in _HEX_DIGITS
+            and text[i + 2] in _HEX_DIGITS
+        ):
+            # Consume the maximal run of consecutive escapes: percent-encoding
+            # encodes bytes, so one non-ASCII character can span several of them.
+            starts: list[int] = []
+            raw = bytearray()
+            j = i
+            while (
+                j + 2 < n
+                and text[j] == "%"
+                and text[j + 1] in _HEX_DIGITS
+                and text[j + 2] in _HEX_DIGITS
+            ):
+                raw.append(int(text[j + 1 : j + 3], 16))
+                starts.append(j)
+                j += 3
+            try:
+                run = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                run = raw.decode("latin-1")
+            last = len(starts) - 1
+            for k, ch in enumerate(run):
+                out.append(ch)
+                # Exact for single-byte escapes. A multi-byte sequence decodes to
+                # fewer characters than it had escapes; clamping keeps the map
+                # monotone and keeps every mapped span inside the run.
+                index_map.append(starts[k if k <= last else last])
+            i = j
+        else:
+            out.append(text[i])
+            index_map.append(i)
+            i += 1
+    index_map.append(n)
+    return "".join(out), index_map
+
+
+def _percent_decode(text: str) -> tuple[str, list[int]] | None:
+    """Percent-decode *text* for matching, with a span map back to *text*.
+
+    Returns ``None`` when *text* carries no well-formed escape, or when decoding
+    leaves it unchanged, so the caller can skip the second scan entirely.
+    Otherwise returns ``(decoded, index_map)`` — see :func:`_decode_percent_once`
+    for the map's meaning.
+    """
+    if not _PERCENT_ESCAPE.search(text):
+        return None
+
+    decoded = text
+    index_map = list(range(len(text) + 1))
+    for _ in range(_MAX_PERCENT_DECODE_ROUNDS):
+        candidate, step = _decode_percent_once(decoded)
+        if candidate == decoded:
+            break
+        decoded = candidate
+        # step maps new offsets to the previous round's; compose back to *text*.
+        index_map = [index_map[offset] for offset in step]
+        if not _PERCENT_ESCAPE.search(decoded):
+            break
+
+    if decoded == text:
+        return None
+    return decoded, index_map
 
 
 # ---------------------------------------------------------------------------
@@ -316,7 +420,7 @@ class PIIFilter:
         except ImportError as exc:
             raise ImportError(
                 "NLP mode requires: pip install presidio-hardened-x402[nlp] "
-                "and python -m spacy download en_core_web_sm"
+                "and python -m spacy download en_core_web_lg"
             ) from exc
 
     def _active_patterns(self) -> list[tuple[str, re.Pattern[str]]]:
@@ -349,50 +453,70 @@ class PIIFilter:
         # normalised form so downstream callers see a clean, canonical string.
         text = _normalise(text)
 
+        # Percent-encoding is the other evasion path, and the likely one for a
+        # resource URL: `alice%40example.com` never reaches the email pattern in
+        # a form that pattern can match. Match against a bounded decode, then map
+        # the spans back, so redaction still happens on — and returns — the
+        # caller's own bytes.
+        decoded = _percent_decode(text)
+
         if self.mode == "nlp" and self._analyzer is not None:
-            return self._scan_nlp(text)
-        return self._scan_regex(text)
+            return self._scan_nlp(text, decoded)
+        return self._scan_regex(text, decoded)
 
-    def _scan_regex(self, text: str) -> tuple[str, list[EntityResult]]:
-        results: list[EntityResult] = []
-        redacted = text
-
-        # Track offset shifts as substitutions change string length
-        offset = 0
-        # Collect all matches first to handle overlaps deterministically
-        all_matches: list[tuple[str, re.Match[str]]] = []
+    def _scan_regex(
+        self, text: str, decoded: tuple[str, list[int]] | None = None
+    ) -> tuple[str, list[EntityResult]]:
+        # (entity_type, start, end), all in `text` coordinates. Direct matches are
+        # collected first so that the dedupe below keeps the historical
+        # pattern-order tie-break; decoded matches only ever fill gaps.
+        spans: list[tuple[str, int, int]] = []
         for entity_type, pattern in self._active_patterns():
             for m in pattern.finditer(text):
-                all_matches.append((entity_type, m))
+                spans.append((entity_type, m.start(), m.end()))
 
-        # Sort by start position; for overlapping matches keep the first one
-        all_matches.sort(key=lambda t: t[1].start())
-        deduplicated: list[tuple[str, re.Match[str]]] = []
+        if decoded is not None:
+            decoded_text, index_map = decoded
+            for entity_type, pattern in self._active_patterns():
+                for m in pattern.finditer(decoded_text):
+                    start, end = index_map[m.start()], index_map[m.end()]
+                    if end > start:
+                        spans.append((entity_type, start, end))
+
+        # Sort by start position, preserving insertion order on ties; for
+        # overlapping matches keep the first one.
+        ordered = sorted(enumerate(spans), key=lambda t: (t[1][1], t[0]))
+        deduplicated: list[tuple[str, int, int]] = []
         last_end = -1
-        for entity_type, m in all_matches:
-            if m.start() >= last_end:
-                deduplicated.append((entity_type, m))
-                last_end = m.end()
+        for _rank, (entity_type, start, end) in ordered:
+            if start >= last_end:
+                deduplicated.append((entity_type, start, end))
+                last_end = end
 
-        for entity_type, m in deduplicated:
+        results: list[EntityResult] = []
+        redacted = text
+        # Track offset shifts as substitutions change string length
+        offset = 0
+        for entity_type, start, end in deduplicated:
             replacement = self.redaction_template.format(entity_type=entity_type)
-            start_adj = m.start() + offset
-            end_adj = m.end() + offset
             results.append(
                 EntityResult(
                     entity_type=entity_type,
-                    start=m.start(),
-                    end=m.end(),
+                    start=start,
+                    end=end,
                     score=1.0,
-                    original_text=m.group(0),
+                    original_text=text[start:end],
                 )
             )
-            redacted = redacted[:start_adj] + replacement + redacted[end_adj:]
-            offset += len(replacement) - (m.end() - m.start())
+            redacted = redacted[: start + offset] + replacement + redacted[end + offset :]
+            offset += len(replacement) - (end - start)
 
         return redacted, results
 
-    def _scan_nlp(self, text: str) -> tuple[str, list[EntityResult]]:
+    def _scan_nlp(
+        self, text: str, decoded: tuple[str, list[int]] | None = None
+    ) -> tuple[str, list[EntityResult]]:
+        from presidio_analyzer import RecognizerResult
         from presidio_anonymizer.entities import OperatorConfig
 
         entities_to_analyze = list(self.entities) if self.entities else None
@@ -403,6 +527,29 @@ class PIIFilter:
         )
         # Filter by minimum confidence score
         analyzer_results = [r for r in analyzer_results if r.score >= self.min_score]
+
+        if decoded is not None:
+            decoded_text, index_map = decoded
+            seen = {(r.entity_type, r.start, r.end) for r in analyzer_results}
+            for r in self._analyzer.analyze(
+                text=decoded_text,
+                entities=entities_to_analyze,
+                language="en",
+            ):
+                if r.score < self.min_score:
+                    continue
+                start, end = index_map[r.start], index_map[r.end]
+                if end <= start or (r.entity_type, start, end) in seen:
+                    continue
+                seen.add((r.entity_type, start, end))
+                # The anonymizer resolves the remaining overlaps (a URL entity
+                # spanning the whole string against the address inside it) the
+                # same way it already does for unencoded input.
+                analyzer_results.append(
+                    RecognizerResult(
+                        entity_type=r.entity_type, start=start, end=end, score=r.score
+                    )
+                )
 
         entity_results = [
             EntityResult(

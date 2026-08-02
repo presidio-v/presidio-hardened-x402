@@ -864,3 +864,52 @@ class TestResolveAndCheckHostPaths:
         monkeypatch.setattr(loop, "getaddrinfo", dup)
         result = await mpa_mod._resolve_and_check_host("example.test")
         assert result == ("93.184.216.34",)
+
+
+class TestWebhookResponseSizeCap:
+    """Audit F1 (2026-07-19, CWE-400): the plain-httpx branch — taken for an
+    IP-literal webhook URL or with `dns_rebinding_protection` off — parsed the
+    response body without bounding it, so a hostile approver could inflate a
+    multi-GB body into Python objects via `resp.json()`. `_post_pinned_https`
+    already capped its own read.
+    """
+
+    def _engine(self) -> mpa_mod.MPAEngine:
+        return mpa_mod.MPAEngine(
+            mpa_mod.MPAConfig(
+                dns_rebinding_protection=False,
+                threshold=1,
+                timeout_seconds=5.0,
+                approvers=[
+                    mpa_mod.MPAApproverConfig(
+                        "alice", mode="webhook", webhook_url="https://approvals.internal/alice"
+                    )
+                ],
+            )
+        )
+
+    @pytest.mark.asyncio
+    async def test_oversized_response_is_denied_not_parsed(self):
+        oversized = b'{"approved": true, "pad": "' + b"A" * mpa_mod._MPA_RESPONSE_MAX_BYTES + b'"}'
+        with respx.mock:
+            respx.post("https://approvals.internal/alice").mock(
+                return_value=httpx.Response(
+                    200, content=oversized, headers={"Content-Type": "application/json"}
+                )
+            )
+            # An approving body that is over the cap must not count as an approval.
+            with pytest.raises(MPADeniedError):
+                await self._engine().request_approval(_make_details(amount="3.00"), 3.00)
+
+    @pytest.mark.asyncio
+    async def test_response_at_the_cap_is_still_accepted(self):
+        pad = mpa_mod._MPA_RESPONSE_MAX_BYTES - len(b'{"approved": true, "pad": ""}')
+        body = b'{"approved": true, "pad": "' + b"A" * pad + b'"}'
+        assert len(body) == mpa_mod._MPA_RESPONSE_MAX_BYTES
+        with respx.mock:
+            respx.post("https://approvals.internal/alice").mock(
+                return_value=httpx.Response(
+                    200, content=body, headers={"Content-Type": "application/json"}
+                )
+            )
+            await self._engine().request_approval(_make_details(amount="3.00"), 3.00)
