@@ -40,8 +40,12 @@ For full NLP-based PII detection (PERSON, ORG, location, etc.):
 
 ```bash
 pip install "presidio-hardened-x402[nlp]"
-python -m spacy download en_core_web_sm
+python -m spacy download en_core_web_lg
 ```
+
+`en_core_web_lg` is the model Presidio's default NLP engine loads, and the one
+the published evaluation used. Installing `en_core_web_sm` instead leaves
+`mode="nlp"` unable to start.
 
 For production replay guard with cross-process deduplication:
 
@@ -155,6 +159,28 @@ client = HardenedX402Client(
     pii_action="block",     # raise PIIBlockedError instead of redacting
 )
 ```
+
+#### Known detection limits
+
+The filter canonicalises input before matching, so PII survives NFKC forms,
+zero-width characters, Cyrillic homoglyphs, non-ASCII hyphens, and — since the
+current release — percent-encoding, including one level of double-encoding
+(`%2540`). Encoded input is decoded for matching only; the string you get back
+is still yours, so benign escapes are never rewritten.
+
+Two bounds are deliberate rather than accidental, and worth knowing:
+
+- **Percent-decoding stops after two rounds.** Triple-encoded PII
+  (`%252540`) is not recovered. Decoding until stable would let a short hostile
+  input amplify inside the filter, which is the worse trade for a control on the
+  payment path.
+- **`regex` mode detects structural PII only** — emails, SSNs, credit cards,
+  phone numbers, IBANs, IP addresses. Names, organisations, and locations need
+  `mode="nlp"`.
+
+Detection gaps are measured, not assumed: `experiments/surface_form_probe.py`
+reports the current numbers, and the entity-level results are in
+`experiments/results/`.
 
 ### Replay Guard
 

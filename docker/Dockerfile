@@ -27,8 +27,11 @@ RUN pip install --no-cache-dir uv && \
         "uvicorn[standard]>=0.29.0"
 
 # Install spaCy model for NLP mode from a hash-pinned wheel.
+# en_core_web_lg, not _sm: it is what Presidio's default NLP engine loads, so a
+# _sm-only image cannot start `PIIFilter(mode="nlp")` at all. Same wheel and hash
+# as screening-api/requirements-model.lock, which the deployed service uses.
 RUN python -m pip install --no-cache-dir --no-deps \
-    "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl#sha256=1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85"
+    "https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl#sha256=293e9547a655b25499198ab15a525b05b9407a75f10255e405e8c3854329ab63"
 
 # ── Stage 2: runtime ────────────────────────────────────────────────────────
 # Resolved 2026-06-21: python:3.12-slim -> sha256:d764629ce0ddd8c71fd371e9901efb324a95789d2315a47db7e4d27e78f1b0e9

@@ -6,6 +6,49 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **`PIIFilter` missed percent-encoded PII — a silent redaction bypass.**
+  `_normalise` closed the Unicode evasion paths (NFKC, invisible codepoints,
+  Cyrillic homoglyphs, hyphen folding) but did no percent-decoding, so
+  `alice.martin%40example.com` — the ordinary way an address appears inside a URL
+  path or query string — never reached the email pattern in a form it could
+  match. `experiments/surface_form_probe.py` measured **0 of 6** encoded forms
+  detected against v0.11.0 at the recommended configuration, with both unencoded
+  controls detected; the address passed through unredacted into the payment
+  payload. `resource_url` is by construction a URL and carries 45% of the entity
+  labels in the evaluation corpus, so this was the most likely encoding for real
+  x402 metadata to use.
+
+  Matching now runs additionally against a **bounded percent-decode** of the
+  input, with the resulting spans mapped back to the caller's own bytes. The
+  decode is capped at two rounds (enough for double-encoded `%2540`; not
+  "decode until stable", which would make the normaliser an amplification vector
+  on hostile input), is skipped entirely when the input holds no well-formed
+  escape, and passes malformed escapes through verbatim rather than raising —
+  the filter is fail-closed on exceptions, so a decode error would block an
+  otherwise legitimate payment. Decoding is used for **matching only**: the
+  returned string is still the caller's, so benign escapes are not rewritten and
+  URL semantics are preserved (`%2F` is not `/`). Both `regex` and `nlp` modes
+  are covered, as is `scan_dict`. Re-running the probe now reports 6/6 detected
+  and 0/6 surviving. No published evaluation number moves — the corpus contains
+  zero `%` characters. See `plan/percent-decoding-redaction-bypass.md`.
+- **MPA webhook response body was unbounded on the plain-httpx path**
+  (CWE-400, audit finding F1 of 2026-07-19). `_MPA_RESPONSE_MAX_BYTES` was
+  enforced while streaming inside `_post_pinned_https` but not on the
+  `self._httpx.post()` branch, taken for an IP-literal webhook URL or with
+  `dns_rebinding_protection` disabled; `resp.json()` then parsed an unbounded
+  body. A hostile approver at such a URL could exhaust agent process memory. The
+  cap is now applied on both branches before the response is verified or parsed.
+  Reaching it requires operator-level misconfiguration *and* a hostile approver.
+
+### Changed
+- NLP-mode install instructions now name **`en_core_web_lg`**, not
+  `en_core_web_sm`, in `README.md`, `docker/Dockerfile` (hash-pinned to the same
+  wheel the deployed service uses), and the `ImportError` hint raised by
+  `PIIFilter(mode="nlp")`. `en_core_web_lg` is what Presidio's default NLP engine
+  loads and what the published evaluation used; the previous instructions
+  produced an image in which `mode="nlp"` could not start.
+
 ## [0.11.0] — 2026-07-27
 
 ### Added

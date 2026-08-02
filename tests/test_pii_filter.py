@@ -411,3 +411,277 @@ class TestPIIFilterRegexMode:
         monkeypatch.setattr(builtins, "__import__", mock_import)
         with pytest.raises(ImportError, match="NLP mode requires"):
             PIIFilter(mode="nlp")
+
+
+class TestPercentEncodingBypass:
+    """Percent-encoded PII evaded the filter through v0.11.0.
+
+    `_normalise` closed the Unicode evasion paths (homoglyphs, zero-width
+    characters, non-ASCII hyphens) but did no percent-decoding, so
+    `alice.martin%40example.com` — the ordinary way an address appears inside a
+    URL — never reached the email pattern in a form it could match. Measured by
+    `experiments/surface_form_probe.py`: 0 of 6 encoded forms detected, both
+    unencoded controls detected.
+    """
+
+    def setup_method(self):
+        self.filt = PIIFilter(mode="regex")
+
+    # ------------------------------------------------------------------
+    # The probe cases
+    # ------------------------------------------------------------------
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://api.example.com/users/alice.martin@example.com/exports",
+            "https://api.example.com/records?user=alice.martin@example.com",
+            "https://api.example.com/users/alice.martin%40example.com/exports",
+            "https://api.example.com/records?user=alice.martin%40example.com",
+            "https://api.example.com/users/alice%2Emartin%40example%2Ecom/exports",
+            "https://api.example.com/users/alice.martin%2540example.com/exports",
+            "mailto:alice.martin%40example.com",
+            "https://api.example.com/users/alice.martin%2Bapi%40example.com/exports",
+        ],
+    )
+    def test_encoded_address_is_detected_and_redacted(self, url):
+        redacted, entities = self.filt.scan_and_redact(url)
+        assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
+        assert "example.com/exports" not in redacted.replace("api.example.com", "")
+        assert "alice" not in redacted
+
+    def test_lowercase_escapes_are_decoded_too(self):
+        _, entities = self.filt.scan_and_redact("https://x.test/u/alice.martin%40example.com")
+        assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
+
+    def test_encoded_ssn_is_detected(self):
+        redacted, entities = self.filt.scan_and_redact("https://x.test/q?ssn=123%2D45%2D6789")
+        assert any(e.entity_type == "US_SSN" for e in entities)
+        assert "123" not in redacted
+
+    # ------------------------------------------------------------------
+    # Caller bytes are preserved — decoding is for matching only
+    # ------------------------------------------------------------------
+    def test_benign_escapes_are_returned_unchanged(self):
+        """`%2F` is not `/`: rewriting escapes would change URL semantics."""
+        url = "https://api.example.com/a%2Fb/search?q=hello%20world"
+        redacted, entities = self.filt.scan_and_redact(url)
+        assert redacted == url
+        assert entities == []
+
+    def test_redaction_replaces_the_encoded_span_in_the_original(self):
+        url = "https://x.test/u/alice.martin%40example.com/exports"
+        redacted, entities = self.filt.scan_and_redact(url)
+        assert redacted == "https://x.test/u/<REDACTED>/exports"
+        (hit,) = [e for e in entities if e.entity_type == "EMAIL_ADDRESS"]
+        # Spans index the caller's string, so the reported original text is the
+        # encoded form the caller actually sent.
+        assert url[hit.start : hit.end] == hit.original_text == "alice.martin%40example.com"
+
+    def test_unencoded_input_is_unaffected(self):
+        url = "https://x.test/u/alice@example.com/exports"
+        redacted, entities = self.filt.scan_and_redact(url)
+        assert redacted == "https://x.test/u/<REDACTED>/exports"
+        assert [(e.start, e.end) for e in entities] == [(17, 34)]
+        assert url[17:34] == "alice@example.com"
+
+    # ------------------------------------------------------------------
+    # Malformed input must not raise — the filter is fail-closed on exceptions,
+    # so a decode error would block an otherwise legitimate payment.
+    # ------------------------------------------------------------------
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://x.test/p?a=100%25",
+            "https://x.test/p?a=%zz",
+            "https://x.test/p?a=%",
+            "https://x.test/p?a=%4",
+            "https://x.test/%",
+            "%%%%",
+        ],
+    )
+    def test_malformed_escapes_pass_through_without_raising(self, url):
+        redacted, _ = self.filt.scan_and_redact(url)
+        assert isinstance(redacted, str)
+
+    def test_malformed_escape_around_encoded_pii_still_catches_it(self):
+        _, entities = self.filt.scan_and_redact("https://x.test/%zz/alice%40example.com/%")
+        assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
+
+    # ------------------------------------------------------------------
+    # The decode depth is a hard cap, not "decode until stable"
+    # ------------------------------------------------------------------
+    def test_double_encoding_is_within_the_cap(self):
+        _, entities = self.filt.scan_and_redact("https://x.test/u/alice%2540example.com")
+        assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
+
+    def test_triple_encoding_is_beyond_the_cap(self):
+        """Documents the bound. Unbounded decoding would let a short hostile
+        input amplify inside the normaliser; two rounds is the accepted trade.
+        """
+        from presidio_x402.pii_filter import _MAX_PERCENT_DECODE_ROUNDS
+
+        assert _MAX_PERCENT_DECODE_ROUNDS == 2
+        _, entities = self.filt.scan_and_redact("https://x.test/u/alice%252540example.com")
+        assert not any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
+
+    def test_decoding_terminates_on_escape_free_input(self):
+        from presidio_x402.pii_filter import _percent_decode
+
+        assert _percent_decode("https://x.test/plain/path") is None
+        assert _percent_decode("") is None
+
+    # ------------------------------------------------------------------
+    # Index map
+    # ------------------------------------------------------------------
+    def test_index_map_is_monotone_and_bounded(self):
+        from presidio_x402.pii_filter import _percent_decode
+
+        for text in (
+            "a%40b",
+            "%2Emartin%40example%2Ecom",
+            "caf%C3%A9@example.com",
+            "%2540",
+            "%zz%40x",
+            "%E2%82%AC100 to alice%40example.com",
+        ):
+            decoded = _percent_decode(text)
+            assert decoded is not None, text
+            body, index_map = decoded
+            assert len(index_map) == len(body) + 1
+            assert index_map[-1] == len(text)
+            assert all(a <= b for a, b in zip(index_map, index_map[1:], strict=False)), text
+            assert all(0 <= o <= len(text) for o in index_map), text
+
+    def test_multibyte_escapes_do_not_break_the_span(self):
+        """A multi-byte UTF-8 sequence decodes to fewer characters than it had
+        escapes; the span must still cover the encoded bytes in the original.
+        """
+        url = "https://x.test/caf%C3%A9/alice%40example.com"
+        redacted, entities = self.filt.scan_and_redact(url)
+        (hit,) = [e for e in entities if e.entity_type == "EMAIL_ADDRESS"]
+        assert url[hit.start : hit.end] == "alice%40example.com"
+        assert redacted == "https://x.test/caf%C3%A9/<REDACTED>"
+
+    def test_invalid_utf8_escapes_fall_back_without_raising(self):
+        from presidio_x402.pii_filter import _percent_decode
+
+        decoded = _percent_decode("%FF%FEalice%40example.com")
+        assert decoded is not None
+        assert "@" in decoded[0]
+
+    # ------------------------------------------------------------------
+    # scan_dict inherits the fix
+    # ------------------------------------------------------------------
+    def test_scan_dict_catches_encoded_pii(self):
+        clean, entities = self.filt.scan_dict({"resource": "https://x.test/u/alice%40example.com"})
+        assert "alice" not in str(clean)
+        assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
+
+    # ------------------------------------------------------------------
+    # NLP mode routes the decoded scan through the analyzer too
+    # ------------------------------------------------------------------
+    def test_nlp_mode_remaps_decoded_findings_to_original_offsets(self, monkeypatch):
+        class FakeOperatorConfig:
+            def __init__(self, operator_name, params):
+                self.operator_name = operator_name
+                self.params = params
+
+        class FakeRecognizerResult:
+            def __init__(self, *, entity_type, start, end, score):
+                self.entity_type = entity_type
+                self.start = start
+                self.end = end
+                self.score = score
+
+        monkeypatch.setitem(
+            sys.modules,
+            "presidio_anonymizer.entities",
+            types.SimpleNamespace(OperatorConfig=FakeOperatorConfig),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "presidio_analyzer",
+            types.SimpleNamespace(RecognizerResult=FakeRecognizerResult),
+        )
+
+        url = "https://x.test/u/alice%40example.com"
+        decoded_url = "https://x.test/u/alice@example.com"
+
+        class FakeAnalyzer:
+            def analyze(self, *, text, entities, language):  # noqa: ARG002
+                if text != decoded_url:
+                    return []
+                start = decoded_url.index("alice")
+                return [
+                    FakeRecognizerResult(
+                        entity_type="EMAIL_ADDRESS",
+                        start=start,
+                        end=len(decoded_url),
+                        score=0.9,
+                    )
+                ]
+
+        seen: dict = {}
+
+        class FakeAnonymizer:
+            def anonymize(self, *, text, analyzer_results, operators):
+                seen["text"] = text
+                seen["results"] = analyzer_results
+                seen["operators"] = operators
+                return types.SimpleNamespace(text="redacted")
+
+        filt = PIIFilter(mode="regex", min_score=0.5)
+        filt.mode = "nlp"
+        filt._analyzer = FakeAnalyzer()
+        filt._anonymizer = FakeAnonymizer()
+
+        redacted, entities = filt.scan_and_redact(url)
+
+        assert redacted == "redacted"
+        # The anonymizer runs against the caller's own bytes, not the decode.
+        assert seen["text"] == url
+        (hit,) = entities
+        assert hit.entity_type == "EMAIL_ADDRESS"
+        assert url[hit.start : hit.end] == "alice%40example.com"
+
+    def test_nlp_mode_does_not_duplicate_a_finding_present_in_both_scans(self, monkeypatch):
+        class FakeOperatorConfig:
+            def __init__(self, operator_name, params):
+                self.operator_name = operator_name
+                self.params = params
+
+        class FakeRecognizerResult:
+            def __init__(self, *, entity_type, start, end, score):
+                self.entity_type = entity_type
+                self.start = start
+                self.end = end
+                self.score = score
+
+        monkeypatch.setitem(
+            sys.modules,
+            "presidio_anonymizer.entities",
+            types.SimpleNamespace(OperatorConfig=FakeOperatorConfig),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "presidio_analyzer",
+            types.SimpleNamespace(RecognizerResult=FakeRecognizerResult),
+        )
+
+        # Trailing "%20" decodes to a space, so the decoded string keeps the same
+        # offsets for the leading URL entity both scans report.
+        class FakeAnalyzer:
+            def analyze(self, *, text, entities, language):  # noqa: ARG002
+                return [FakeRecognizerResult(entity_type="URL", start=0, end=14, score=0.8)]
+
+        class FakeAnonymizer:
+            def anonymize(self, *, text, analyzer_results, operators):  # noqa: ARG002
+                return types.SimpleNamespace(text="redacted")
+
+        filt = PIIFilter(mode="regex", min_score=0.5)
+        filt.mode = "nlp"
+        filt._analyzer = FakeAnalyzer()
+        filt._anonymizer = FakeAnonymizer()
+
+        _, entities = filt.scan_and_redact("https://x.test/a%20b")
+        assert len(entities) == 1

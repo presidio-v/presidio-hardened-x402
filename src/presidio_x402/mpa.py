@@ -724,6 +724,16 @@ class MPAEngine:
                     content=request_body,
                     headers=headers,
                 )
+            # Bound the body before anything reads it. `_post_pinned_https` caps
+            # the read as it streams (see `_MPA_RESPONSE_MAX_BYTES` above); the
+            # plain-httpx branch — taken for an IP-literal webhook URL, or with
+            # dns_rebinding_protection off — has no equivalent, and httpx offers
+            # no transport-level limit. The body is already buffered by the time
+            # we get here, so this caps the amplification step (`resp.json()`
+            # inflating a multi-GB body into Python objects) rather than the read
+            # itself. Prefer a DNS-named webhook URL, which takes the pinned path.
+            if len(resp.content) > _MPA_RESPONSE_MAX_BYTES:
+                raise httpx.ProtocolError("MPA webhook response too large")
             resp.raise_for_status()
 
             # Verify response HMAC if the approver has a shared secret configured.
