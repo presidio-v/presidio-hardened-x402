@@ -53,6 +53,18 @@ dependencies = [
     # Transitive of presidio-analyzer -> spaCy; pin minimum to evict
     # PYSEC-2026-3447 (setuptools < 83.0.0 vulnerable). Audit 2026-07-14.
     "setuptools>=83.0.0",
+    # Imported directly by _on_import_audit() in __init__.py to compare installed
+    # versions against the _KNOWN_VULNERABLE floors. It resolved only as a 3-hop
+    # transitive (presidio-analyzer -> spaCy -> thinc/weasel), and the import is
+    # guarded, so losing it would silently disable the whole dependency-CVE warning
+    # rather than fail loudly. Declared so that cannot happen. Audit 2026-08-03.
+    "packaging>=23.0",
+    # Imported directly by load_policy_file() for TOML policy files, which is
+    # documented in the README. stdlib tomllib is 3.11+, and requires-python is
+    # >=3.10, so a core install on 3.10 had no TOML reader at all. CI never caught
+    # it: pytest-cov pulls coverage[toml] -> tomli, so the test environment is
+    # richer than the shipped one. Audit 2026-08-03.
+    'tomli>=2.0.1; python_version < "3.11"',
 ]
 
 [project.optional-dependencies]

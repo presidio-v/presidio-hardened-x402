@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import sys
 import tempfile
 from pathlib import Path
 
@@ -218,6 +220,36 @@ class TestLoadPolicyFileTOML:
         policy = load_policy_file(path)
         assert "https://premium-api.io" in policy.per_endpoint
         assert policy.per_endpoint["https://premium-api.io"] == pytest.approx(0.50)
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("tomli") is None,
+        reason="tomli is declared only for python_version < 3.11; 3.11+ has no fallback to test",
+    )
+    def test_loads_via_tomli_when_stdlib_tomllib_is_absent(self, monkeypatch):
+        """The Python 3.10 path must work on a core install.
+
+        stdlib ``tomllib`` is 3.11+, so on 3.10 — which ``requires-python`` still
+        supports — ``load_policy_file`` reaches TOML only through ``tomli``. The
+        other tests in this class never exercise that branch: they take the stdlib
+        path on 3.11+, and on 3.10 they cannot tell a declared ``tomli`` from one
+        that ``pytest-cov`` -> ``coverage[toml]`` happened to drag in. Forcing the
+        branch here covers the code path; the declaration itself is guarded by
+        ``tests/test_declared_dependencies.py``.
+
+        Skipped on 3.11+, where ``tomli`` is deliberately not installed.
+        """
+        monkeypatch.setattr(sys, "version_info", (3, 10, 0, "final", 0))
+        # Setting a sys.modules entry to None makes `import tomllib` raise
+        # ImportError, which is what a real 3.10 interpreter does.
+        monkeypatch.setitem(sys.modules, "tomllib", None)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write('max_per_call_usd = 0.25\nagent_id = "py310-agent"\n')
+            path = f.name
+
+        policy = load_policy_file(path)
+        assert policy.max_per_call_usd == pytest.approx(0.25)
+        assert policy.agent_id == "py310-agent"
 
 
 # ---------------------------------------------------------------------------

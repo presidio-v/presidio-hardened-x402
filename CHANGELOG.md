@@ -6,6 +6,29 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **`tomli` was never declared, so TOML policy files did not work on Python 3.10.**
+  `requires-python` is `>=3.10`, stdlib `tomllib` is 3.11+, and
+  `load_policy_file()` reaches TOML on 3.10 only through `tomli` — which appeared
+  in no dependency list. The README documents `load_policy_file("policy.toml")` as
+  public API, so that example raised `ImportError` on a core install at the lowest
+  supported Python. The existing TOML tests could not see it: `pytest-cov` pulls
+  `coverage[toml]` → `tomli`, so the 3.10 CI leg tested against an environment
+  richer than the one users get. Declared as `tomli>=2.0.1; python_version < "3.11"`.
+- **`packaging` was a 3-hop transitive under the import-time CVE audit.**
+  `_on_import_audit()` compares installed dependencies against the
+  `_KNOWN_VULNERABLE` floors using `packaging.version`, behind a guarded import
+  whose fallback skips every comparison. Losing `packaging` therefore disabled the
+  dependency-CVE warning *silently* instead of raising, and it resolved only via
+  presidio-analyzer → spaCy → thinc/weasel. Now a declared core dependency.
+
+### Added
+- **Packaging-contract tests** (`tests/test_declared_dependencies.py`) asserting
+  that directly imported modules are declared requirements, plus a
+  `load_policy_file` test that forces the pre-3.11 `tomli` branch on any
+  interpreter. Both gaps above were invisible to functional tests, which pass
+  whenever the package is installed for unrelated reasons.
+
 ## [0.11.1] — 2026-08-02
 
 ### Fixed

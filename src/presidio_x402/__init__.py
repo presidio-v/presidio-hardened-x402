@@ -242,7 +242,11 @@ def _on_import_audit() -> None:
         try:
             from packaging.version import InvalidVersion as _InvalidVersion
             from packaging.version import Version as _Version
-        except ImportError:  # pragma: no cover - packaging ships with pip
+        except ImportError:  # pragma: no cover - packaging is a declared dependency
+            # This fallback is defense-in-depth against a broken install, not a
+            # supported mode: taking it silently disables every version comparison
+            # below, so the dependency-CVE warning never fires. `packaging` is a
+            # declared dependency precisely so this branch stays unreachable.
             _Version = None  # noqa: N806 - aliasing imported class symbol
             # _InvalidVersion is unreachable on the fallback path: line 124's
             # `if _Version is None: continue` short-circuits before any code
