@@ -46,7 +46,7 @@ if TYPE_CHECKING:
     from .decision_ref import DecisionRefEmitter
     from .metrics import MetricsCollector
     from .mpa import MPAEngine
-    from .pii_filter import PIIFilter
+    from .pii_filter import EntityResult, PIIFilter
     from .policy_engine import PolicyEngine
     from .screening_client import ScreeningClient
 
@@ -266,63 +266,22 @@ class ScreeningPipeline:
         self._policy.refund(resource_url=resource_url, amount_usd=amount_usd)
         self._replay.release(fingerprint)
 
-    async def apply(
-        self,
-        details: PaymentDetails,
-        *,
-        mpa_signatures: dict[str, str] | None = None,
-        raw_offer_hash: str | None = None,
-        on_decision_ref: Callable[[Mapping[str, object]], None] | None = None,
-        stage_timings: StageTiming | None = None,
-        presented_chain: list[dict[str, object]] | None = None,
-    ) -> tuple[PaymentDetails, str]:
-        """Apply PIIFilter → PolicyEngine → ReplayGuard → MPAEngine → AuditLog.
+    async def _screen_pii(
+        self, details: PaymentDetails, amount_usd: float
+    ) -> tuple[PaymentDetails, str, list[EntityResult]]:
+        """Run stage 1 — PII screening — and apply the configured action.
 
-        Returns a ``(details, fingerprint)`` tuple: the (possibly modified)
-        :class:`~presidio_x402._types.PaymentDetails` with PII redacted from
-        metadata fields if ``pii_action="redact"``, plus the replay fingerprint
-        recorded for this payment so the caller can roll it back if signing
-        fails.
+        Returns ``(details, clean_url, pii_entities)``.
 
-        ``on_decision_ref``, when given, is called once with the emitted
-        decision-ref envelope (nothing is called if emission is disabled or
-        fails). It exists so a caller can correlate *this* payment's decision-ref
-        with the settlement receipt it later observes, without the pipeline
-        holding per-payment state that concurrent calls would race on — the
-        caller's closure owns the value. Like the emitter itself it must not
-        perform network I/O and must not raise; a raising callback is caught and
-        logged with the emission.
+        ``clean_url`` is returned separately and is **not** always
+        ``details.resource_url``. Only ``pii_action="redact"`` rewrites *details*;
+        under ``"warn"`` the caller keeps the original URL while every downstream
+        audit emit must still use the redacted one. Deriving it from *details*
+        would put raw PII into audit records under ``"warn"``.
 
-        Raises on policy violation, replay, PII block, or MPA denial/timeout.
-        On MPA denial/timeout the spend + replay commit is rolled back before
-        re-raising.
+        Raises :class:`PIIBlockedError` under ``pii_action="block"``, before any
+        spend or replay fingerprint has been recorded.
         """
-        amount_usd = amount_to_usd(details.amount, details.currency)
-
-        # Decision-ref emission is opt-in. When an emitter is configured we track
-        # each control's verdict as it runs so a single payment-decision@1 record
-        # can be signed on the success path. Otherwise this is the shared null
-        # recorder: no allocation, and no per-site guards below.
-        recorder = (
-            _DecisionRecorder() if self._decision_emitter is not None else _NULL_DECISION_RECORDER
-        )
-
-        # Preserve the original resource_url for replay-guard fingerprinting.
-        # In pii_action="redact" mode the URL gets rewritten with PII tokens
-        # masked; using the redacted URL for fingerprinting would collide
-        # distinct user-specific URLs (e.g. /user/alice@.../pay vs
-        # /user/bob@.../pay both reduce to /user/<EMAIL_ADDRESS>/pay) and
-        # produce false-positive ReplayDetectedError. Original URL is never
-        # passed downstream to signer / MPA — only used for the local HMAC.
-        original_resource_url = details.resource_url
-
-        # ------------------------------------------------------------------
-        # 1. PII Filter (local regex/NLP or remote screening service)
-        # ------------------------------------------------------------------
-        # Per-stage redaction timing is measured only when a StageTiming sink is
-        # provided (E2 harness); when it is None no perf_counter call is made and
-        # the path is byte-identical to prior releases.
-        red_t0 = time.perf_counter_ns() if stage_timings is not None else 0
         with security_control_span(
             "pii_filter",
             amount_usd=amount_usd,
@@ -423,6 +382,66 @@ class ScreeningPipeline:
                     # pii_action == "warn": log already happened in PIIFilter
                     self._metrics.record_pii_detection(entity_types, "warn")
             set_span_attribute(pii_span, "presidio_x402.outcome", "allowed")
+            return details, clean_url, pii_entities
+
+    async def apply(
+        self,
+        details: PaymentDetails,
+        *,
+        mpa_signatures: dict[str, str] | None = None,
+        raw_offer_hash: str | None = None,
+        on_decision_ref: Callable[[Mapping[str, object]], None] | None = None,
+        stage_timings: StageTiming | None = None,
+        presented_chain: list[dict[str, object]] | None = None,
+    ) -> tuple[PaymentDetails, str]:
+        """Apply PIIFilter → PolicyEngine → ReplayGuard → MPAEngine → AuditLog.
+
+        Returns a ``(details, fingerprint)`` tuple: the (possibly modified)
+        :class:`~presidio_x402._types.PaymentDetails` with PII redacted from
+        metadata fields if ``pii_action="redact"``, plus the replay fingerprint
+        recorded for this payment so the caller can roll it back if signing
+        fails.
+
+        ``on_decision_ref``, when given, is called once with the emitted
+        decision-ref envelope (nothing is called if emission is disabled or
+        fails). It exists so a caller can correlate *this* payment's decision-ref
+        with the settlement receipt it later observes, without the pipeline
+        holding per-payment state that concurrent calls would race on — the
+        caller's closure owns the value. Like the emitter itself it must not
+        perform network I/O and must not raise; a raising callback is caught and
+        logged with the emission.
+
+        Raises on policy violation, replay, PII block, or MPA denial/timeout.
+        On MPA denial/timeout the spend + replay commit is rolled back before
+        re-raising.
+        """
+        amount_usd = amount_to_usd(details.amount, details.currency)
+
+        # Decision-ref emission is opt-in. When an emitter is configured we track
+        # each control's verdict as it runs so a single payment-decision@1 record
+        # can be signed on the success path. Otherwise this is the shared null
+        # recorder: no allocation, and no per-site guards below.
+        recorder = (
+            _DecisionRecorder() if self._decision_emitter is not None else _NULL_DECISION_RECORDER
+        )
+
+        # Preserve the original resource_url for replay-guard fingerprinting.
+        # In pii_action="redact" mode the URL gets rewritten with PII tokens
+        # masked; using the redacted URL for fingerprinting would collide
+        # distinct user-specific URLs (e.g. /user/alice@.../pay vs
+        # /user/bob@.../pay both reduce to /user/<EMAIL_ADDRESS>/pay) and
+        # produce false-positive ReplayDetectedError. Original URL is never
+        # passed downstream to signer / MPA — only used for the local HMAC.
+        original_resource_url = details.resource_url
+
+        # ------------------------------------------------------------------
+        # 1. PII Filter (local regex/NLP or remote screening service)
+        # ------------------------------------------------------------------
+        # Per-stage redaction timing is measured only when a StageTiming sink is
+        # provided (E2 harness); when it is None no perf_counter call is made and
+        # the path is byte-identical to prior releases.
+        red_t0 = time.perf_counter_ns() if stage_timings is not None else 0
+        details, clean_url, pii_entities = await self._screen_pii(details, amount_usd)
 
         if stage_timings is not None:
             stage_timings.redaction_ns = time.perf_counter_ns() - red_t0
