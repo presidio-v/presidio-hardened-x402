@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.2] — 2026-08-03
+
 ### Fixed
 - **`tomli` was never declared, so TOML policy files did not work on Python 3.10.**
   `requires-python` is `>=3.10`, stdlib `tomllib` is 3.11+, and
@@ -28,6 +30,23 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `load_policy_file` test that forces the pre-3.11 `tomli` branch on any
   interpreter. Both gaps above were invisible to functional tests, which pass
   whenever the package is installed for unrelated reasons.
+- **A per-function cyclomatic-complexity ratchet in CI**
+  (`tests/test_complexity_ceiling.py`). `run_audit.py` measured complexity only
+  against a hand-refreshed baseline, so a function could grow for months without
+  anything failing. It pins each function at its measured value and fails in both
+  directions — above a pin is a regression, below means the pin is stale.
+
+### Changed
+- **`ScreeningPipeline.apply()` reduced from cyclomatic complexity 50 to 30**
+  (407 → 277 lines); no behavioural change. Decision-ref bookkeeping was a
+  `ControlResults | None` threaded through the method behind six `is not None`
+  guards — 23 references, the only non-sequential concern in it, and the reason
+  the stage ordering was hard to follow. It is now a null-object recorder, at a
+  measured cost of 0.166 us per payment on the default path. The 100-line PII
+  stage moved to `_screen_pii`. The remaining stages stay inline deliberately:
+  their ordering is a security property and is meant to stay readable top to
+  bottom. The gateway, adversary-chain and remote-screening suites are the
+  conformance proof.
 
 ## [0.11.1] — 2026-08-02
 
