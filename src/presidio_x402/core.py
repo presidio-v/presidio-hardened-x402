@@ -124,15 +124,25 @@ class _NullDecisionRecorder:
 
     controls = None
 
-    def record_pii(self, entities: object, pii_action: str) -> None: ...
+    # `pass`, not `...`: these are the real implementation, not stubs. This
+    # codebase reserves `...` for Protocol bodies (see _types.py) and uses `pass`
+    # for runtime no-ops — NullAuditWriter.write() is the same null-object
+    # pattern. Flagged on PR #114 by github-code-quality as ineffectual
+    # statements, which is what a discarded Ellipsis constant literally is.
+    def record_pii(self, entities: object, pii_action: str) -> None:
+        pass
 
-    def record_policy(self, config: object) -> None: ...
+    def record_policy(self, config: object) -> None:
+        pass
 
-    def record_replay(self, fingerprint: str) -> None: ...
+    def record_replay(self, fingerprint: str) -> None:
+        pass
 
-    def record_mpa(self, threshold: int) -> None: ...
+    def record_mpa(self, threshold: int) -> None:
+        pass
 
-    def record_trusted_wallet(self) -> None: ...
+    def record_trusted_wallet(self) -> None:
+        pass
 
 
 class _DecisionRecorder:
