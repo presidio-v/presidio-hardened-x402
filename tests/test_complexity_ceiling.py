@@ -33,7 +33,7 @@ CEILING_DEFAULT = 15
 # Functions currently above the default, pinned at their measured value.
 # Lower these as they are refactored; do not add to the list without a reason.
 KNOWN_HIGH = {
-    "core.py::ScreeningPipeline.apply": 50,
+    "core.py::ScreeningPipeline.apply": 41,
     "decision_ref.py::verify_decision_ref": 32,
     "mica.py::applicable_obligations": 20,
     "treasury_binding.py::verify_settlement_ref": 19,
