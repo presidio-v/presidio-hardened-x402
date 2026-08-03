@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 from pathlib import Path
 
@@ -218,6 +219,30 @@ class TestLoadPolicyFileTOML:
         policy = load_policy_file(path)
         assert "https://premium-api.io" in policy.per_endpoint
         assert policy.per_endpoint["https://premium-api.io"] == pytest.approx(0.50)
+
+    def test_loads_via_tomli_when_stdlib_tomllib_is_absent(self, monkeypatch):
+        """The Python 3.10 path must work on a core install.
+
+        stdlib ``tomllib`` is 3.11+, so on 3.10 — which ``requires-python`` still
+        supports — ``load_policy_file`` reaches TOML only through ``tomli``. The
+        other tests in this class cannot detect a missing ``tomli`` declaration:
+        they run on 3.11+ where the stdlib branch is taken, and even on the 3.10 CI
+        leg ``pytest-cov`` drags in ``coverage[toml]`` -> ``tomli``, making the test
+        environment richer than a core install. So force the fallback branch here
+        on every interpreter instead of trusting the matrix to cover it.
+        """
+        monkeypatch.setattr(sys, "version_info", (3, 10, 0, "final", 0))
+        # Setting a sys.modules entry to None makes `import tomllib` raise
+        # ImportError, which is what a real 3.10 interpreter does.
+        monkeypatch.setitem(sys.modules, "tomllib", None)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write('max_per_call_usd = 0.25\nagent_id = "py310-agent"\n')
+            path = f.name
+
+        policy = load_policy_file(path)
+        assert policy.max_per_call_usd == pytest.approx(0.25)
+        assert policy.agent_id == "py310-agent"
 
 
 # ---------------------------------------------------------------------------
