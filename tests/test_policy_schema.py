@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 import tempfile
@@ -220,16 +221,22 @@ class TestLoadPolicyFileTOML:
         assert "https://premium-api.io" in policy.per_endpoint
         assert policy.per_endpoint["https://premium-api.io"] == pytest.approx(0.50)
 
+    @pytest.mark.skipif(
+        importlib.util.find_spec("tomli") is None,
+        reason="tomli is declared only for python_version < 3.11; 3.11+ has no fallback to test",
+    )
     def test_loads_via_tomli_when_stdlib_tomllib_is_absent(self, monkeypatch):
         """The Python 3.10 path must work on a core install.
 
         stdlib ``tomllib`` is 3.11+, so on 3.10 — which ``requires-python`` still
         supports — ``load_policy_file`` reaches TOML only through ``tomli``. The
-        other tests in this class cannot detect a missing ``tomli`` declaration:
-        they run on 3.11+ where the stdlib branch is taken, and even on the 3.10 CI
-        leg ``pytest-cov`` drags in ``coverage[toml]`` -> ``tomli``, making the test
-        environment richer than a core install. So force the fallback branch here
-        on every interpreter instead of trusting the matrix to cover it.
+        other tests in this class never exercise that branch: they take the stdlib
+        path on 3.11+, and on 3.10 they cannot tell a declared ``tomli`` from one
+        that ``pytest-cov`` -> ``coverage[toml]`` happened to drag in. Forcing the
+        branch here covers the code path; the declaration itself is guarded by
+        ``tests/test_declared_dependencies.py``.
+
+        Skipped on 3.11+, where ``tomli`` is deliberately not installed.
         """
         monkeypatch.setattr(sys, "version_info", (3, 10, 0, "final", 0))
         # Setting a sys.modules entry to None makes `import tomllib` raise
