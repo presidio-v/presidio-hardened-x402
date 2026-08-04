@@ -6,6 +6,20 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.3] — 2026-08-04
+
+### Security
+- **`cryptography` floor raised to 50.0.0 (CVE-2026-69247 / GHSA-g6cj-pr64-35w5).**
+  49.0.0 and earlier expose a Bleichenbacher oracle in PKCS#7 `EnvelopedData`
+  decryption through distinguishable errors and timing; 50.0.0 carries the fix.
+  This package uses `cryptography` only for Ed25519 sign/verify in `mica.py` and
+  `capability.py`, so no code path here reaches the affected PKCS#7 decryption —
+  but the floor is what stops a fresh resolve, or a downstream consumer that
+  never sees our lockfile, from landing on a vulnerable build. Bumped in
+  `pyproject.toml` (core + `[evidence]` extra), `_KNOWN_VULNERABLE`, and
+  `uv.lock` (49.0.0 → 50.0.0), which is what the `pip-audit` CI gate resolves
+  against.
+
 ## [0.11.2] — 2026-08-03
 
 ### Fixed
