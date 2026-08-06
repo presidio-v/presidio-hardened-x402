@@ -1,0 +1,17 @@
+name: Something else
+description: A question, or anything the other forms do not fit.
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        **Please do not use the tracker to advertise a service.** Posts whose
+        purpose is to promote a product, endpoint, dashboard, or paid API are
+        closed as off-topic, whatever their format. Offers of an external endpoint
+        as a test target are also declined by default: CI here is hermetic and
+        does not make live mainnet calls.
+  - type: textarea
+    id: body
+    attributes:
+      label: What's on your mind?
+    validations:
+      required: true

@@ -1,0 +1,37 @@
+name: Feature request or design proposal
+description: A capability the library should have, or a change to how it behaves.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        This is security middleware on a payment path, so proposals are weighed
+        against blast radius as much as usefulness. Saying what an attacker gains
+        or loses is more persuasive here than a feature list.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What can't you do today, or what goes wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: >-
+        What should happen instead. If it touches the payment path, say where in
+        the stage order (PII → wallet → capability → policy → replay → MPA).
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This is client-side (agent/buyer) behaviour, not a change to what a 402-emitting server does.
+        - label: I have searched existing issues, including closed ones.

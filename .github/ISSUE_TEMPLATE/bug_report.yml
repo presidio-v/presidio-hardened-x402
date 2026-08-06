@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in the library behaves differently than documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        **Not for vulnerabilities.** If this is a security issue, close this form
+        and file a private advisory instead — see
+        [SECURITY.md](https://github.com/presidio-v/presidio-hardened-x402/blob/main/SECURITY.md).
+
+
+        Redact real payment metadata, wallet addresses, and personal data from
+        anything you paste here. This is a public issue tracker.
+  - type: input
+    id: version
+    attributes:
+      label: Library version
+      description: Output of `pip show presidio-hardened-x402`.
+      placeholder: "0.11.3"
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.12.3"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened instead
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: >-
+        The smallest snippet that shows the behaviour. Tracebacks belong here
+        too — paste the whole thing, redacted.
+      render: python
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which stage is involved, if you know
+      options:
+        - "Not sure"
+        - "PII filter / screening"
+        - "Policy engine / budgets"
+        - "Replay guard"
+        - "MPA (multi-party authorisation)"
+        - "Capability enforcement"
+        - "Evidence / MiCA / decision refs"
+        - "Audit log / sinks"
+        - "Adapters (LangChain, gateway, bindings)"
+        - "Packaging / install"
