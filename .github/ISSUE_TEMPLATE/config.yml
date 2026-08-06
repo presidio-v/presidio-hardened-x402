@@ -1,0 +1,13 @@
+# Blank issues are disabled: every inbound issue picks one of the forms below or
+# one of the contact links. The forms exist to route reports, not to gate them —
+# if none fits, "Something else" is deliberately near-empty.
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/presidio-v/presidio-hardened-x402/security/advisories/new
+    about: >-
+      Do not open a public issue for a vulnerability. Use a private GitHub
+      Security Advisory — see SECURITY.md. Acknowledgement within 5 business days.
+  - name: Contribution guidelines
+    url: https://github.com/presidio-v/presidio-hardened-x402/blob/main/CONTRIBUTING.md
+    about: What a change needs to clear before it can be merged.
