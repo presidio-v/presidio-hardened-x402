@@ -37,6 +37,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `MetricsCollector.record_policy_violation`, which previously received the
   constant `"limit_exceeded"`.
 
+### Security
+- **`uv.lock`: `pip` 26.1.2 → 26.2.1 (PYSEC-2026-3721).** `pip` is not a
+  dependency of this package; it reaches the locked audit environment as a
+  transitive of `pip-audit`'s `pip-api`, which is exactly the environment the
+  `Dependency Security Audit` CI gate scans. The advisory published after the
+  last `main` build, so the gate went red on an untouched lockfile. Re-locked
+  with `uv lock --upgrade-package pip`; no `_KNOWN_VULNERABLE` floor, since
+  the import-time audit covers runtime dependencies only.
+
 ### Changed
 - `decision_ref` policy snapshot/limit hashes include `max_quote_increase_ratio`
   **only when it is set**, so every previously issued `payment-decision@1`
