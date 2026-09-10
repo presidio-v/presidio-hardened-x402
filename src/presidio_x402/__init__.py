@@ -76,6 +76,7 @@ from .exceptions import (
     ScreeningError,
     ScreeningRateLimitError,
     ScreeningUnavailableError,
+    WalletRotationError,
     X402Error,
     X402PaymentError,
 )
@@ -106,6 +107,7 @@ from .treasury_binding import (
     export_bundle,
     verify_bundle,
 )
+from .wallet_pin import WalletPinStore
 
 __version__ = "0.10.0"
 __all__ = [
@@ -115,6 +117,7 @@ __all__ = [
     "ComplianceReport",
     # Rail-agnostic screening core + rail bindings (v0.5.0)
     "ScreeningPipeline",
+    "WalletPinStore",
     "PaymentProtocolBinding",
     "X402Binding",
     # Capability certificates (capability-grant@1) — Pillar I
@@ -171,6 +174,7 @@ __all__ = [
     "X402PaymentError",
     "PIIBlockedError",
     "PolicyViolationError",
+    "WalletRotationError",
     "ReplayDetectedError",
     "MPADeniedError",
     "MPATimeoutError",

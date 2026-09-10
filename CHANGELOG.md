@@ -6,6 +6,44 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Pay-to pinning (`wallet_pinning="warn" | "block"`).** Trust-on-first-use
+  recipient tracking for the origins `trusted_wallets` does not enumerate. The
+  first `pay_to` observed per (origin, network) is pinned and emits
+  `WALLET_PINNED`; a later challenge naming a different address emits
+  `WALLET_ROTATED` and, under `"block"`, raises the new `WalletRotationError`
+  (a subclass of `X402PaymentError`) before signing. Pins never advance on
+  their own — accepting a rotation is `client.wallet_pins.pin(...)`. Backed by
+  the new `WalletPinStore` (in-memory, or Redis via the existing `redis_url`,
+  no expiry by default). Origins with an explicit allowlist entry are skipped.
+  Keyed off the pre-redaction origin for the same reason as the allowlist
+  (F-02), and off the network so per-rail recipients are not false rotations.
+  Motivated by MCRI #001 (probe402, 21–31 Aug 2026): 33 of 6,835 quoted
+  endpoints changed payment address between observations, one on nearly every
+  probe — a population no static allowlist can be maintained against. Default
+  `None`: no pin code path runs and the pipeline is byte-identical.
+- **Quote-drift limit (`PolicyConfig.max_quote_increase_ratio`).** Blocks a
+  quote that exceeds the route's reference quote by more than the ratio
+  (`0.5` → above 1.5×). The reference is the first quote seen for the route
+  (redacted URL without query/fragment, so per-user identifiers collapse) and
+  moves down freely but never up on its own: an increase within the ratio is
+  paid, not adopted, which is what stops a server walking the price up in
+  sub-ratio steps. `PolicyEngine.reference_quote()` / `set_reference_quote()`
+  expose and rebase it. Present in the policy JSON schema; SLO policies carry
+  it through `from_dict`. Same MCRI window: 73 endpoints changed price.
+- **`PolicyViolationError.reason`** names the limit that fired (`per_call`,
+  `daily_limit`, `per_endpoint`, `quote_drift`; `limit_exceeded` when
+  constructed by hand) and is now the label passed to
+  `MetricsCollector.record_policy_violation`, which previously received the
+  constant `"limit_exceeded"`.
+
+### Changed
+- `decision_ref` policy snapshot/limit hashes include `max_quote_increase_ratio`
+  **only when it is set**, so every previously issued `payment-decision@1`
+  record and conformance vector hashes exactly as before.
+- `ScreeningPipeline.apply` cyclomatic pin lowered 30 → 26: the trusted-wallet
+  allowlist moved into `_screen_wallet` together with the new pin stage.
+
 ## [0.11.3] — 2026-08-04
 
 ### Security

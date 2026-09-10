@@ -135,6 +135,7 @@ policy = PolicyConfig(
     per_endpoint={
         "https://premium-api.io": 0.50,  # per-endpoint daily limit
     },
+    max_quote_increase_ratio=0.5,  # block a quote > 1.5x the route's reference quote
     window_seconds=86400,          # time window for aggregate limits (default: 24h)
     agent_id="my-agent-v1",        # tag audit events with an agent identifier
 )
@@ -338,6 +339,40 @@ client = HardenedX402Client(
 Payments to a `pay_to` not in the allowlist for the response's origin are blocked
 before signing.
 
+### Pay-to pinning (trust-on-first-use)
+
+The allowlist only covers origins you enumerate. For everything else, `wallet_pinning`
+records the first `pay_to` observed per (origin, network) and reports every later
+divergence — a compromised server, a DNS/MITM swap that starts after the first paid
+call, or an endpoint that rotates its address per request. Independent measurement of
+the live catalogues (probe402, MCRI #001, 21–31 Aug 2026) found 33 of 6,835 quoted
+endpoints changing address between observations, one on nearly every probe.
+
+```python
+client = HardenedX402Client(
+    payment_signer=signer,
+    wallet_pinning="block",   # or "warn": record WALLET_ROTATED and proceed
+    redis_url="redis://...",  # optional: share the pin table across replicas
+)
+
+# A legitimate rotation is an explicit operator step; pins never advance on their own.
+client.wallet_pins.pin("https://api.example.com", "base-mainnet", "0xNewWallet...")
+```
+
+First sight emits `WALLET_PINNED`; a different address later emits `WALLET_ROTATED`
+and, under `"block"`, raises `WalletRotationError` before signing. Origins listed in
+`trusted_wallets` are skipped — the allowlist is the stronger statement. Trust on first
+use is exactly that: for origins whose recipient you know, use the allowlist.
+
+### Quote-drift limit
+
+`max_quote_increase_ratio` bounds a quote against the *reference quote* for the same
+route (the redacted URL without query or fragment). The reference is the first quote
+seen and moves down freely, but never up on its own: an increase within the ratio is
+paid, not adopted, so a server cannot walk the price up by just under the ratio on every
+call. Raise the baseline explicitly with `engine.set_reference_quote(url, usd)`. The same
+MCRI #001 window saw 73 endpoints change price; a cached quote is not a contract.
+
 ---
 
 ## Kubernetes Deployment (v0.3.0)
@@ -518,9 +553,10 @@ clean, entities = filt.scan_and_redact(
 | Exception | Raised when |
 |-----------|-------------|
 | `PIIBlockedError` | PII detected in metadata and `pii_action="block"` |
-| `PolicyViolationError` | Payment amount or aggregate spend exceeds configured limit |
+| `PolicyViolationError` | Payment amount, aggregate spend, or quote drift exceeds a configured limit (`.reason` names which) |
 | `ReplayDetectedError` | Payment fingerprint matches a recent transaction |
-| `X402PaymentError` | Upstream payment signing or network error |
+| `X402PaymentError` | Upstream payment signing or network error, or `pay_to` outside the origin's allowlist |
+| `WalletRotationError` | `wallet_pinning="block"` and the 402 names a different `pay_to` than first pinned for its origin + network (subclass of `X402PaymentError`) |
 | `MPADeniedError` | Multi-party authorization required but not enough approvals received |
 | `MPATimeoutError` | Multi-party authorization webhook approval timed out |
 

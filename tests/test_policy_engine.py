@@ -253,3 +253,139 @@ class TestPolicyEngineHotReload:
                 future.result()
 
         engine.check_and_record(resource_url="https://api.example.com/resource", amount_usd=0.50)
+
+
+class TestQuoteDrift:
+    """``max_quote_increase_ratio`` — a quote may not exceed the route's reference
+    quote by more than the ratio. MCRI #001 (probe402, 21–31 Aug 2026) observed 73
+    of 6,835 quoted endpoints changing price within ten days; a cached quote is
+    not a contract."""
+
+    URL = "https://api.example.com/v1/data"
+
+    def setup_method(self):
+        self.engine = PolicyEngine(PolicyConfig(max_quote_increase_ratio=0.5))
+
+    def test_disabled_by_default(self):
+        engine = PolicyEngine()
+        engine.check_and_record(resource_url=self.URL, amount_usd=0.01)
+        engine.check_and_record(resource_url=self.URL, amount_usd=100.0)
+        assert engine.reference_quote(self.URL) is None
+
+    def test_first_quote_becomes_reference(self):
+        self.engine.check_and_record(resource_url=self.URL, amount_usd=0.10)
+        assert self.engine.reference_quote(self.URL) == pytest.approx(0.10)
+
+    def test_increase_within_ratio_allowed(self):
+        self.engine.check_and_record(resource_url=self.URL, amount_usd=0.10)
+        self.engine.check_and_record(resource_url=self.URL, amount_usd=0.15)
+
+    def test_increase_over_ratio_blocked_with_reason_and_ceiling(self):
+        self.engine.check_and_record(resource_url=self.URL, amount_usd=0.10)
+        with pytest.raises(PolicyViolationError, match="reference quote") as exc_info:
+            self.engine.check_and_record(resource_url=self.URL, amount_usd=0.16)
+        assert exc_info.value.reason == "quote_drift"
+        assert exc_info.value.limit_usd == pytest.approx(0.15)
+        assert exc_info.value.amount_usd == pytest.approx(0.16)
+
+    def test_blocked_quote_records_no_spend(self):
+        engine = PolicyEngine(PolicyConfig(max_quote_increase_ratio=0.5, daily_limit_usd=1.0))
+        engine.check_and_record(resource_url=self.URL, amount_usd=0.10)
+        with pytest.raises(PolicyViolationError):
+            engine.check_and_record(resource_url=self.URL, amount_usd=0.50)
+        assert engine._global_ledger.total() == pytest.approx(0.10)
+
+    def test_reference_never_ratchets_upward(self):
+        """Each step is within the ratio of the previous quote, but not of the
+        first one — a server walking its price up 49% per call must still hit
+        the ceiling set by the reference."""
+        self.engine.check_and_record(resource_url=self.URL, amount_usd=0.10)
+        self.engine.check_and_record(resource_url=self.URL, amount_usd=0.14)
+        assert self.engine.reference_quote(self.URL) == pytest.approx(0.10)
+        with pytest.raises(PolicyViolationError):
+            self.engine.check_and_record(resource_url=self.URL, amount_usd=0.20)
+
+    def test_cheaper_quote_becomes_new_reference(self):
+        self.engine.check_and_record(resource_url=self.URL, amount_usd=0.10)
+        self.engine.check_and_record(resource_url=self.URL, amount_usd=0.05)
+        assert self.engine.reference_quote(self.URL) == pytest.approx(0.05)
+        with pytest.raises(PolicyViolationError):
+            self.engine.check_and_record(resource_url=self.URL, amount_usd=0.10)
+
+    def test_route_ignores_query_and_fragment(self):
+        self.engine.check_and_record(resource_url=self.URL + "?user=alice", amount_usd=0.10)
+        with pytest.raises(PolicyViolationError):
+            self.engine.check_and_record(resource_url=self.URL + "?user=bob#x", amount_usd=0.20)
+
+    def test_distinct_paths_have_distinct_references(self):
+        self.engine.check_and_record(resource_url=self.URL, amount_usd=0.10)
+        self.engine.check_and_record(resource_url=self.URL + "/premium", amount_usd=5.00)
+
+    def test_operator_rebase_and_reset(self):
+        self.engine.check_and_record(resource_url=self.URL, amount_usd=0.10)
+        self.engine.set_reference_quote(self.URL, 0.50)
+        self.engine.check_and_record(resource_url=self.URL, amount_usd=0.70)
+        self.engine.reset()
+        assert self.engine.reference_quote(self.URL) is None
+
+    def test_hot_reload_keeps_references(self):
+        self.engine.check_and_record(resource_url=self.URL, amount_usd=0.10)
+        self.engine.update_config({"max_quote_increase_ratio": 0.1})
+        with pytest.raises(PolicyViolationError):
+            self.engine.check_and_record(resource_url=self.URL, amount_usd=0.12)
+        self.engine.update_config({})
+        self.engine.check_and_record(resource_url=self.URL, amount_usd=1.00)
+
+    def test_from_dict_and_validation(self):
+        cfg = PolicyConfig.from_dict({"max_quote_increase_ratio": 0.25})
+        assert cfg.max_quote_increase_ratio == 0.25
+        with pytest.raises(ValueError, match="max_quote_increase_ratio"):
+            PolicyEngine(PolicyConfig(max_quote_increase_ratio=-0.1))
+
+    def test_zero_ratio_pins_the_price(self):
+        engine = PolicyEngine(PolicyConfig(max_quote_increase_ratio=0))
+        engine.check_and_record(resource_url=self.URL, amount_usd=0.10)
+        engine.check_and_record(resource_url=self.URL, amount_usd=0.10)
+        with pytest.raises(PolicyViolationError):
+            engine.check_and_record(resource_url=self.URL, amount_usd=0.1001)
+
+    def test_decision_ref_policy_hash_unchanged_unless_ratio_set(self):
+        from presidio_x402.decision_ref import policy_limit_hash, policy_snapshot_hash
+
+        base = PolicyConfig(max_per_call_usd=0.10)
+        legacy_shape = {"max_per_call_usd": 0.10}
+        assert policy_snapshot_hash(base) == policy_snapshot_hash(legacy_shape)
+        assert policy_limit_hash(base) == policy_limit_hash(legacy_shape)
+        drift = PolicyConfig(max_per_call_usd=0.10, max_quote_increase_ratio=0.5)
+        assert policy_snapshot_hash(drift) != policy_snapshot_hash(base)
+        assert policy_limit_hash(drift) != policy_limit_hash(base)
+
+    def test_schema_accepts_ratio(self):
+        pytest.importorskip("jsonschema")
+        from presidio_x402.x402_policy_schema import PolicyValidationError, validate_policy
+
+        validate_policy({"max_quote_increase_ratio": 0.5})
+        with pytest.raises(PolicyValidationError):
+            validate_policy({"max_quote_increase_ratio": -1})
+
+
+class TestViolationReasons:
+    def test_each_limit_names_its_reason(self):
+        engine = PolicyEngine(
+            PolicyConfig(
+                max_per_call_usd=1.0,
+                daily_limit_usd=1.5,
+                per_endpoint={"https://cheap.example": 0.10},
+            )
+        )
+        with pytest.raises(PolicyViolationError) as e:
+            engine.check_and_record(resource_url="https://x.example", amount_usd=2.0)
+        assert e.value.reason == "per_call"
+        with pytest.raises(PolicyViolationError) as e:
+            engine.check_and_record(resource_url="https://cheap.example/a", amount_usd=0.5)
+        assert e.value.reason == "per_endpoint"
+        engine.check_and_record(resource_url="https://x.example", amount_usd=1.0)
+        with pytest.raises(PolicyViolationError) as e:
+            engine.check_and_record(resource_url="https://x.example", amount_usd=0.6)
+        assert e.value.reason == "daily_limit"
+        assert PolicyViolationError("m", amount_usd=1, limit_usd=1).reason == "limit_exceeded"

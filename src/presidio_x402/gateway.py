@@ -71,6 +71,7 @@ from .exceptions import X402PaymentError
 from .pii_filter import PIIFilter
 from .policy_engine import PolicyConfig, PolicyEngine
 from .replay_guard import ReplayGuard
+from .wallet_pin import WalletPinStore
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -193,6 +194,17 @@ class HardenedX402Client:
             trusted_wallets={
                 "https://api.example.com": {"0xAbC...123"},
             }
+    wallet_pinning:
+        Opt-in trust-on-first-use pay-to pinning for origins ``trusted_wallets``
+        does not cover. The first ``pay_to`` observed per (origin, network) is
+        pinned; a later challenge naming a different address emits a
+        ``WALLET_ROTATED`` audit event and, with ``"block"``, raises
+        :class:`~presidio_x402.exceptions.WalletRotationError` before signing.
+        ``"warn"`` records and proceeds. ``None`` (default) disables pinning
+        entirely. Pins never advance on their own — accept a legitimate
+        rotation with ``client.wallet_pins.pin(origin, network, pay_to)``. Pins
+        live in memory, or in Redis when ``redis_url`` is set (shared with the
+        replay guard), and never expire. See :mod:`presidio_x402.wallet_pin`.
     screening_client:
         Optional :class:`~presidio_x402.screening_client.ScreeningClient`.
         When combined with ``remote_screening=True``, payment-metadata PII
@@ -250,6 +262,7 @@ class HardenedX402Client:
         mpa_engine: MPAEngine | None = None,
         metrics_collector: MetricsCollector | None = None,
         trusted_wallets: dict[str, set[str]] | None = None,
+        wallet_pinning: Literal["warn", "block"] | None = None,
         screening_client: ScreeningClient | None = None,
         remote_screening: bool = False,
         binding: PaymentProtocolBinding | None = None,
@@ -288,6 +301,11 @@ class HardenedX402Client:
             if trusted_wallets is not None
             else None
         )
+        if wallet_pinning is not None and wallet_pinning not in ("warn", "block"):
+            raise ValueError("wallet_pinning must be 'warn', 'block' or None")
+        self._wallet_pins: WalletPinStore | None = (
+            WalletPinStore(redis_url=redis_url) if wallet_pinning is not None else None
+        )
         # The rail-agnostic screening core shares the component instances above:
         # the client keeps direct references for back-compat introspection while
         # the pipeline owns the control-sequence logic.
@@ -301,6 +319,8 @@ class HardenedX402Client:
             mpa_engine=mpa_engine,
             metrics_collector=metrics_collector,
             trusted_wallets=self._trusted_wallets,
+            wallet_pin_store=self._wallet_pins,
+            wallet_pinning=wallet_pinning,
             screening_client=screening_client,
             remote_screening=remote_screening,
             decision_ref_emitter=decision_ref_emitter,
@@ -331,6 +351,11 @@ class HardenedX402Client:
 
     async def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         return await self._request(method, url, **kwargs)
+
+    @property
+    def wallet_pins(self) -> WalletPinStore | None:
+        """The pay-to pin table when ``wallet_pinning`` is enabled, else ``None``."""
+        return self._wallet_pins
 
     def update_policy(self, policy: PolicyConfig | dict | None) -> PolicyConfig:
         """Hot-reload the spending policy used by this running client."""
