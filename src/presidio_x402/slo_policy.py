@@ -52,6 +52,7 @@ class SLOPaymentPolicy(PolicyConfig):
             max_per_call_usd=base.max_per_call_usd,
             daily_limit_usd=base.daily_limit_usd,
             per_endpoint=base.per_endpoint,
+            max_quote_increase_ratio=base.max_quote_increase_ratio,
             window_seconds=base.window_seconds,
             agent_id=base.agent_id,
             latency_threshold_ms=data.get("latency_threshold_ms", 200.0),

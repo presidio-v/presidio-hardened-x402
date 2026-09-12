@@ -31,6 +31,7 @@ from .exceptions import (
     PIIBlockedError,
     PolicyViolationError,
     ReplayDetectedError,
+    WalletRotationError,
     X402PaymentError,
 )
 from .replay_guard import ReplayGuard, compute_fingerprint
@@ -49,6 +50,7 @@ if TYPE_CHECKING:
     from .pii_filter import EntityResult, PIIFilter
     from .policy_engine import PolicyEngine
     from .screening_client import ScreeningClient
+    from .wallet_pin import WalletPinStore
 
 logger = logging.getLogger("presidio_x402.core")
 
@@ -207,7 +209,7 @@ _NULL_DECISION_RECORDER = _NullDecisionRecorder()
 
 
 class ScreeningPipeline:
-    """Pre-execution screening: PII → wallet allowlist → policy → replay → MPA.
+    """Pre-execution screening: PII → wallet allowlist → wallet pin → policy → replay → MPA.
 
     Rail-agnostic. Construct with the security components (typically done by a
     binding client such as :class:`~presidio_x402.gateway.HardenedX402Client`)
@@ -234,9 +236,15 @@ class ScreeningPipeline:
         capability_chain: VerifiedGrantChain | None = None,
         capability_enforcer: CapabilityEnforcer | None = None,
         agent_id: str | None = None,
+        wallet_pin_store: WalletPinStore | None = None,
+        wallet_pinning: Literal["warn", "block"] | None = None,
     ) -> None:
         if remote_screening and screening_client is None:
             raise ValueError("remote_screening=True requires a screening_client instance")
+        if wallet_pinning is not None and wallet_pinning not in ("warn", "block"):
+            raise ValueError("wallet_pinning must be 'warn', 'block' or None")
+        if wallet_pinning is not None and wallet_pin_store is None:
+            raise ValueError("wallet_pinning requires a wallet_pin_store instance")
         self._pii_filter = pii_filter
         self._pii_entities = pii_entities
         self._pii_action = pii_action
@@ -260,6 +268,11 @@ class ScreeningPipeline:
         # presidio_x402.capability_enforcer.
         self._capability_enforcer = capability_enforcer
         self._agent_id = agent_id
+        # Pay-to pinning is strictly opt-in: with wallet_pinning None (the default)
+        # no pin code path runs and apply() is byte-identical to prior releases.
+        # See presidio_x402.wallet_pin.
+        self._wallet_pins = wallet_pin_store if wallet_pinning is not None else None
+        self._wallet_pinning = wallet_pinning
 
     def rollback(self, *, resource_url: str, amount_usd: float, fingerprint: str) -> None:
         """Reverse the spend + replay fingerprint speculatively committed in
@@ -459,35 +472,9 @@ class ScreeningPipeline:
         recorder.record_pii(pii_entities, self._pii_action)
 
         # ------------------------------------------------------------------
-        # 2. Trusted-wallet allowlist (pay_to substitution defence)
+        # 2. Trusted-wallet allowlist, then 2.1 pay-to pinning
         # ------------------------------------------------------------------
-        if self._trusted_wallets is not None:
-            # Key the allowlist off the ORIGINAL (pre-redaction) origin. PII
-            # redaction can rewrite the host (IP literals via IP_ADDRESS,
-            # digit-laden DNS labels via US_SSN/PHONE_NUMBER), which would shift
-            # the origin string out of the allowlist, miss the lookup, and
-            # silently skip the pay_to check entirely. The host is a
-            # security-control key, not PII — this mirrors the replay
-            # fingerprint, which also keys off original_resource_url below
-            # (CWE-348 / F-02, 2026-06-03).
-            origin = resource_origin(original_resource_url)
-            allowed = self._trusted_wallets.get(origin)
-            if allowed is not None and details.pay_to.lower() not in allowed:
-                # The raw origin may contain a redactable host; keep it out of
-                # the persisted audit message and surface only the redacted URL.
-                self._audit.emit(
-                    "WALLET_BLOCKED",
-                    resource_url=clean_url,
-                    amount_usd=amount_usd,
-                    network=details.network,
-                    outcome="blocked",
-                    error_message=f"pay_to {details.pay_to!r} not in trusted wallet allowlist",
-                )
-                if self._metrics:
-                    self._metrics.record_payment_blocked("wallet", amount_usd)
-                raise X402PaymentError(
-                    f"pay_to wallet {details.pay_to!r} not in trusted allowlist"
-                )
+        self._screen_wallet(original_resource_url, details, amount_usd, clean_url)
 
         # ------------------------------------------------------------------
         # 2.5 Capability enforcement (capability-grant@1, pre-transmission)
@@ -568,7 +555,7 @@ class ScreeningPipeline:
                     policy_limit_usd=exc.limit_usd,
                 )
                 if self._metrics:
-                    self._metrics.record_policy_violation("limit_exceeded")
+                    self._metrics.record_policy_violation(exc.reason)
                     self._metrics.record_payment_blocked("policy", amount_usd)
                 raise
 
@@ -672,6 +659,102 @@ class ScreeningPipeline:
                 stage_timings.evidence_write_ns = time.perf_counter_ns() - ev_t0
 
         return details, fingerprint
+
+    def _screen_wallet(
+        self,
+        original_resource_url: str,
+        details: PaymentDetails,
+        amount_usd: float,
+        clean_url: str,
+    ) -> None:
+        """Stages 2 and 2.1 — static allowlist, then trust-on-first-use pinning.
+
+        Both key off the ORIGINAL (pre-redaction) origin. PII redaction can
+        rewrite the host (IP literals via IP_ADDRESS, digit-laden DNS labels via
+        US_SSN/PHONE_NUMBER), which would shift the origin string out of the
+        allowlist, miss the lookup, and silently skip the check entirely. The
+        host is a security-control key, not PII — this mirrors the replay
+        fingerprint, which also keys off the original URL (CWE-348 / F-02,
+        2026-06-03). Neither stage has recorded state to roll back on failure:
+        both run before the policy ledger and replay fingerprint commit.
+        """
+        if self._trusted_wallets is None and self._wallet_pins is None:
+            return
+        origin = resource_origin(original_resource_url)
+        allowed = self._trusted_wallets.get(origin) if self._trusted_wallets else None
+        if allowed is not None:
+            if details.pay_to.lower() not in allowed:
+                # The raw origin may contain a redactable host; keep it out of
+                # the persisted audit message and surface only the redacted URL.
+                self._audit.emit(
+                    "WALLET_BLOCKED",
+                    resource_url=clean_url,
+                    amount_usd=amount_usd,
+                    network=details.network,
+                    outcome="blocked",
+                    error_message=f"pay_to {details.pay_to!r} not in trusted wallet allowlist",
+                )
+                if self._metrics:
+                    self._metrics.record_payment_blocked("wallet", amount_usd)
+                raise X402PaymentError(
+                    f"pay_to wallet {details.pay_to!r} not in trusted allowlist"
+                )
+            # An explicit allowlist entry is the stronger statement and may name
+            # several wallets by design; pinning covers only the other origins.
+            return
+        if self._wallet_pins is not None:
+            self._check_wallet_pin(origin, details, amount_usd, clean_url)
+
+    def _check_wallet_pin(
+        self, origin: str, details: PaymentDetails, amount_usd: float, clean_url: str
+    ) -> None:
+        """Stage 2.1 — pin ``pay_to`` on first sight, report every later divergence.
+
+        Not part of the ``payment-decision@1`` control set: that schema's
+        ``trusted_wallet`` verdict enum is fixed at ``TRUSTED``/``UNTRUSTED`` and
+        a warn-mode rotation still signs. The audit log carries the verdict.
+        """
+        pinned = self._wallet_pins.observe(origin, details.network, details.pay_to)  # type: ignore[union-attr]
+        observed = details.pay_to.lower()
+        if pinned is None:
+            self._audit.emit(
+                "WALLET_PINNED",
+                resource_url=clean_url,
+                amount_usd=amount_usd,
+                network=details.network,
+                outcome="allowed",
+            )
+            return
+        if pinned == observed:
+            return
+        blocking = self._wallet_pinning == "block"
+        # Both addresses are already public on the wire and in the 402 challenge;
+        # the audit record needs them to be actionable (which one to re-pin).
+        message = f"pay_to rotated from pinned {pinned} to {observed}"
+        self._audit.emit(
+            "WALLET_ROTATED",
+            resource_url=clean_url,
+            amount_usd=amount_usd,
+            network=details.network,
+            outcome="blocked" if blocking else "allowed",
+            error_message=message,
+        )
+        if not blocking:
+            logger.warning(
+                "Wallet rotation for %s on %s: %s (wallet_pinning=warn, payment proceeds)",
+                origin,
+                details.network,
+                message,
+            )
+            return
+        if self._metrics:
+            self._metrics.record_payment_blocked("wallet_rotation", amount_usd)
+        raise WalletRotationError(
+            f"{message}; refusing to sign (wallet_pinning=block). Accept the new address "
+            "with WalletPinStore.pin() if the rotation is legitimate.",
+            pinned=pinned,
+            observed=observed,
+        )
 
     def _emit_decision_ref(
         self,

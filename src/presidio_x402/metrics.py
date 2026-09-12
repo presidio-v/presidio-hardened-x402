@@ -110,7 +110,8 @@ class MetricsCollector:
         Parameters
         ----------
         reason:
-            Block reason: ``"pii"``, ``"policy"``, ``"replay"``, ``"mpa"``, ``"error"``.
+            Block reason: ``"pii"``, ``"wallet"``, ``"wallet_rotation"``, ``"policy"``,
+            ``"replay"``, ``"mpa"``, ``"error"``.
         amount_usd:
             Payment amount (if known at block time).
         """
@@ -141,7 +142,8 @@ class MetricsCollector:
         Parameters
         ----------
         violation_type:
-            Type of violation: ``"per_call"``, ``"daily_limit"``, ``"per_endpoint"``.
+            Type of violation: ``"per_call"``, ``"daily_limit"``, ``"per_endpoint"``,
+            ``"quote_drift"``.
         """
         if not self._available:
             return

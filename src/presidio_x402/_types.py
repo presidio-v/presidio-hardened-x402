@@ -126,8 +126,9 @@ class AuditEvent:
 
     timestamp: datetime
     event_type: str
-    """One of: PAYMENT_ALLOWED, PII_REDACTED, PII_BLOCKED, POLICY_BLOCKED,
-    REPLAY_BLOCKED, PAYMENT_ERROR."""
+    """One of: PAYMENT_ALLOWED, PII_REDACTED, PII_BLOCKED, WALLET_BLOCKED,
+    WALLET_PINNED, WALLET_ROTATED, CAPABILITY_BLOCKED, POLICY_BLOCKED,
+    REPLAY_BLOCKED, MPA_BLOCKED, PAYMENT_ERROR."""
 
     resource_url: str
     """Post-redaction resource URL."""

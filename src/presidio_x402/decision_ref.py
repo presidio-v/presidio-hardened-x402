@@ -350,6 +350,8 @@ def policy_limit_hash(config: object) -> str:
         "per_endpoint": snap["per_endpoint"],
         "window_seconds": snap["window_seconds"],
     }
+    if "max_quote_increase_ratio" in snap:
+        limits["max_quote_increase_ratio"] = snap["max_quote_increase_ratio"]
     return _sha256_prefixed(limits)
 
 
@@ -366,12 +368,21 @@ def _policy_config_snapshot(config: object) -> dict[str, object]:
     )
     per_endpoint_raw = get("per_endpoint", {}) or {}
     per_endpoint = {k: _amt(v) for k, v in sorted(per_endpoint_raw.items())}
-    return {
+    snap: dict[str, object] = {
         "max_per_call_usd": _amt(get("max_per_call_usd")),
         "daily_limit_usd": _amt(get("daily_limit_usd")),
         "per_endpoint": per_endpoint,
         "window_seconds": get("window_seconds", 86_400),
     }
+    # Limits added after payment-decision@1 shipped enter the snapshot only when
+    # they are in force. A policy that never set them hashes exactly as before,
+    # so every previously issued record and conformance vector still verifies;
+    # a policy that does set them gets a distinct predicate identity, which is
+    # the point of the hash.
+    quote_ratio = get("max_quote_increase_ratio")
+    if quote_ratio is not None:
+        snap["max_quote_increase_ratio"] = _amt(quote_ratio)
+    return snap
 
 
 def fingerprint_hash(fingerprint: str) -> str:

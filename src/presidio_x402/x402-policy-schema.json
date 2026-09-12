@@ -24,6 +24,11 @@
         "minimum": 0
       }
     },
+    "max_quote_increase_ratio": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Block a quote exceeding the route's reference quote (first observed, moves down only) by more than this fraction, e.g. 0.5 blocks above 1.5x. Route = redacted URL without query/fragment."
+    },
     "window_seconds": {
       "type": "integer",
       "minimum": 1,

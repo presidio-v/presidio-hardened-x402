@@ -59,6 +59,19 @@ class PolicyConfig:
     per_endpoint: dict[str, float] = field(default_factory=dict)
     """Per-endpoint-prefix daily limits: ``{url_prefix: limit_usd}``."""
 
+    max_quote_increase_ratio: float | None = None
+    """Block a quote that exceeds the *reference quote* for the same route by
+    more than this fraction (``0.5`` → block above 1.5× the reference).
+
+    The reference is the first quote observed for a route and moves **down**
+    freely (a cheaper quote becomes the new reference) but never up on its own:
+    an increase within the ratio is paid, not adopted. Without that ratchet
+    stop, a server could raise its price by just under the ratio on every call
+    and walk the reference to any level. A route is the redacted URL without
+    query or fragment, so per-user identifiers in query strings or path
+    segments collapse onto one route. ``None`` (default) disables the check.
+    """
+
     window_seconds: int = 86_400
     """Time window for aggregate limits (default: 24 hours)."""
 
@@ -72,6 +85,7 @@ class PolicyConfig:
             max_per_call_usd=data.get("max_per_call_usd"),
             daily_limit_usd=data.get("daily_limit_usd"),
             per_endpoint=data.get("per_endpoint", {}),
+            max_quote_increase_ratio=data.get("max_quote_increase_ratio"),
             window_seconds=data.get("window_seconds", 86_400),
             agent_id=data.get("agent_id"),
         )
@@ -92,6 +106,20 @@ def _validate_config(config: PolicyConfig) -> None:
         _decimal_usd(config.daily_limit_usd, "daily_limit_usd")
     for prefix, limit in config.per_endpoint.items():
         _decimal_usd(limit, f"per_endpoint[{prefix!r}]")
+    if config.max_quote_increase_ratio is not None:
+        _decimal_usd(config.max_quote_increase_ratio, "max_quote_increase_ratio")
+
+
+def quote_route(resource_url: str) -> str:
+    """Route key for quote-drift tracking: scheme + host + path, no query/fragment.
+
+    Called with the *post-redaction* URL on purpose. Redaction rewrites
+    ``/user/alice@example.com/profile`` to ``/user/<EMAIL_ADDRESS>/profile``,
+    so distinct per-user URLs of one priced route share a reference quote —
+    and the key that lands in log and exception text is already PII-free.
+    """
+    u = urlsplit(resource_url)
+    return f"{u.scheme}://{u.netloc}{u.path}"
 
 
 class _SpendLedger:
@@ -182,6 +210,9 @@ class PolicyEngine:
         self.config = config
         self._global_ledger = _SpendLedger(config.window_seconds)
         self._endpoint_ledgers: dict[str, _SpendLedger] = {}
+        # Reference quote per route (quote-drift baseline). Written only under
+        # _check_lock; in-process like the spend ledgers.
+        self._reference_quotes: dict[str, Decimal] = {}
         self._ledger_lock = threading.Lock()
         # Serialises the check+record phase to prevent TOCTOU races where two
         # concurrent callers both pass would_exceed() then both record, pushing
@@ -274,6 +305,7 @@ class PolicyEngine:
                     f"${self.config.max_per_call_usd:.4f}",
                     amount_usd=amount_usd,
                     limit_usd=self.config.max_per_call_usd,
+                    reason="per_call",
                 )
 
             # 2. Global aggregate limit
@@ -296,6 +328,7 @@ class PolicyEngine:
                     f"over global limit of ${self.config.daily_limit_usd:.2f}",
                     amount_usd=amount_usd,
                     limit_usd=self.config.daily_limit_usd,
+                    reason="daily_limit",
                 )
 
             # 3. Per-endpoint limit
@@ -318,14 +351,62 @@ class PolicyEngine:
                         f"(${current:.4f} + ${amount_usd:.4f}) over limit of ${ep_limit:.2f}",
                         amount_usd=amount_usd,
                         limit_usd=ep_limit,
+                        reason="per_endpoint",
                     )
+
+            # 4. Quote drift against the route's reference quote
+            route = self._check_quote_drift(resource_url, amount_dec, amount_usd)
 
             # All checks passed — record atomically within the same lock acquisition
             self._global_ledger.record(amount_dec)
             if prefix is not None:
                 self._get_endpoint_ledger(prefix).record(amount_dec)
+            if route is not None:
+                self._adopt_reference_quote(route, amount_dec)
 
         logger.debug("Policy check passed: %.4f USD for %s", amount_usd, resource_url)
+
+    def _check_quote_drift(
+        self, resource_url: str, amount_dec: Decimal, amount_usd: float
+    ) -> str | None:
+        """Raise if *amount_dec* exceeds the route's reference quote by more than
+        ``max_quote_increase_ratio``. Returns the route key when the check is
+        configured (so the caller can adopt the quote), else ``None``.
+        Caller holds ``_check_lock``.
+        """
+        if self.config.max_quote_increase_ratio is None:
+            return None
+        ratio_dec = _decimal_usd(self.config.max_quote_increase_ratio, "max_quote_increase_ratio")
+        route = quote_route(resource_url)
+        reference = self._reference_quotes.get(route)
+        if reference is None:
+            return route
+        ceiling = reference * (Decimal(1) + ratio_dec)
+        if amount_dec > ceiling:
+            logger.warning(
+                "Policy violation: quote %.4f USD for %s exceeds reference %.4f USD "
+                "by more than %s",
+                amount_usd,
+                route,
+                reference,
+                self.config.max_quote_increase_ratio,
+            )
+            raise PolicyViolationError(
+                f"Quote of ${amount_usd:.4f} for {route!r} exceeds the reference quote of "
+                f"${reference:.4f} by more than {self.config.max_quote_increase_ratio} "
+                f"(ceiling ${ceiling:.4f})",
+                amount_usd=amount_usd,
+                limit_usd=float(ceiling),
+                reason="quote_drift",
+            )
+        return route
+
+    def _adopt_reference_quote(self, route: str, amount_dec: Decimal) -> None:
+        """First sight, or cheaper: adopt. Dearer-within-ratio: pay, don't adopt.
+        Caller holds ``_check_lock``."""
+        reference = self._reference_quotes.get(route)
+        if reference is None or amount_dec < reference:
+            self._reference_quotes[route] = amount_dec
 
     def refund(self, *, resource_url: str, amount_usd: float) -> None:
         """Reverse a spend recorded by :meth:`check_and_record`.
@@ -343,9 +424,23 @@ class PolicyEngine:
             if prefix is not None:
                 self._get_endpoint_ledger(prefix).release(amount_dec)
 
-    def reset(self) -> None:
-        """Reset all spend ledgers (useful in tests)."""
+    def reference_quote(self, resource_url: str) -> float | None:
+        """The reference quote (USD) currently held for *resource_url*'s route."""
         with self._check_lock:
+            ref = self._reference_quotes.get(quote_route(resource_url))
+        return None if ref is None else float(ref)
+
+    def set_reference_quote(self, resource_url: str, amount_usd: float) -> None:
+        """Explicitly (re)base the reference quote for a route — the operator
+        accepting a price increase larger than the configured ratio."""
+        amount_dec = _decimal_usd(amount_usd, "amount_usd")
+        with self._check_lock:
+            self._reference_quotes[quote_route(resource_url)] = amount_dec
+
+    def reset(self) -> None:
+        """Reset all spend ledgers and reference quotes (useful in tests)."""
+        with self._check_lock:
+            self._reference_quotes.clear()
             self._global_ledger.reset()
             with self._ledger_lock:
                 for ledger in self._endpoint_ledgers.values():

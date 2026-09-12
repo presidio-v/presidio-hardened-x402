@@ -13,6 +13,20 @@ class X402PaymentError(X402Error):
     """Raised when the upstream payment signing or network call fails."""
 
 
+class WalletRotationError(X402PaymentError):
+    """Raised under ``wallet_pinning="block"`` when a 402 challenge names a
+    ``pay_to`` different from the one first observed for its origin + network.
+
+    Subclasses :class:`X402PaymentError` so existing handlers keep catching it;
+    ``pinned`` and ``observed`` carry the two addresses (lower-cased).
+    """
+
+    def __init__(self, message: str, *, pinned: str, observed: str) -> None:
+        super().__init__(message)
+        self.pinned = pinned
+        self.observed = observed
+
+
 class ConfigurationError(X402Error):
     """Raised at import/startup when a hard security gate is unmet.
 
@@ -31,12 +45,26 @@ class PIIBlockedError(X402Error):
 
 
 class PolicyViolationError(X402Error):
-    """Raised when a payment would violate the configured spending policy."""
+    """Raised when a payment would violate the configured spending policy.
 
-    def __init__(self, message: str, *, amount_usd: float, limit_usd: float) -> None:
+    ``reason`` names the limit that fired — ``"per_call"``, ``"daily_limit"``,
+    ``"per_endpoint"`` or ``"quote_drift"`` — and is what the metrics collector
+    labels the violation with. Defaults to ``"limit_exceeded"`` for callers that
+    construct the error themselves.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        amount_usd: float,
+        limit_usd: float,
+        reason: str = "limit_exceeded",
+    ) -> None:
         super().__init__(message)
         self.amount_usd = amount_usd
         self.limit_usd = limit_usd
+        self.reason = reason
 
 
 class ReplayDetectedError(X402Error):
