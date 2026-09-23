@@ -38,6 +38,14 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   constant `"limit_exceeded"`.
 
 ### Security
+- **`anyio` floor 4.14.2 (CVE-2026-63374, CVE-2026-64847).** `anyio` is a
+  runtime transitive of the core `httpx` dependency; the lock shipped 4.13.0 and
+  the two advisories published after the last `main` build, so the
+  `Dependency Security Audit` gate went red on an untouched lockfile (`main`
+  run 313 and every open PR). Re-locked with `uv lock --upgrade-package anyio`
+  (4.14.2 on 3.10, 4.15.1 on 3.11+) and declared `anyio>=4.14.2` in
+  `pyproject.toml` on the `idna` precedent, so a fresh downstream resolve cannot
+  regress below the fix line either.
 - **`uv.lock`: `pip` 26.1.2 → 26.2.1 (PYSEC-2026-3721).** `pip` is not a
   dependency of this package; it reaches the locked audit environment as a
   transitive of `pip-audit`'s `pip-api`, which is exactly the environment the
