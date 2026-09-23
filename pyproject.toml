@@ -43,6 +43,13 @@ dependencies = [
     # floor is defense-in-depth so a fresh resolve cannot regress below the fix.
     # Family audit rec R3 (Grok 4.3, 2026-06-06); audit 2026-06-07.
     "idna>=3.15",
+    # Transitive of httpx; pin minimum to the CVE-2026-63374 / CVE-2026-64847 fix
+    # line (anyio < 4.14.2 vulnerable — the lock shipped 4.13.0 before the
+    # 2026-09-22 cycle). Explicit floor is defense-in-depth so a fresh resolve
+    # cannot regress below the fix; 4.14.2 is the last line that still ships a
+    # 3.10 wheel, so the floor is satisfiable on every supported interpreter.
+    # Audit 2026-09-23.
+    "anyio>=4.14.2",
     # Transitive of presidio-analyzer (-> requests -> urllib3); pin minimum to
     # evict PYSEC-2026-141 and PYSEC-2026-142 (urllib3 < 2.7.0 vulnerable).
     # Explicit floor is defense-in-depth so a fresh resolve cannot regress below
