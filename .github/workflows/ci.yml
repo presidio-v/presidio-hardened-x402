@@ -106,7 +106,7 @@ jobs:
       # inline on all four interpreters and fail the job on their own.
       - name: Upload coverage
         if: env.CODECOV_TOKEN != ''
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           # `file` (singular) is the v4 input name; v5+ ignores it silently, which
           # is why the logged CLI invocation carried no --file at all.
