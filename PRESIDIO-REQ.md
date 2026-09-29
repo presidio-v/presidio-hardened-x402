@@ -602,6 +602,35 @@ paper (CJ-EVAL Phase A2 + B2).
 - Measures the *released* grant@1 artifact end-to-end; **ZK-tier numbers remain literature-cited**
   (CJ-EVAL Phase C). See `plan/e2-capability-enforcer-design.md`.
 
+## v0.12.0 Requirements (pay-to pinning + quote drift) — **delivered 2026-09-29**
+
+Two **opt-in, default-off** controls for what a static allowlist and a cached quote cannot see.
+Motivated by the MCRI #001 measurement of the live catalogues (probe402, 21–31 Aug 2026): 33 of
+6,835 quoted endpoints changed payment address between observations and 73 changed price.
+
+### Delivered
+
+- [x] **Pay-to pinning** (`wallet_pinning="warn" | "block"`). The first `pay_to` observed per
+  (origin, network) is pinned (`WALLET_PINNED`); a different address later emits `WALLET_ROTATED`
+  and, under `"block"`, raises `WalletRotationError` before signing. Pins never advance on their
+  own; an operator accepts a rotation with `client.wallet_pins.pin(...)`. Keyed off the
+  pre-redaction origin (F-02). Origins with an explicit `trusted_wallets` entry are skipped.
+  `WalletPinStore` is in-memory or Redis via `redis_url`. Implemented in
+  `src/presidio_x402/wallet_pin.py`.
+- [x] **Quote-drift limit** (`PolicyConfig.max_quote_increase_ratio`). Blocks a quote above the
+  route's reference quote by more than the ratio. The reference moves down freely and never up on
+  its own, which closes the sub-ratio price walk. Present in the policy JSON schema.
+- [x] **Default-off invariant.** With both unset, no pin or drift code runs and `decision_ref`
+  hashes are unchanged, so every issued `payment-decision@1` record and conformance vector
+  verifies as before.
+- [x] **Dependency floors:** `cryptography>=50.0.0` (CVE-2026-69247), `anyio>=4.14.2`
+  (CVE-2026-63374, CVE-2026-64847).
+
+### Bounds
+
+- Trust-on-first-use: the first observed recipient is trusted. A poisoned first contact is the
+  allowlist's job, not the pin's.
+
 ---
 
 ## Security Model
