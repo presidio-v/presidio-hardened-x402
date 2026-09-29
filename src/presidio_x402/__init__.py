@@ -109,7 +109,7 @@ from .treasury_binding import (
 )
 from .wallet_pin import WalletPinStore
 
-__version__ = "0.10.0"
+__version__ = "0.12.0"
 __all__ = [
     # Primary public API
     "HardenedX402Client",

@@ -58,3 +58,9 @@ def test_import_audit_fails_closed_on_unexpected_metadata_error(monkeypatch, cap
         presidio_x402._on_import_audit()
 
     assert any("Dependency audit skipped" in record.getMessage() for record in caplog.records)
+
+
+def test_version_constant_matches_installed_distribution():
+    # __version__ sat at 0.10.0 through three releases; the import-time audit
+    # log line reports it, so a stale constant misreports the running build.
+    assert presidio_x402.__version__ == importlib.metadata.version("presidio-hardened-x402")

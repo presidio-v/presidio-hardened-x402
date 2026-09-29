@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-09-29
+
 ### Added
 - **Pay-to pinning (`wallet_pinning="warn" | "block"`).** Trust-on-first-use
   recipient tracking for the origins `trusted_wallets` does not enumerate. The
@@ -38,6 +40,18 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   constant `"limit_exceeded"`.
 
 ### Security
+- **`cryptography` floor raised to 50.0.0 (CVE-2026-69247 / GHSA-g6cj-pr64-35w5).**
+  49.0.0 and earlier expose a Bleichenbacher oracle in PKCS#7 `EnvelopedData`
+  decryption through distinguishable errors and timing; 50.0.0 carries the fix.
+  This package uses `cryptography` only for Ed25519 sign/verify in `mica.py` and
+  `capability.py`, so no code path here reaches the affected PKCS#7 decryption —
+  but the floor is what stops a fresh resolve, or a downstream consumer that
+  never sees our lockfile, from landing on a vulnerable build. Bumped in
+  `pyproject.toml` (core + `[evidence]` extra), `_KNOWN_VULNERABLE`, and
+  `uv.lock` (49.0.0 → 50.0.0), which is what the `pip-audit` CI gate resolves
+  against.
+  Merged as 0.11.3 on 2026-08-04 but never tagged or published; it first
+  ships here.
 - **`anyio` floor 4.14.2 (CVE-2026-63374, CVE-2026-64847).** `anyio` is a
   runtime transitive of the core `httpx` dependency; the lock shipped 4.13.0 and
   the two advisories published after the last `main` build, so the
@@ -61,19 +75,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `ScreeningPipeline.apply` cyclomatic pin lowered 30 → 26: the trusted-wallet
   allowlist moved into `_screen_wallet` together with the new pin stage.
 
-## [0.11.3] — 2026-08-04
-
-### Security
-- **`cryptography` floor raised to 50.0.0 (CVE-2026-69247 / GHSA-g6cj-pr64-35w5).**
-  49.0.0 and earlier expose a Bleichenbacher oracle in PKCS#7 `EnvelopedData`
-  decryption through distinguishable errors and timing; 50.0.0 carries the fix.
-  This package uses `cryptography` only for Ed25519 sign/verify in `mica.py` and
-  `capability.py`, so no code path here reaches the affected PKCS#7 decryption —
-  but the floor is what stops a fresh resolve, or a downstream consumer that
-  never sees our lockfile, from landing on a vulnerable build. Bumped in
-  `pyproject.toml` (core + `[evidence]` extra), `_KNOWN_VULNERABLE`, and
-  `uv.lock` (49.0.0 → 50.0.0), which is what the `pip-audit` CI gate resolves
-  against.
+### Fixed
+- `presidio_x402.__version__` reported `0.10.0` since v0.10.0 and is now
+  kept equal to the installed distribution version, which a new test pins.
 
 ## [0.11.2] — 2026-08-03
 

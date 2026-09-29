@@ -4,9 +4,10 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.11.x  | ✓ (latest release) |
+| 0.12.x  | ✓ (latest release) |
+| 0.11.x  | ✓ |
 | 0.10.x  | ✓ |
-| 0.9.x   | ✓ |
+| 0.9.x   | security fixes only |
 | 0.8.x   | security fixes only |
 | 0.7.x and older | security fixes only |
 
