@@ -6,6 +6,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+- **`urllib3` floor 2.8.0 (CVE-2026-97688, GHSA-gh4c-6fx4-qh6g; Dependabot
+  #35).** urllib3 2.6.2 through 2.7.0 can spin forever when a streamed, chunked
+  Deflate response carries bytes past the end of the compressed stream. The
+  package reaches this library only as a transitive of `presidio-analyzer`
+  (via `requests`); nothing here imports it, so exposure is a hang in a caller
+  that streams through `requests`, not a data leak. Re-locked with
+  `uv lock --upgrade-package urllib3` (2.7.0 → 2.8.0, no other package moved)
+  and raised the declared floor from `>=2.7.0`, so a fresh downstream resolve
+  cannot regress below the fix line either.
+
 ## [0.12.0] — 2026-09-29
 
 ### Added
