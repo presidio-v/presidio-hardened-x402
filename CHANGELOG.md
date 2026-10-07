@@ -7,15 +7,25 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Security
-- **`urllib3` floor 2.8.0 (CVE-2026-97688, GHSA-gh4c-6fx4-qh6g; Dependabot
-  #35).** urllib3 2.6.2 through 2.7.0 can spin forever when a streamed, chunked
-  Deflate response carries bytes past the end of the compressed stream. The
-  package reaches this library only as a transitive of `presidio-analyzer`
-  (via `requests`); nothing here imports it, so exposure is a hang in a caller
-  that streams through `requests`, not a data leak. Re-locked with
-  `uv lock --upgrade-package urllib3` (2.7.0 → 2.8.0, no other package moved)
-  and raised the declared floor from `>=2.7.0`, so a fresh downstream resolve
-  cannot regress below the fix line either.
+- **`urllib3` floor 2.8.0 (CVE-2026-97687, CVE-2026-97688, CVE-2026-97689;
+  Dependabot #35).** urllib3 2.7.0 carries three advisories fixed in 2.8.0:
+  - CVE-2026-97687 / GHSA-8988-9cw3-xx77 (high, 1.26.0–2.7.0): the TLS settings
+    for an HTTPS proxy (`proxy_ssl_context`, `proxy_assert_hostname`,
+    `proxy_assert_fingerprint`) can be ignored or overridden by the target
+    server's, so the proxy hop may be verified under the wrong policy.
+  - CVE-2026-97688 / GHSA-gh4c-6fx4-qh6g (medium, 2.6.2–2.7.0): a streamed,
+    chunked Deflate response with bytes past the end of the compressed stream
+    spins forever.
+  - CVE-2026-97689 / GHSA-vxq7-64xx-v4gw (high, 1.10.3–2.7.0): a chunked
+    response whose chunk-size line never ends is buffered into memory without
+    bound.
+
+  The package reaches this library only as a transitive of `presidio-analyzer`
+  (via `requests`); nothing here imports it, so the exposure sits in a caller
+  that uses `requests` through an HTTPS proxy or streams responses with it.
+  Re-locked with `uv lock --upgrade-package urllib3` (2.7.0 → 2.8.0, no other
+  package moved) and raised the declared floor from `>=2.7.0`, so a fresh
+  downstream resolve cannot regress below the fix line either.
 
 ## [0.12.0] — 2026-09-29
 
