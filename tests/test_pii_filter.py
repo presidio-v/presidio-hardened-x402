@@ -518,23 +518,23 @@ class TestPercentEncodingBypass:
         """Documents the bound. Unbounded decoding would let a short hostile
         input amplify inside the normaliser; two rounds is the accepted trade.
         """
-        from presidio_x402.pii_filter import _MAX_PERCENT_DECODE_ROUNDS
+        from presidio_x402.pii_filter import _MAX_DECODE_ROUNDS
 
-        assert _MAX_PERCENT_DECODE_ROUNDS == 2
+        assert _MAX_DECODE_ROUNDS == 2
         _, entities = self.filt.scan_and_redact("https://x.test/u/alice%252540example.com")
         assert not any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
 
     def test_decoding_terminates_on_escape_free_input(self):
-        from presidio_x402.pii_filter import _percent_decode
+        from presidio_x402.pii_filter import _decode_for_matching
 
-        assert _percent_decode("https://x.test/plain/path") is None
-        assert _percent_decode("") is None
+        assert _decode_for_matching("https://x.test/plain/path") is None
+        assert _decode_for_matching("") is None
 
     # ------------------------------------------------------------------
     # Index map
     # ------------------------------------------------------------------
     def test_index_map_is_monotone_and_bounded(self):
-        from presidio_x402.pii_filter import _percent_decode
+        from presidio_x402.pii_filter import _decode_for_matching
 
         for text in (
             "a%40b",
@@ -544,7 +544,7 @@ class TestPercentEncodingBypass:
             "%zz%40x",
             "%E2%82%AC100 to alice%40example.com",
         ):
-            decoded = _percent_decode(text)
+            decoded = _decode_for_matching(text)
             assert decoded is not None, text
             body, index_map = decoded
             assert len(index_map) == len(body) + 1
@@ -563,9 +563,9 @@ class TestPercentEncodingBypass:
         assert redacted == "https://x.test/caf%C3%A9/<REDACTED>"
 
     def test_invalid_utf8_escapes_fall_back_without_raising(self):
-        from presidio_x402.pii_filter import _percent_decode
+        from presidio_x402.pii_filter import _decode_for_matching
 
-        decoded = _percent_decode("%FF%FEalice%40example.com")
+        decoded = _decode_for_matching("%FF%FEalice%40example.com")
         assert decoded is not None
         assert "@" in decoded[0]
 
@@ -685,3 +685,76 @@ class TestPercentEncodingBypass:
 
         _, entities = filt.scan_and_redact("https://x.test/a%20b")
         assert len(entities) == 1
+
+
+class TestCharRefBypass:
+    """HTML character references must not carry PII past the filter.
+
+    Same contract as percent-encoding: decode for matching only, map spans back,
+    return the caller's own bytes. Found in backlog validation 2026-10-09 (F384).
+    """
+
+    def setup_method(self):
+        self.filt = PIIFilter(mode="regex")
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "mail alice&#64;example.com",
+            "mail alice&#x40;example.com",
+            "mail alice&#X40;example.com",
+            "mail alice&commat;example.com",
+            "https://x.test/u/alice&#64;example&#46;com/pay",
+            "https://x.test/u/alice&amp;#64;example.com",  # double-encoded
+            "https://x.test/u/alice%26%2364%3Bexample.com",  # percent-encoded reference
+        ],
+    )
+    def test_encoded_address_is_detected_and_redacted(self, text):
+        redacted, entities = self.filt.scan_and_redact(text)
+        assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
+        assert "alice" not in redacted
+
+    def test_redaction_covers_the_reference_in_the_original(self):
+        redacted, entities = self.filt.scan_and_redact("u=alice&#64;example.com&x=1")
+        assert redacted == "u=<REDACTED>&x=1"
+        (email,) = [e for e in entities if e.entity_type == "EMAIL_ADDRESS"]
+        assert email.original_text == "alice&#64;example.com"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "a=1&amp;b=2",
+            "Tom &amp; Jerry",
+            "price &lt; 5 &gt; 3",
+            "x&#0;y",  # NUL is not a scalar value
+            "x&#xD800;y",  # surrogate
+            "x&#1114112;y",  # above U+10FFFF
+            "x&notarealentity;y",
+            "x&#64y",  # unterminated
+        ],
+    )
+    def test_benign_or_invalid_references_pass_through_unchanged(self, text):
+        redacted, entities = self.filt.scan_and_redact(text)
+        assert redacted == text
+        assert entities == []
+
+    def test_triple_encoding_is_beyond_the_cap(self):
+        _, entities = self.filt.scan_and_redact("alice&amp;amp;#64;example.com")
+        assert not any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
+
+    def test_index_map_is_monotone_and_bounded(self):
+        from presidio_x402.pii_filter import _decode_for_matching
+
+        text = "&lt;alice&#64;ex%41mple.com&gt;&amp;#64;"
+        decoded = _decode_for_matching(text)
+        assert decoded is not None
+        decoded_text, index_map = decoded
+        assert len(index_map) == len(decoded_text) + 1
+        assert index_map[-1] == len(text)
+        assert all(a <= b for a, b in zip(index_map, index_map[1:], strict=False))
+        assert all(0 <= i <= len(text) for i in index_map)
+
+    def test_reference_free_input_skips_decoding(self):
+        from presidio_x402.pii_filter import _decode_for_matching
+
+        assert _decode_for_matching("https://x.test/plain/path?a=1&b=2") is None

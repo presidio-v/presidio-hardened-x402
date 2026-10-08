@@ -20,6 +20,7 @@ Usage::
 
 from __future__ import annotations
 
+import html.entities
 import logging
 import re
 import unicodedata
@@ -90,18 +91,26 @@ _HYPHEN_FOLD = str.maketrans(
 )
 
 
-# Maximum number of percent-decoding rounds applied before matching. One round
-# recovers ordinary escapes (``%40`` → ``@``); two recover double-encoded ones
-# (``%2540`` → ``%40`` → ``@``). The cap is hard rather than "decode until
-# stable" — unbounded iteration would turn the decoder into an amplification
-# vector on hostile input.
-_MAX_PERCENT_DECODE_ROUNDS = 2
+# Maximum number of decoding rounds applied before matching. Each round decodes
+# percent-escapes, then HTML character references. One round recovers ordinary
+# escapes (``%40`` or ``&#64;`` → ``@``); two recover double-encoded ones
+# (``%2540`` → ``%40`` → ``@``, ``&amp;#64;`` → ``&#64;`` → ``@``). The cap is
+# hard rather than "decode until stable" — unbounded iteration would turn the
+# decoder into an amplification vector on hostile input.
+_MAX_DECODE_ROUNDS = 2
 
 # A well-formed percent escape. Used as a cheap presence test so input without
 # escapes — the common case — skips the decoding pass entirely.
 _PERCENT_ESCAPE = re.compile(r"%[0-9A-Fa-f]{2}")
 
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+
+# An HTML character reference: decimal (``&#64;``), hex (``&#x40;``) or named
+# (``&commat;``). Metadata that passed through an HTML or XML layer carries these,
+# and ``alice&#64;example.com`` reaches the email pattern in no form it can match.
+# Only terminated references are decoded; a bare ``&`` or an unknown name is
+# copied through verbatim.
+_CHAR_REF = re.compile(r"&(?:#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});")
 
 
 def _normalise(text: str) -> str:
@@ -110,11 +119,11 @@ def _normalise(text: str) -> str:
     Steps: NFKC → strip invisible codepoints → fold Cyrillic homoglyphs and
     hyphen-like characters to ASCII equivalents.
 
-    Percent-decoding is deliberately *not* one of these steps: the result of
-    ``_normalise`` is returned to the caller, and decoding escapes there would
-    rewrite benign ones and change URL semantics (``%2F`` is not ``/``). It is
-    handled separately by :func:`_percent_decode`, whose output is used for
-    matching only.
+    Percent- and character-reference decoding are deliberately *not* among these
+    steps: the result of ``_normalise`` is returned to the caller, and decoding
+    there would rewrite benign escapes and change URL semantics (``%2F`` is not
+    ``/``, ``&amp;`` is not ``&`` in markup). Both are handled separately by
+    :func:`_decode_for_matching`, whose output is used for matching only.
     """
     text = unicodedata.normalize("NFKC", text)
     text = "".join(c for c in text if ord(c) not in _INVISIBLE_CODEPOINTS)
@@ -179,27 +188,81 @@ def _decode_percent_once(text: str) -> tuple[str, list[int]]:
     return "".join(out), index_map
 
 
-def _percent_decode(text: str) -> tuple[str, list[int]] | None:
-    """Percent-decode *text* for matching, with a span map back to *text*.
+def _char_ref_value(ref: str) -> str | None:
+    """Return the text a character reference such as ``&#64;`` stands for.
 
-    Returns ``None`` when *text* carries no well-formed escape, or when decoding
+    ``None`` for an unknown name or a codepoint that is not a valid scalar value
+    (zero, a surrogate, or above U+10FFFF); the caller then keeps the reference.
+    """
+    body = ref[1:-1]
+    if body.startswith(("#x", "#X")):
+        codepoint = int(body[2:], 16)
+    elif body.startswith("#"):
+        codepoint = int(body[1:])
+    else:
+        return html.entities.html5.get(body + ";")
+    if codepoint == 0 or codepoint > 0x10FFFF or 0xD800 <= codepoint <= 0xDFFF:
+        return None
+    return chr(codepoint)
+
+
+def _decode_char_refs_once(text: str) -> tuple[str, list[int]]:
+    """Decode HTML character references once, with the same index map as
+    :func:`_decode_percent_once`.
+
+    Every character a reference expands to maps to the reference's ``&``, so a
+    match that covers the decoded character covers the whole reference in *text*.
+    """
+    out: list[str] = []
+    index_map: list[int] = []
+    pos = 0
+    for m in _CHAR_REF.finditer(text):
+        value = _char_ref_value(m.group(0))
+        if value is None:
+            continue
+        for i in range(pos, m.start()):
+            out.append(text[i])
+            index_map.append(i)
+        for ch in value:
+            out.append(ch)
+            index_map.append(m.start())
+        pos = m.end()
+    for i in range(pos, len(text)):
+        out.append(text[i])
+        index_map.append(i)
+    index_map.append(len(text))
+    return "".join(out), index_map
+
+
+def _has_encoding(text: str) -> bool:
+    return bool(_PERCENT_ESCAPE.search(text) or _CHAR_REF.search(text))
+
+
+def _decode_for_matching(text: str) -> tuple[str, list[int]] | None:
+    """Decode percent-escapes and HTML character references in *text* for
+    matching, with a span map back to *text*.
+
+    Returns ``None`` when *text* carries neither encoding, or when decoding
     leaves it unchanged, so the caller can skip the second scan entirely.
     Otherwise returns ``(decoded, index_map)`` — see :func:`_decode_percent_once`
-    for the map's meaning.
+    for the map's meaning. Each round runs the percent pass and then the
+    character-reference pass, so a percent-encoded reference (``%26%2364%3B``)
+    is recovered in one round.
     """
-    if not _PERCENT_ESCAPE.search(text):
+    if not _has_encoding(text):
         return None
 
     decoded = text
     index_map = list(range(len(text) + 1))
-    for _ in range(_MAX_PERCENT_DECODE_ROUNDS):
-        candidate, step = _decode_percent_once(decoded)
-        if candidate == decoded:
-            break
-        decoded = candidate
-        # step maps new offsets to the previous round's; compose back to *text*.
-        index_map = [index_map[offset] for offset in step]
-        if not _PERCENT_ESCAPE.search(decoded):
+    for _ in range(_MAX_DECODE_ROUNDS):
+        before = decoded
+        for decode_once in (_decode_percent_once, _decode_char_refs_once):
+            candidate, step = decode_once(decoded)
+            if candidate != decoded:
+                decoded = candidate
+                # step maps new offsets to the previous pass's; compose back to *text*.
+                index_map = [index_map[offset] for offset in step]
+        if decoded == before or not _has_encoding(decoded):
             break
 
     if decoded == text:
@@ -453,12 +516,12 @@ class PIIFilter:
         # normalised form so downstream callers see a clean, canonical string.
         text = _normalise(text)
 
-        # Percent-encoding is the other evasion path, and the likely one for a
-        # resource URL: `alice%40example.com` never reaches the email pattern in
-        # a form that pattern can match. Match against a bounded decode, then map
-        # the spans back, so redaction still happens on — and returns — the
-        # caller's own bytes.
-        decoded = _percent_decode(text)
+        # Encoding is the other evasion path: `alice%40example.com` (the likely
+        # one for a resource URL) and `alice&#64;example.com` (metadata that
+        # passed through an HTML layer) never reach the email pattern in a form
+        # it can match. Match against a bounded decode, then map the spans back,
+        # so redaction still happens on — and returns — the caller's own bytes.
+        decoded = _decode_for_matching(text)
 
         if self.mode == "nlp" and self._analyzer is not None:
             return self._scan_nlp(text, decoded)

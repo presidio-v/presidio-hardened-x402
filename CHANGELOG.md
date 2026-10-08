@@ -7,6 +7,19 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Security
+- **HTML character references no longer carry PII past the filter.** The match
+  pass decoded percent-escapes (v0.11.1) but not character references, so
+  `alice&#64;example.com`, `alice&#x40;example.com` and `alice&commat;example.com`
+  passed through unredacted — metadata that went through an HTML or XML layer
+  carries exactly these. `scan_and_redact` now decodes decimal, hex and named
+  references alongside percent-escapes, in the same bounded two-round pass, so a
+  percent-encoded reference (`%26%2364%3B`) and a double-encoded one
+  (`&amp;#64;`) are caught too. As before, decoding is for **matching only**:
+  spans map back to the caller's bytes, benign references (`&amp;`, `&lt;`) are
+  returned unchanged, and invalid or unterminated ones are copied through
+  verbatim. Bare digit runs (`4155550182`) and `[at]`/`[dot]` spellings remain
+  out of scope for regex mode: matching them would redact ordinary numbers and
+  words. Found while validating the audit backlog (F384).
 - **`urllib3` floor 2.8.0 (CVE-2026-97687, CVE-2026-97688, CVE-2026-97689;
   Dependabot #35).** urllib3 2.7.0 carries three advisories fixed in 2.8.0:
   - CVE-2026-97687 / GHSA-8988-9cw3-xx77 (high, 1.26.0–2.7.0): the TLS settings
