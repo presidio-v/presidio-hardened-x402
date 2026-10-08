@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.1] — 2026-10-09
+
 ### Security
 - **HTML character references no longer carry PII past the filter.** The match
   pass decoded percent-escapes (v0.11.1) but not character references, so
