@@ -131,7 +131,7 @@ jobs:
       - name: Enforce p99 latency SLO
         run: python -m experiments.check_latency_slo latency_results_ci.json --mode regex --max-p99-ms 50
       - name: Upload latency results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: latency-results
           path: latency_results_ci.json
@@ -151,7 +151,7 @@ jobs:
       - name: Generate SBOM
         run: cyclonedx-py environment --output-format JSON --output-file sbom.cdx.json
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom
           path: sbom.cdx.json
