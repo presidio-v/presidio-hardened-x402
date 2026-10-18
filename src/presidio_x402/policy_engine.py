@@ -294,11 +294,13 @@ class PolicyEngine:
             else:
                 max_per_call_dec = None
             if max_per_call_dec is not None and amount_dec > max_per_call_dec:
+                # Host only: callers should pass the post-redaction URL, but a caller
+                # that skips redaction must not get raw path or query PII into logs.
                 logger.warning(
-                    "Policy violation: per-call limit %.4f USD, requested %.4f USD for %s",
+                    "Policy violation: per-call limit %.4f USD, requested %.4f USD for host %s",
                     self.config.max_per_call_usd,
                     amount_usd,
-                    resource_url,
+                    urlsplit(resource_url).hostname or "?",
                 )
                 raise PolicyViolationError(
                     f"Payment of ${amount_usd:.4f} exceeds per-call limit of "

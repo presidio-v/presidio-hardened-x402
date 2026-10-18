@@ -53,6 +53,7 @@ from .capability_enforcer import CapabilityEnforcer, StageTiming
 from .compliance_report import ComplianceReport
 from .core import ScreeningPipeline
 from .decision_ref import (
+    NOT_EVALUATED,
     PAYMENT_DECISION_SCHEMA_ID,
     ControlResults,
     DecisionRefEmitter,
@@ -151,6 +152,7 @@ __all__ = [
     "verify_decision_ref",
     "f_controls",
     "PAYMENT_DECISION_SCHEMA_ID",
+    "NOT_EVALUATED",
     # Treasury binding (settlement-ref@1 + treasury-bundle@1) — v0.10.0
     "SettlementFacts",
     "export_bundle",

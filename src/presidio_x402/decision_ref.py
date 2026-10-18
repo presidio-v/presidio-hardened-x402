@@ -98,13 +98,19 @@ _HARD_FAIL = {
 #: MPA verdicts that force REFER (a quorum that has not answered is recoverable).
 _MPA_REFER = frozenset({"PENDING", "TIMEOUT"})
 
+#: Verdict for a control the emitter did not run. A partial gate (one that
+#: evaluates only some of the five controls, e.g. a single MCP tool) records it
+#: instead of a pass value, so the signed record never claims a check that did
+#: not happen. It never fails the decision; at least one control must be evaluated.
+NOT_EVALUATED = "NOT_EVALUATED"
+
 #: Permitted verdict enums per control (design note "Decision function f").
 _ALLOWED_VERDICTS = {
-    "pii": frozenset({"PII_NONE", "PII_WARNED", "PII_REDACTED", "PII_BLOCKED"}),
-    "trusted_wallet": frozenset({"TRUSTED", "UNTRUSTED"}),
-    "policy": frozenset({"ALLOW", "VIOLATION"}),
-    "replay": frozenset({"FRESH", "DUPLICATE"}),
-    "mpa": frozenset({"NOT_REQUIRED", "APPROVED", "PENDING", "TIMEOUT", "DENIED"}),
+    "pii": frozenset({"PII_NONE", "PII_WARNED", "PII_REDACTED", "PII_BLOCKED", NOT_EVALUATED}),
+    "trusted_wallet": frozenset({"TRUSTED", "UNTRUSTED", NOT_EVALUATED}),
+    "policy": frozenset({"ALLOW", "VIOLATION", NOT_EVALUATED}),
+    "replay": frozenset({"FRESH", "DUPLICATE", NOT_EVALUATED}),
+    "mpa": frozenset({"NOT_REQUIRED", "APPROVED", "PENDING", "TIMEOUT", "DENIED", NOT_EVALUATED}),
 }
 _HASH_REF_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 #: ADR-0002 P2 parent-hash rule (lowercase hex, mirroring ``content_hash``).
@@ -156,12 +162,10 @@ def _validate_hash_ref(value: object, field_name: str, *, required: bool) -> Non
         raise DecisionRefError(f"control field {field_name} must be a sha256:<64hex> hash")
 
 
-def _validated_control_verdicts(controls: Mapping[str, object]) -> dict[str, str]:
-    """Validate the signed controls block and return its verdicts.
-
-    Missing, unknown, or enum-invalid controls fail closed. The verifier must not
-    treat an omitted hard-fail control as implicit ALLOW.
-    """
+def _control_entries(
+    controls: Mapping[str, object],
+) -> tuple[dict[str, Mapping[str, object]], dict[str, str]]:
+    """Check the five control keys and their verdict enums; return entries + verdicts."""
     actual = set(controls)
     expected = set(CONTROL_PRECEDENCE)
     if actual != expected:
@@ -186,6 +190,18 @@ def _validated_control_verdicts(controls: Mapping[str, object]) -> dict[str, str
                 f"{sorted(_ALLOWED_VERDICTS[key])} (fail-closed)"
             )
         verdicts[key] = verdict
+    if all(v == NOT_EVALUATED for v in verdicts.values()):
+        raise DecisionRefError("controls block evaluates no control (fail-closed)")
+    return entries, verdicts
+
+
+def _validated_control_verdicts(controls: Mapping[str, object]) -> dict[str, str]:
+    """Validate the signed controls block and return its verdicts.
+
+    Missing, unknown, or enum-invalid controls fail closed. The verifier must not
+    treat an omitted hard-fail control as implicit ALLOW.
+    """
+    entries, verdicts = _control_entries(controls)
 
     pii = entries["pii"]
     entities = pii.get("entities")
@@ -199,7 +215,9 @@ def _validated_control_verdicts(controls: Mapping[str, object]) -> dict[str, str
 
     policy = entries["policy"]
     _validate_hash_ref(
-        policy.get("policy_snapshot_hash"), "policy.policy_snapshot_hash", required=True
+        policy.get("policy_snapshot_hash"),
+        "policy.policy_snapshot_hash",
+        required=verdicts["policy"] != NOT_EVALUATED,
     )
     _validate_hash_ref(policy.get("limit_hash"), "policy.limit_hash", required=False)
 
@@ -295,10 +313,10 @@ class ControlResults:
     def to_controls(self) -> dict[str, object]:
         """Render the ``controls{}`` block of the attested content (validated)."""
         self._validate()
-        policy: dict[str, object] = {
-            "verdict": self.policy_verdict,
-            "policy_snapshot_hash": self.policy_snapshot_hash,
-        }
+        policy: dict[str, object] = {"verdict": self.policy_verdict}
+        # A policy gate that did not run has no effective config to snapshot.
+        if self.policy_verdict != NOT_EVALUATED or self.policy_snapshot_hash:
+            policy["policy_snapshot_hash"] = self.policy_snapshot_hash
         if self.policy_limit_hash is not None:
             policy["limit_hash"] = self.policy_limit_hash
         replay: dict[str, object] = {"verdict": self.replay_verdict}

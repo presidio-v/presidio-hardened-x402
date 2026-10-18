@@ -40,7 +40,7 @@ KNOWN_HIGH = {
     "treasury_binding.py::verify_bundle": 19,
     "capability.py::_parse_caveats": 19,
     "mpa.py::MPAEngine.request_approval": 18,
-    "decision_ref.py::_validated_control_verdicts": 17,
+    "decision_ref.py::_validated_control_verdicts": 12,
     "capability.py::verify_chain": 17,
     "mpa.py::MPAEngine._request_single_approval": 16,
     "mica.py::verify_ref": 16,
