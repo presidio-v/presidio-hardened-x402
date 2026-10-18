@@ -218,7 +218,7 @@ on controlled data with known ground truth, then confirm the threat model on liv
 ## v0.4.0 Requirements (Screening API Launch) — Delivered
 
 **Re-scoped from the original "production hardening 2027" plan per
-[ADR-0006](../sdlc/adr/0006-v040-scope-redefinition.md).** v0.4.0 now pairs the
+ADR-0006.** v0.4.0 now pairs the
 library release with the hosted `screen.presidio-group.eu` screening service
 that acts as its authoritative remote backend. The 2027-hardening umbrella is
 redistributed across v0.5.0+; production-hardening items now land in v0.6.0

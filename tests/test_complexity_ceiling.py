@@ -2,13 +2,13 @@
 # Copyright (c) 2026 PRESIDIO Group
 """Cyclomatic-complexity ratchet for ``src/``.
 
-``software-audit/run_audit.py`` tracks max and mean complexity, but only against a
-baseline that is refreshed by hand — so a function can grow for months between
+The periodic software-quality audit tracks max and mean complexity, but only against
+a baseline that is refreshed by hand — so a function can grow for months between
 refreshes without anything failing. This pins the numbers in CI instead.
 
-The measurement deliberately mirrors ``software-audit/bench/bench_quality.py``
+The measurement deliberately mirrors that audit's complexity definition
 (``CC = 1 + branch-creating nodes``, same node set) so the two never disagree. If
-that file's definition changes, change this one with it.
+that definition changes, change this one with it.
 
 Two directions, both failures:
 

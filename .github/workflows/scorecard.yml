@@ -1,7 +1,7 @@
 name: Scorecard supply-chain security
 
 # OpenSSF Scorecard — weekly supply-chain posture check.
-# Target score >= 7.0 (see sdlc/supply-chain.md). Results are published to the
+# Target score >= 7.0. Results are published to the
 # repo Security tab (code scanning) and to the public OpenSSF results store; a
 # dip below target is triaged into the risk register.
 

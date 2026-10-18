@@ -3,8 +3,8 @@
 """Remote PII screening client — call the Presidio screening service instead of
 running the local :class:`~presidio_x402.pii_filter.PIIFilter`.
 
-The client speaks the v0.4.0 wire contract (see ``plan/v040-wire-contract.md``
-in the private repo). It is a drop-in replacement for
+The client speaks the v0.4.0 wire contract (transport rules below). It is a
+drop-in replacement for
 :meth:`PIIFilter.scan_payment_fields` — same signature and return shape — so the
 gateway can switch between local and remote screening without branching on the
 hot path.
