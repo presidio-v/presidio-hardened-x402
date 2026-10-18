@@ -6,6 +6,23 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **`NOT_EVALUATED` control verdict in `payment-decision@1`.** A gate that runs
+  only some of the five controls (a single MCP tool, for instance) had to record
+  pass values (`TRUSTED`, `FRESH`, `NOT_REQUIRED`) for the rest, so the signed
+  record claimed checks that never happened. Every control now also accepts
+  `NOT_EVALUATED`, exported as `presidio_x402.NOT_EVALUATED`. It never fails or
+  refers the decision, so `f(controls)` covers only what was checked; a record
+  that evaluates no control fails closed, and `policy.policy_snapshot_hash` is
+  required only when the policy control ran. Verifiers older than this release
+  reject records that use it (fail-closed), so upgrade verifiers first.
+
+### Security
+- **Per-call policy violations log the host, not the URL.** The warning carried
+  the full `resource_url`. The pipeline passes the post-redaction URL, but a
+  caller that calls `PolicyEngine.check_and_record` directly with a raw URL would
+  have put path and query PII into the log.
+
 ### Fixed
 - **`payment-decision@1` now carries a top-level `parents` array.** Lineage
   was only recorded under `provenance.parents` as labelled strings
