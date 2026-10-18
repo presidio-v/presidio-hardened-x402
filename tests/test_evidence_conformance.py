@@ -12,7 +12,7 @@ Patent posture: this vendors the *contract* (public-safe defensive-publication
 material per the evidence ADR-0001 Q4). It imports nothing from the private
 ``presidio-evidence`` package; ``mica.py`` is x402's own conforming implementation.
 The ``import presidio_evidence`` consolidation (Phase-B) is deferred to a
-post-non-provisional point release — see ``plan/v060-v070-scope.md``.
+post-non-provisional point release.
 """
 
 from __future__ import annotations

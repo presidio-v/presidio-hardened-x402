@@ -6,7 +6,8 @@ Turns spending *authority* from configuration (``PolicyConfig`` read from env or
 kwargs) into a *capability*: a signed, portable, attenuable, expiring grant that
 a verifier admits **locally, with no network round-trip**. This is Pillar I of
 the Computational Jurisprudence program (Stantchev, arXiv 2026) and the seed of a
-caveat-format standards track (see ``plan/capability-certificates-design.md``).
+caveat-format standards track (see the capability-certificates entry in
+``PRESIDIO-REQ.md`` and ``CHANGELOG.md``).
 
 Schema: ``presidio-hardened/capability-grant@1``.
 

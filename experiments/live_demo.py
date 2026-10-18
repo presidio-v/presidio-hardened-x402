@@ -4,7 +4,7 @@
 
 Reproduces the controlled-demonstration table in the live data study. Each case is a
 metadata triple whose *field structure* is taken from an endpoint observed during the
-2026-04-04 HTTP probe (see ``v0.2.1/data/scan_results.jsonl``), with a realistic but
+2026-04-04 HTTP probe of the v0.2.1 live data study, with a realistic but
 non-real entity value planted where real caller data would appear. No live traffic and
 no real user data is involved.
 

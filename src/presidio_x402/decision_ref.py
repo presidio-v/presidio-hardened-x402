@@ -11,8 +11,8 @@ verifies it **offline** against a pinned trust store, without re-running the
 gateway (Pillar II of the Computational Jurisprudence program; Stantchev, arXiv
 2026).
 
-This module implements the binding design note
-``plan/presidio-evidence-decision-ref-design.md`` (Phase-A scope):
+This module implements the decision-ref design (Phase-A scope; the conformance
+fixture and its README live under ``tests/conformance/decision-ref/``):
 
 - Attested content schema: ``presidio-hardened-x402/payment-decision@1`` — the
   per-payment artifact whose ``controls{}`` block carries the individual

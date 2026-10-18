@@ -12,7 +12,7 @@ concrete realization of **CJ-EVAL Phase A/B** — the capability library
 (``capability.py``) is the Phase-B dependency, and this stage is what puts a
 per-payment ``verify_chain`` / ``check_payment`` on the decision path so B2
 (grant verification time on the payment path) becomes measurable end-to-end.
-See ``plan/e2-capability-enforcer-design.md``.
+See the ``CapabilityEnforcer`` entry in ``CHANGELOG.md``.
 
 **This module reuses, it does not reimplement.** Chain verification is
 :func:`presidio_x402.capability.verify_chain`; per-call caveat enforcement is

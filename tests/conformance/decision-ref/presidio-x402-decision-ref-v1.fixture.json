@@ -1,7 +1,7 @@
 {
   "fixture_id": "presidio-x402-decision-ref-v1",
   "version": "v1",
-  "spec": "plan/presidio-evidence-decision-ref-design.md",
+  "spec": "tests/conformance/decision-ref/README.md",
   "hash_algo": "sha256",
   "preimage_format": "jcs-rfc8785-v1",
   "generated_at": "2026-06-30",
