@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-10-18
+
 ### Added
 - **`NOT_EVALUATED` control verdict in `payment-decision@1`.** A gate that runs
   only some of the five controls (a single MCP tool, for instance) had to record

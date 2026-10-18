@@ -713,6 +713,25 @@ control split the address and neither fragment matched. Found by the 2026-10-18 
   (U+202A–U+202E, U+2066–U+2069) and the tag characters (U+E0001–U+E007F). The category test
   closes the class instead of one codepoint at a time.
 
+## v0.13.0 Requirements (decision-record contract) — **delivered 2026-10-18**
+
+Minor release: two additive changes to the signed `payment-decision@1` content, so the version
+moves to 0.13.0 rather than a patch. Driven by the x402-mcp signed-evidence work (founder
+decision 2026-10-18) and the weekly review's provenance finding (#141).
+
+### Delivered
+
+- [x] **`NOT_EVALUATED` control verdict** (#148): every control accepts it; it never fails or
+  refers the decision, so `f(controls)` covers only what was checked. A record that evaluates no
+  control fails closed, and `policy.policy_snapshot_hash` is required only when the policy
+  control ran. Verifiers older than 0.13.0 reject such records (fail-closed).
+- [x] **Top-level `parents` in `payment-decision@1`** (#146): bare lowercase-hex content hashes
+  per ADR-0002, order-preserving, omitted when empty; `provenance.parents` stays as the labelled
+  mirror and `verify_decision_ref(require_parents=...)` accepts either, so earlier records still
+  verify and link.
+- [x] **Per-call violation log names the host only** (#148): a caller that passes a raw URL to
+  `PolicyEngine.check_and_record` no longer puts path or query PII into logs.
+
 ---
 
 ## Security Model
