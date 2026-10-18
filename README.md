@@ -8,9 +8,11 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/presidio-v/presidio-hardened-x402/badge)](https://securityscorecards.dev/viewer/?uri=github.com/presidio-v/presidio-hardened-x402)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13675/badge)](https://www.bestpractices.dev/projects/13675)
 
-> v0.12.0 — pay-to pinning and a quote-drift limit: an opt-in `wallet_pinning="warn" | "block"` pins the first `pay_to` seen per origin and network and flags or blocks a later change of recipient before signing; `max_quote_increase_ratio` blocks a quote that climbs past the route's reference price, including a walk up in small steps. Also raises the `cryptography` (CVE-2026-69247) and `anyio` (CVE-2026-63374, CVE-2026-64847) floors. **Upgrade from any earlier version.**
+> v0.12.2 — security patch: Unicode format characters no longer split PII past the filter. `alice\u202e@example.com` previously passed through unredacted because a BiDi override split the address; the normaliser now strips every category `Cf` character (BiDi embeddings, overrides and isolates; tag characters). **Upgrade from any earlier version.**
 >
-> v0.11.1 — security patch: percent-encoded PII no longer evades the filter. `alice%40example.com` in a resource URL previously passed through unredacted; matching now runs against a bounded percent-decode, with spans mapped back so your own bytes are what you get returned. **Upgrade from any earlier version.**
+> v0.12.1 — security patch: HTML character references (`&#64;`, `&#x40;`, `&commat;`) no longer carry PII past the filter; they are decoded alongside percent-escapes in the same bounded, matching-only pass. Also raises the `urllib3` floor to 2.8.0 (CVE-2026-97687, CVE-2026-97688, CVE-2026-97689).
+>
+> v0.12.0 — pay-to pinning and a quote-drift limit: an opt-in `wallet_pinning="warn" | "block"` pins the first `pay_to` seen per origin and network and flags or blocks a later change of recipient before signing; `max_quote_increase_ratio` blocks a quote that climbs past the route's reference price, including a walk up in small steps. Also raises the `cryptography` (CVE-2026-69247) and `anyio` (CVE-2026-63374, CVE-2026-64847) floors.
 
 Security middleware for the [x402 payment protocol](https://www.x402.org/).
 
@@ -479,8 +481,7 @@ python -m presidio_x402.decision_ref envelope.jsonl trust-store.json
 predicate, tamper-evidently and recomputably. It does **not** prove the process was
 uncompromised or that the declared controls are the real controls (no TEE claim). Wire
 format and `decision_ref` derivation are pinned by the conformance fixture under
-`tests/conformance/decision-ref/` and the design note
-`plan/presidio-evidence-decision-ref-design.md`.
+`tests/conformance/decision-ref/`.
 
 ## Treasury binding (`settlement-ref@1`) — v0.10.0
 
@@ -580,7 +581,7 @@ All exceptions are importable from `presidio_x402`.
 |---------|-----------|
 | v0.1.0 | PII redaction + spending policy + replay detection |
 | v0.2.0 | Synthetic corpus + 42-configuration precision/recall sweep, LangChain/CrewAI adapters, compliance report · [arXiv:2604.11430](https://arxiv.org/abs/2604.11430) |
-| v0.2.1 | Live ecosystem characterisation via Dune Analytics (20 projects, 96 wallets, 11 chains, ≥79M transactions); IEEE S&P magazine article submitted; IEEE TIFS paper under review · Corpus: [`v0.2.1/dataport/`](v0.2.1/dataport/), [Hugging Face](https://huggingface.co/datasets/vstantch/x402-pii-corpus), [IEEE DataPort (doi:10.21227/kpsz-nq73)](https://doi.org/10.21227/kpsz-nq73) |
+| v0.2.1 | Live ecosystem characterisation via Dune Analytics (20 projects, 96 wallets, 11 chains, ≥79M transactions); IEEE S&P magazine article submitted; IEEE TIFS paper under review · Corpus: [Hugging Face](https://huggingface.co/datasets/vstantch/x402-pii-corpus), [IEEE DataPort (doi:10.21227/kpsz-nq73)](https://doi.org/10.21227/kpsz-nq73) |
 | v0.3.0 | **Multi-party authorization** (`mpa.py`: n-of-m, webhook + crypto modes) · **Policy-as-code** JSON Schema (IETF draft candidate) · **Prometheus metrics** exporter · Kubernetes Helm chart + Docker image · SOC2 reference architecture |
 | v0.4.0 | **Screening API launch** — hosted [`screen.presidio-group.eu`](https://screen.presidio-group.eu) free tier (regex mode, 100 req/day) · `ScreeningClient` + `remote_screening=True` mode · per-origin `pay_to` allowlist (chain-06 mitigation) · audit-cycle hardening (F-A/B 2026-05-03, F-C/D/E 2026-05-10, F1/F2/F3 2026-05-17); see [`CHANGELOG.md`](CHANGELOG.md) |
 | v0.5.0 | **OEM embed kit** — rail-agnostic `ScreeningPipeline` core + `bindings/x402` layer (`PaymentProtocolBinding` protocol, hedge against rail fragmentation: ACP/Tempo, AP2) · [SEMVER.md](SEMVER.md) stability guarantees · partner conformance suite (`python -m presidio_x402.conformance`) · CDP/LangChain/CrewAI quickstarts · SBOM in CI · freshness-bound MPA countersignatures (F-8) |

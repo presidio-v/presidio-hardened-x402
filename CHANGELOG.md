@@ -206,7 +206,7 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   URL semantics are preserved (`%2F` is not `/`). Both `regex` and `nlp` modes
   are covered, as is `scan_dict`. Re-running the probe now reports 6/6 detected
   and 0/6 surviving. No published evaluation number moves — the corpus contains
-  zero `%` characters. See `plan/percent-decoding-redaction-bypass.md`.
+  zero `%` characters.
 - **MPA webhook response body was unbounded on the plain-httpx path**
   (CWE-400, audit finding F1 of 2026-07-19). `_MPA_RESPONSE_MAX_BYTES` was
   enforced while streaming inside `_post_pinned_https` but not on the
@@ -247,7 +247,7 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   optionally reports the monotonic per-stage breakdown `redaction | capability
   verification | evidence write`. Measures the *released* grant@1 artifact
   end-to-end; ZK-tier numbers remain literature-cited (CJ-EVAL Phase C). See
-  `plan/e2-capability-enforcer-design.md` and the harnesses under `experiments/`
+  the harnesses under `experiments/`
   (`e2_replay.py`, `e2_chains.py`, `e2_violations.py` + `e2_violations.jsonl`).
 
 ## [0.10.1] — 2026-07-27
@@ -423,8 +423,7 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   record carries only hashes and entity-type labels, never a raw metadata string; the
   `offer_hash` is the SHA-256 digest of the raw 402 offer bytes as received and is omitted
   with `offer_hash_absent: "not-retained"` when those bytes are unavailable. Wire format
-  pinned by `tests/conformance/decision-ref/` and
-  `plan/presidio-evidence-decision-ref-design.md`.
+  pinned by `tests/conformance/decision-ref/`.
 
 ## [0.8.1] — 2026-06-29
 

@@ -600,7 +600,51 @@ paper (CJ-EVAL Phase A2 + B2).
   window); **jurisdiction is not representable in `@1` and is not enforced.** Aggregate budgets
   (`daily_limit_usd`, `window_seconds`) remain the `PolicyEngine` ledger's responsibility.
 - Measures the *released* grant@1 artifact end-to-end; **ZK-tier numbers remain literature-cited**
-  (CJ-EVAL Phase C). See `plan/e2-capability-enforcer-design.md`.
+  (CJ-EVAL Phase C).
+
+---
+
+## v0.11.1 Requirements (percent-encoding redaction bypass) — **delivered 2026-08-02**
+
+Security patch. `PIIFilter` closed the Unicode evasion paths but did no percent-decoding, so
+`alice.martin%40example.com` passed through unredacted; `experiments/surface_form_probe.py`
+measured 0 of 6 encoded forms detected against v0.11.0.
+
+### Delivered
+
+- [x] **PII matching sees through percent-encoding.** Matching runs additionally against a
+  bounded percent-decode of the input, with spans mapped back to the caller's own bytes. The
+  decode is capped at two rounds (`_MAX_DECODE_ROUNDS`; enough for double-encoded `%2540`, never
+  "decode until stable"), is skipped when the input holds no well-formed escape, and copies
+  malformed escapes through verbatim rather than raising. Decoding is for **matching only**: the
+  returned string is the caller's, so benign escapes are not rewritten (`%2F` is not `/`). Covers
+  `regex` and `nlp` modes and `scan_dict`. The probe now reports 6/6 detected.
+- [x] **MPA webhook response body bounded on both branches** (CWE-400, audit F1 of 2026-07-19).
+  `_MPA_RESPONSE_MAX_BYTES` now applies on the plain-httpx path too (IP-literal webhook URL or
+  `dns_rebinding_protection` disabled), before the response is verified or parsed.
+- [x] **NLP install names `en_core_web_lg`**, the model Presidio's default NLP engine loads, in
+  the README, `docker/Dockerfile` and the `PIIFilter(mode="nlp")` `ImportError` hint.
+
+### Bounds
+
+- No published evaluation number moves: the corpus contains zero `%` characters.
+
+---
+
+## v0.11.2 Requirements (declared dependencies) — **delivered 2026-08-03**
+
+Patch. Two runtime imports resolved only through transitives, which the test environment masked.
+
+### Delivered
+
+- [x] **`tomli>=2.0.1; python_version < "3.11"` declared**, so `load_policy_file("policy.toml")`
+  works on a core install at the lowest supported Python.
+- [x] **`packaging` declared** as a core dependency. Without it the import-time CVE audit skipped
+  every `_KNOWN_VULNERABLE` comparison silently.
+- [x] **Packaging-contract tests** (`tests/test_declared_dependencies.py`) and a per-function
+  cyclomatic-complexity ratchet in CI (`tests/test_complexity_ceiling.py`).
+- [x] **`ScreeningPipeline.apply()` reduced from cyclomatic complexity 50 to 30**, with no
+  behavioural change; the stage order stays inline because it is a security property.
 
 ## v0.12.0 Requirements (pay-to pinning + quote drift) — **delivered 2026-09-29**
 
@@ -630,6 +674,44 @@ Motivated by the MCRI #001 measurement of the live catalogues (probe402, 21–31
 
 - Trust-on-first-use: the first observed recipient is trusted. A poisoned first contact is the
   allowlist's job, not the pin's.
+
+---
+
+## v0.12.1 Requirements (HTML character-reference bypass + urllib3 floor) — **delivered 2026-10-09**
+
+Security patch. The v0.11.1 match pass decoded percent-escapes but not character references, so
+`alice&#64;example.com`, `alice&#x40;example.com` and `alice&commat;example.com` passed through
+unredacted. Found while validating the audit backlog (F384).
+
+### Delivered
+
+- [x] **PII matching sees through HTML character references.** `scan_and_redact` decodes decimal,
+  hex and named references alongside percent-escapes in the same bounded two-round pass, so a
+  percent-encoded reference (`%26%2364%3B`) and a double-encoded one (`&amp;#64;`) are caught too.
+  Matching only, as in v0.11.1: spans map back to the caller's bytes, benign references (`&amp;`,
+  `&lt;`) are returned unchanged, invalid or unterminated ones are copied through verbatim.
+- [x] **Dependency floor:** `urllib3>=2.8.0` (CVE-2026-97687, CVE-2026-97688, CVE-2026-97689),
+  a transitive of `presidio-analyzer` via `requests`.
+
+### Bounds
+
+- Bare digit runs (`4155550182`) and `[at]`/`[dot]` spellings remain out of scope for regex mode:
+  matching them would redact ordinary numbers and words.
+
+---
+
+## v0.12.2 Requirements (Unicode format-character bypass) — **delivered 2026-10-18**
+
+Security patch. The normaliser stripped a fixed list of zero-width codepoints but not the BiDi
+controls or tag characters, so `alice\u202e@example.com` reached the server unredacted: the
+control split the address and neither fragment matched. Found by the 2026-10-18 audit (F-A).
+
+### Delivered
+
+- [x] **The normaliser strips every Unicode format character** (general category `Cf`): the
+  zero-width characters as before, plus the BiDi embeddings, overrides and isolates
+  (U+202A–U+202E, U+2066–U+2069) and the tag characters (U+E0001–U+E007F). The category test
+  closes the class instead of one codepoint at a time.
 
 ---
 
