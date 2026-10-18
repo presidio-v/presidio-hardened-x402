@@ -6,6 +6,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+- **Unicode format characters no longer split PII past the filter.** The
+  normaliser stripped a fixed list of zero-width codepoints but not the BiDi
+  embeddings, overrides and isolates (U+202A–U+202E, U+2066–U+2069) or the tag
+  characters (U+E0001–U+E007F), so `alice\u202e@example.com` reached the server
+  unredacted: the control split the address and neither fragment matched. The
+  normaliser now strips every character of Unicode category `Cf`, which closes the
+  class instead of one codepoint at a time. Found by the 2026-10-18 audit (F-A).
+
 ## [0.12.1] — 2026-10-09
 
 ### Security

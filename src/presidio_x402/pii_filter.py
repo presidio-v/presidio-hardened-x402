@@ -38,9 +38,17 @@ REDACTED_TEMPLATE = "<REDACTED>"
 # any legitimate x402 `extra` payload.
 _MAX_SCAN_DEPTH = 32
 
-# Invisible codepoints stripped before matching: zero-width space/non-joiner/joiner,
-# byte-order mark, soft hyphen. Present them in metadata purely to evade regex.
-_INVISIBLE_CODEPOINTS = frozenset({0x200B, 0x200C, 0x200D, 0xFEFF, 0x00AD, 0x2060})
+# Invisible codepoints are stripped before matching: every Unicode format character
+# (general category Cf). That covers zero-width space/non-joiner/joiner, byte-order
+# mark, soft hyphen and word joiner, and also the BiDi embeddings, overrides and
+# isolates (U+202A-U+202E, U+2066-U+2069) and the tag characters (U+E0001-U+E007F).
+# A fixed list missed the BiDi controls, which split an address so that no fragment
+# matched; the category test closes that class rather than one codepoint at a time.
+
+
+def _is_invisible(c: str) -> bool:
+    return unicodedata.category(c) == "Cf"
+
 
 # Cyrillic → ASCII homoglyph map. Manual (no external dep) coverage of the
 # Latin-lookalike Cyrillic letters commonly used in evasion.
@@ -126,7 +134,7 @@ def _normalise(text: str) -> str:
     :func:`_decode_for_matching`, whose output is used for matching only.
     """
     text = unicodedata.normalize("NFKC", text)
-    text = "".join(c for c in text if ord(c) not in _INVISIBLE_CODEPOINTS)
+    text = "".join(c for c in text if not _is_invisible(c))
     text = text.translate(_HOMOGLYPH_FOLD)
     text = text.translate(_HYPHEN_FOLD)
     return text

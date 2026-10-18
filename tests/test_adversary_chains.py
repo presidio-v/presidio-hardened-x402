@@ -191,6 +191,23 @@ class TestChain04UnicodeEvasion:
         _, entities = self.filt.scan_and_redact(hostile)
         assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
 
+    @pytest.mark.parametrize(
+        "mark",
+        ["\u202a", "\u202b", "\u202c", "\u202d", "\u202e", "\u2066", "\u2067", "\u2068", "\u2069"],
+    )
+    def test_bidi_control_inside_email_is_detected(self, mark):
+        """BiDi embeddings, overrides and isolates must not split an address."""
+        hostile = f"https://h.com/alice{mark}@example.com"
+        redacted, entities = self.filt.scan_and_redact(hostile)
+        assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
+        assert "example.com" not in redacted
+
+    def test_tag_character_inside_email_is_detected(self):
+        """Unicode tag characters (U+E0000 block) are format characters too."""
+        hostile = "send to alice\U000e0041@example.com"
+        _, entities = self.filt.scan_and_redact(hostile)
+        assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
+
     def test_en_dash_ssn_separator_is_detected(self):
         """SSN with U+2013 (en-dash) instead of ASCII '-' still matches."""
         # Realistic SSN with en-dash separators
