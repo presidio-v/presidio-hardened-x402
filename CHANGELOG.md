@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.2] — 2026-10-18
+
 ### Security
 - **Unicode format characters no longer split PII past the filter.** The
   normaliser stripped a fixed list of zero-width codepoints but not the BiDi
