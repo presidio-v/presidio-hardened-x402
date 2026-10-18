@@ -107,6 +107,10 @@ _ALLOWED_VERDICTS = {
     "mpa": frozenset({"NOT_REQUIRED", "APPROVED", "PENDING", "TIMEOUT", "DENIED"}),
 }
 _HASH_REF_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+#: ADR-0002 P2 parent-hash rule (lowercase hex, mirroring ``content_hash``).
+_DAG_PARENT_RE = re.compile(r"^[0-9a-f]{8,128}$")
+#: An optional type label in front of a parent hash, e.g. ``capability-grant:``.
+_PARENT_LABEL_RE = re.compile(r"^[a-z][a-z0-9-]*:")
 
 
 class DecisionRefError(EvidenceError):
@@ -461,7 +465,7 @@ def build_payment_decision_content(
     else:
         payment["offer_hash_absent"] = offer_hash_absent or "not-retained"
 
-    return {
+    content: dict[str, object] = {
         "schema": PAYMENT_DECISION_SCHEMA_ID,
         "issued_at": issued_at or _utcnow_ms_z(),
         "agent_id": agent_id,
@@ -479,6 +483,10 @@ def build_payment_decision_content(
             "prior_decision_refs": list(prior_decision_refs or []),
         },
     }
+    dag_parents = dag_parent_hashes(parents or [])
+    if dag_parents:
+        content["parents"] = dag_parents
+    return content
 
 
 def artifact_hash(content: Mapping[str, object]) -> str:
@@ -531,6 +539,38 @@ def decision_ref_preimage(
 # ---------------------------------------------------------------------------
 
 
+def dag_parent_hash(parent: str) -> str:
+    """The bare ADR-0002 content hash behind one provenance parent entry.
+
+    Accepts a bare lowercase-hex hash or one carrying a single type label
+    (``capability-grant:<hash>``). Fails closed (:class:`DecisionRefError`) on
+    anything that does not reduce to ``^[0-9a-f]{8,128}$`` (ADR-0002 P2).
+    """
+    if not isinstance(parent, str):
+        raise DecisionRefError("provenance parent must be a string")
+    label = _PARENT_LABEL_RE.match(parent)
+    bare = parent[label.end() :] if label else parent
+    if not _DAG_PARENT_RE.fullmatch(bare):
+        raise DecisionRefError(
+            f"provenance parent {parent!r} is not a lowercase-hex content hash (fail-closed)"
+        )
+    return bare
+
+
+def dag_parent_hashes(parents: Sequence[str]) -> list[str]:
+    """Top-level ``parents`` for the signed content (ADR-0002 P1-P3).
+
+    Order-preserving, de-duplicated bare hashes; empty when there are no parents
+    (the caller then omits the field, P3).
+    """
+    out: list[str] = []
+    for parent in parents:
+        bare = dag_parent_hash(parent)
+        if bare not in out:
+            out.append(bare)
+    return out
+
+
 def capability_parents(chain: VerifiedGrantChain | None) -> list[str]:
     """Provenance parents contributed by a capability chain (may be empty).
 
@@ -566,7 +606,10 @@ def build_decision_evidence(
     policy came from a chain (:func:`capability_parents`) — and
     ``prior_decision_refs`` links earlier decision-refs of the *same* payment
     (e.g. a REFER that later resolved). Both are copied into the signed
-    ``payment_decision.provenance`` block before hashing; the envelope-level
+    ``payment_decision.provenance`` block before hashing, and the parents are
+    also written as a top-level ``parents`` array of bare lowercase-hex content
+    hashes (the family provenance-parents convention, so a generic DAG walk
+    reaches this payment node's upstream authority). The envelope-level
     ``provenance`` block is a convenience mirror for consumers.
 
     **No network I/O.** This function only computes hashes and a signature.
@@ -595,6 +638,11 @@ def build_decision_evidence(
         "parents": parent_list,
         "prior_decision_refs": prior_list,
     }
+    dag_parents = dag_parent_hashes(parent_list)
+    if dag_parents:
+        signed_content["parents"] = dag_parents
+    else:
+        signed_content.pop("parents", None)
 
     if signed_content.get("schema") != PAYMENT_DECISION_SCHEMA_ID:
         raise DecisionRefError(
@@ -710,6 +758,30 @@ def _fail(reason: str, **kw: object) -> DecisionRefVerification:
     return DecisionRefVerification(ok=False, reason=reason, **kw)  # type: ignore[arg-type]
 
 
+def _parents_linked(content: Mapping[str, object], required: Sequence[str]) -> bool:
+    """True when every *required* parent is recorded in the signed content.
+
+    A required entry matches verbatim in ``provenance.parents`` (the labelled
+    form every record carries) or, by its bare hash, in the top-level ADR-0002
+    ``parents`` array.
+    """
+    provenance = content.get("provenance")
+    recorded = provenance.get("parents") if isinstance(provenance, Mapping) else None
+    recorded_set = set(recorded) if isinstance(recorded, list) else set()
+    top_level = content.get("parents")
+    dag_set = set(top_level) if isinstance(top_level, list) else set()
+
+    def _linked(parent: str) -> bool:
+        if parent in recorded_set:
+            return True
+        try:
+            return dag_parent_hash(parent) in dag_set
+        except DecisionRefError:
+            return False
+
+    return all(_linked(p) for p in required)
+
+
 def verify_decision_ref(
     envelope: Mapping[str, object],
     trust_store: str | Mapping[str, object],
@@ -735,7 +807,10 @@ def verify_decision_ref(
     5. **signature** — the detached signature verifies against a key for ``signer``
        in the trust store (``unknown_signer`` / ``bad_signature``).
     6. **parent linkage** — if ``require_parents`` is given, every required parent
-       must appear in the recorded ``provenance.parents`` (``parent_linkage``).
+       must appear in the signed content, either verbatim in ``provenance.parents``
+       or as its bare hash in the top-level ``parents`` array (``parent_linkage``).
+       Records signed before the top-level array existed still link via
+       ``provenance.parents``.
 
     Never raises to the caller — a malformed input returns
     ``ok=False`` with a reason. This guarantees verification itself cannot fail open.
@@ -840,18 +915,14 @@ def verify_decision_ref(
     checked.append("signature")
 
     # 6. Parent linkage.
-    if require_parents:
-        provenance = content.get("provenance")
-        recorded_parents = provenance.get("parents") if isinstance(provenance, Mapping) else None
-        recorded_set = set(recorded_parents) if isinstance(recorded_parents, list) else set()
-        if not set(require_parents).issubset(recorded_set):
-            return _fail(
-                REASON_PARENT_LINKAGE,
-                decision_ref=recomputed_ref,
-                verdict=verdict,
-                recomputed_verdict=recomputed_verdict,
-                checked=tuple(checked),
-            )
+    if require_parents and not _parents_linked(content, require_parents):
+        return _fail(
+            REASON_PARENT_LINKAGE,
+            decision_ref=recomputed_ref,
+            verdict=verdict,
+            recomputed_verdict=recomputed_verdict,
+            checked=tuple(checked),
+        )
     checked.append("parents")
 
     return DecisionRefVerification(
@@ -1025,7 +1096,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--parent",
         action="append",
         default=[],
-        help="a required provenance parent (repeatable); e.g. capability-grant:<hash>",
+        help=(
+            "a required provenance parent (repeatable); capability-grant:<hash> or the bare <hash>"
+        ),
     )
     args = parser.parse_args(argv)
 

@@ -6,6 +6,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **`payment-decision@1` now carries a top-level `parents` array.** Lineage
+  was only recorded under `provenance.parents` as labelled strings
+  (`capability-grant:<hash>`), so a generic provenance-parents walk could not
+  reach the payment node's upstream authority. The signed content now also
+  carries `parents`: the bare lowercase-hex content hashes, order-preserving,
+  omitted when empty. Malformed parent entries fail closed at emission.
+  `provenance.parents` is kept unchanged as a labelled mirror, and
+  `verify_decision_ref(require_parents=...)` accepts either spelling, so
+  records signed before this change still verify and still link (#141).
+
 ## [0.12.2] — 2026-10-18
 
 ### Security
