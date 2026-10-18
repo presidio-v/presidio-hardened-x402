@@ -34,7 +34,7 @@ CEILING_DEFAULT = 15
 # Lower these as they are refactored; do not add to the list without a reason.
 KNOWN_HIGH = {
     "core.py::ScreeningPipeline.apply": 26,
-    "decision_ref.py::verify_decision_ref": 32,
+    "decision_ref.py::verify_decision_ref": 30,
     "mica.py::applicable_obligations": 20,
     "treasury_binding.py::verify_settlement_ref": 19,
     "treasury_binding.py::verify_bundle": 19,
