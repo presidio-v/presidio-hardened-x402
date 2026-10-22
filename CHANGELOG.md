@@ -6,6 +6,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- `certifi` 2026.2.25 → 2026.10.19 in `uv.lock` (PYSEC-2026-4320). The new bundle
+  drops emSign ECC Root CA - G3, the root behind the eMudhra intermediates with
+  trivially recoverable keys (Mozilla bug 2083449). Python HTTPS clients such as
+  httpx trust certifi and do not check revocation.
+- `opentelemetry-api` / `-sdk` 1.42.1 → 1.45.1 in `uv.lock` (CVE-2026-114603).
+- The CI dependency audit now also covers the `nlp` extra.
+
 ## [0.13.0] — 2026-10-18
 
 ### Added
