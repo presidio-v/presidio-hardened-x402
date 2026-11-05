@@ -243,6 +243,11 @@ redistributed across v0.5.0+; production-hardening items now land in v0.6.0
 - **Gateway integration**: `HardenedX402Client(remote_screening=True, screening_api_key=...)`
   routes PII analysis to the hosted service instead of the in-process PIIFilter;
   falls back to local regex/NLP modes when the network is unhealthy.
+  *Erratum (2026-10-27): as shipped, the gateway takes a `ScreeningClient` via
+  `screening_client=` (there is no `screening_api_key` argument), and an unhealthy
+  service fails closed with `ScreeningUnavailableError` rather than falling back.
+  The local regex filter runs over the remote result as a backstop (F-06,
+  2026-06-03).*
 
 ### New library-side controls
 

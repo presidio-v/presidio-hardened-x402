@@ -313,18 +313,29 @@ service. Useful when you want to keep the agent process small (no in-process spa
 model) and centralise screening policy across many agents.
 
 ```python
-from presidio_x402 import HardenedX402Client
+from presidio_x402 import HardenedX402Client, ScreeningClient
 
+screening = ScreeningClient(
+    "https://screen.presidio-group.eu",
+    api_key="...",   # obtain by registering at screen.presidio-group.eu
+)
 client = HardenedX402Client(
     payment_signer=signer,
     remote_screening=True,
-    screening_api_key="...",   # obtain by registering at screen.presidio-group.eu
+    screening_client=screening,
 )
+# HardenedX402Client.aclose() does not close the ScreeningClient; call
+# `await screening.aclose()` (or use it as an async context manager) as well.
 ```
 
 The free tier serves the regex-mode screening backend at 100 screenings/day per key.
-Falls back to local regex / NLP modes if the network is unhealthy, so the client never
-hard-fails on a screening-service outage.
+
+Remote screening fails closed. The client retries a network error or HTTP 5xx once,
+then raises `ScreeningUnavailableError` and the payment is not made; a rejected key
+raises `ScreeningAuthError` and an exhausted quota `ScreeningRateLimitError` (all
+subclasses of `ScreeningError`). It does not fall back to in-process screening, because
+a silent fallback would hide an outage. The local regex filter still runs over the
+remote result as a backstop for anything the service missed.
 
 ### Per-origin wallet allowlist (v0.4.0)
 
