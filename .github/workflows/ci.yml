@@ -173,6 +173,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          # Pin the interpreter: without it uv takes the runner's system Python
+          # (3.14 on ubuntu-latest since the 26.04 image), for which spacy has no wheel.
+          python-version: "3.12"
       - name: Run pip-audit over release extras
         # Every shipped extra except fuzz (Linux-only tooling) and crewai, which is
         # intentionally empty (see pyproject.toml).
