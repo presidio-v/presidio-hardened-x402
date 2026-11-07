@@ -41,7 +41,7 @@ import json
 import logging
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import urlparse
 
@@ -172,7 +172,7 @@ class S3AuditWriter(_BatchingSink):
         self._client = client
 
     def _ship(self, batch: list[dict]) -> None:
-        ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S")
+        ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S")
         key = f"{self._key_prefix}{ts}-{uuid.uuid4().hex}.jsonl"
         self._client.put_object(Bucket=self._bucket, Key=key, Body=_jsonl(batch).encode("utf-8"))
 

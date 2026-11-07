@@ -15,7 +15,7 @@ sink path. No network: transports and signers are local.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -47,7 +47,7 @@ FULL_WINDOW = ("PAYMENT_ALLOWED", "PII_REDACTED", "REPLAY_BLOCKED", "POLICY_BLOC
 
 def _event(event_type: str, i: int = 0) -> AuditEvent:
     return AuditEvent(
-        timestamp=datetime(2026, 6, 21, 10, i % 60, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 6, 21, 10, i % 60, tzinfo=UTC),
         event_type=event_type,
         resource_url=f"https://api.example.com/v1/data/{i}",
         amount_usd=0.01,

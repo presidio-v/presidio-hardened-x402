@@ -6,7 +6,18 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Python 3.11 is now the minimum** (`requires-python = ">=3.11"`). Python 3.10
+  reached end of life in October 2026. CI tests 3.11, 3.12 and 3.13. TOML policy
+  files load through stdlib `tomllib`, so the `tomli` dependency for 3.10 is gone.
+  Stay on 0.13.x if you still run 3.10.
+
 ### Security
+
+- Dropping 3.10 removes the second `filelock` resolution (4.1.0, used only on 3.10)
+  from `uv.lock`. That closes GHSA-v4x8-3wr5-3wq8 (Dependabot #36, HIGH); 4.2.4 was
+  already used on 3.11+.
 
 - `certifi` 2026.2.25 → 2026.10.19 in `uv.lock` (PYSEC-2026-4320). The new bundle
   drops emSign ECC Root CA - G3, the root behind the eMudhra intermediates with

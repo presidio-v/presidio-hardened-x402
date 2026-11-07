@@ -25,7 +25,7 @@ from __future__ import annotations
 import contextlib
 import sys
 import unicodedata
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import atheris
 
@@ -82,7 +82,7 @@ def TestOneInput(data: bytes) -> None:  # noqa: N802 (Atheris entrypoint contrac
         fdp.ConsumeIntInRange(0, 59),
         fdp.ConsumeIntInRange(0, 59),
         fdp.ConsumeIntInRange(0, 999_999),
-        tzinfo=timezone.utc,
+        tzinfo=UTC,
     )
     ts = format_action_ref_timestamp(aware)
 

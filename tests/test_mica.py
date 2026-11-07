@@ -8,7 +8,7 @@ flags assert what the middleware cannot observe), and fail-closed behaviour.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -72,7 +72,7 @@ def test_signing_fails_closed():
 
 def _event(event_type: str, ts: str = "2026-06-12T10:00:00+00:00") -> AuditEvent:
     return AuditEvent(
-        timestamp=datetime.fromisoformat(ts).astimezone(timezone.utc),
+        timestamp=datetime.fromisoformat(ts).astimezone(UTC),
         event_type=event_type,
         resource_url="https://api.example.com/v1/data",
         amount_usd=0.01,

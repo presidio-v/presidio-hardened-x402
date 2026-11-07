@@ -8,7 +8,7 @@ version = "0.13.0"
 description = "Security middleware for x402 agentic payments — PII redaction, spending policy, and replay detection before blockchain commit"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Presidio Security" }]
 keywords = [
     "x402", "payments", "security", "pii", "presidio", "blockchain",
@@ -19,7 +19,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -46,9 +45,7 @@ dependencies = [
     # Transitive of httpx; pin minimum to the CVE-2026-63374 / CVE-2026-64847 fix
     # line (anyio < 4.14.2 vulnerable — the lock shipped 4.13.0 before the
     # 2026-09-22 cycle). Explicit floor is defense-in-depth so a fresh resolve
-    # cannot regress below the fix; 4.14.2 is the last line that still ships a
-    # 3.10 wheel, so the floor is satisfiable on every supported interpreter.
-    # Audit 2026-09-23.
+    # cannot regress below the fix. Audit 2026-09-23.
     "anyio>=4.14.2",
     # Transitive of presidio-analyzer (-> requests -> urllib3); pin minimum to
     # evict PYSEC-2026-141 and PYSEC-2026-142 (urllib3 < 2.7.0 vulnerable) and
@@ -71,12 +68,6 @@ dependencies = [
     # guarded, so losing it would silently disable the whole dependency-CVE warning
     # rather than fail loudly. Declared so that cannot happen. Audit 2026-08-03.
     "packaging>=23.0",
-    # Imported directly by load_policy_file() for TOML policy files, which is
-    # documented in the README. stdlib tomllib is 3.11+, and requires-python is
-    # >=3.10, so a core install on 3.10 had no TOML reader at all. CI never caught
-    # it: pytest-cov pulls coverage[toml] -> tomli, so the test environment is
-    # richer than the shipped one. Audit 2026-08-03.
-    'tomli>=2.0.1; python_version < "3.11"',
 ]
 
 [project.optional-dependencies]
@@ -122,9 +113,8 @@ schema = [
     "jsonschema>=4.21.0",
 ]
 fuzz = [
-    # Atheris 3.x dropped Python 3.10 (last 3.10 wheel: 2.3.0); marker keeps the
-    # extra resolvable on the full support matrix while fuzz CI pins 3.12.
-    'atheris>=3.0; python_version >= "3.11"',
+    # Fuzz CI pins Python 3.12 (Atheris ships Linux wheels only).
+    "atheris>=3.0",
 ]
 dev = [
     "pytest>=8.0",
@@ -147,7 +137,7 @@ Issues = "https://github.com/presidio-v/presidio-hardened-x402/issues"
 packages = ["src/presidio_x402"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 99
 
 [tool.ruff.lint]

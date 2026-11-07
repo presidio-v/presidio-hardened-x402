@@ -58,7 +58,7 @@ import hashlib
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from .mica import (
@@ -434,7 +434,7 @@ def details_hash(*, pay_to: str, amount: str, currency: str, network: str) -> st
 
 def _utcnow_ms_z() -> str:
     """RFC3339 UTC with millisecond precision and trailing ``Z``."""
-    dt = datetime.now(tz=timezone.utc)
+    dt = datetime.now(tz=UTC)
     return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
 
 

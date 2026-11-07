@@ -14,7 +14,7 @@ extra), mirroring the pattern in ``test_mica.py`` / ``test_evidence_conformance`
 from __future__ import annotations
 
 import copy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric import ed25519
@@ -207,7 +207,7 @@ def test_reject_unbounded_child_when_parent_caps(operator):
 def test_reject_validity_window_widened(operator):
     op_id, op_priv, op_pub = operator
     a_priv, a_pub = _keypair()
-    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    now = datetime(2026, 1, 1, tzinfo=UTC)
     root = issue_grant(
         subject="A",
         issuer=op_id,
@@ -421,7 +421,7 @@ def test_expired_grant_rejected(operator):
         verify_chain(
             [grant],
             _trust_store(op_id, op_pub),
-            at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+            at=datetime(2026, 6, 1, tzinfo=UTC),
         )
 
 
@@ -437,7 +437,7 @@ def test_not_yet_valid_rejected(operator):
         verify_chain(
             [grant],
             _trust_store(op_id, op_pub),
-            at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            at=datetime(2026, 1, 1, tzinfo=UTC),
         )
 
 
@@ -545,14 +545,12 @@ def test_exercise_expired_at_fails(operator):
         issuer_private_key=op_priv,
         caveats={"valid_until": "2026-02-01T00:00:00Z"},
     )
-    vc = verify_chain(
-        [grant], _trust_store(op_id, op_pub), at=datetime(2026, 1, 1, tzinfo=timezone.utc)
-    )
+    vc = verify_chain([grant], _trust_store(op_id, op_pub), at=datetime(2026, 1, 1, tzinfo=UTC))
     with pytest.raises(CapabilityError, match="expired"):
         vc.check_payment(
             resource_url="https://x",
             amount_usd="0.01",
-            at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+            at=datetime(2026, 3, 1, tzinfo=UTC),
         )
 
 
@@ -593,7 +591,7 @@ def test_signing_preimage_is_byte_stable():
 
 def test_issue_is_deterministic_given_issued_at(operator):
     op_id, op_priv, op_pub = operator
-    ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    ts = datetime(2026, 1, 1, tzinfo=UTC)
     kwargs = {
         "subject": "A",
         "issuer": op_id,

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from cryptography.hazmat.primitives.asymmetric import ed25519
@@ -32,8 +32,8 @@ OPERATOR_ID = "e2-operator"
 #: A validity window wide enough that every latency-sweep payment falls inside it
 #: (so the window branch of ``check_payment`` is exercised but never the cause of
 #: a block). Violation cases override ``at`` to land outside it on purpose.
-_VALID_FROM = datetime(2026, 1, 1, tzinfo=timezone.utc)
-_VALID_UNTIL = datetime(2027, 1, 1, tzinfo=timezone.utc)
+_VALID_FROM = datetime(2026, 1, 1, tzinfo=UTC)
+_VALID_UNTIL = datetime(2027, 1, 1, tzinfo=UTC)
 
 
 def _keypair(seed: int, role: str) -> tuple[str, str]:
@@ -185,9 +185,7 @@ def broadened_chain(seed: int, *, kind: str) -> tuple[list[dict], dict]:
         child_caveats = {  # valid_until pushed LATER — window widened
             "max_per_call_usd": "0.50",
             "endpoint_prefixes": ["https://api.example.com/v1"],
-            "valid_until": datetime(2099, 1, 1, tzinfo=timezone.utc)
-            .isoformat()
-            .replace("+00:00", "Z"),
+            "valid_until": datetime(2099, 1, 1, tzinfo=UTC).isoformat().replace("+00:00", "Z"),
         }
     else:
         raise ValueError(f"unknown broadening kind {kind!r}")

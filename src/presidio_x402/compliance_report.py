@@ -29,6 +29,7 @@ import hashlib
 import hmac
 import json
 from dataclasses import dataclass, field
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -47,15 +48,15 @@ from ._types import AuditEvent
 
 
 def _parse_event(raw: dict[str, Any]) -> AuditEvent:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     ts_raw = raw.get("timestamp", "")
     try:
         ts = datetime.fromisoformat(ts_raw)
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+            ts = ts.replace(tzinfo=UTC)
     except (ValueError, TypeError):
-        ts = datetime.now(tz=timezone.utc)
+        ts = datetime.now(tz=UTC)
 
     return AuditEvent(
         timestamp=ts,

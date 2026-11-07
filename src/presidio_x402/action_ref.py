@@ -44,7 +44,7 @@ import hashlib
 import json
 import re
 import unicodedata
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -78,7 +78,7 @@ def format_action_ref_timestamp(dt: datetime) -> str:
         raise ValueError(
             "format_action_ref_timestamp requires a timezone-aware datetime; got a naive value"
         )
-    dt = dt.astimezone(timezone.utc)
+    dt = dt.astimezone(UTC)
     ms = dt.microsecond // 1000
     return dt.strftime(f"%Y-%m-%dT%H:%M:%S.{ms:03d}Z")
 

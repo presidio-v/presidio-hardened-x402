@@ -6,7 +6,7 @@ import importlib
 import io
 import json
 import os
-from datetime import timezone
+from datetime import UTC
 
 import pytest
 
@@ -20,7 +20,7 @@ class TestNullAuditWriter:
         from datetime import datetime
 
         event = AuditEvent(
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             event_type="PAYMENT_ALLOWED",
             resource_url="https://api.example.com",
             amount_usd=0.01,
@@ -38,7 +38,7 @@ class TestStreamAuditWriter:
         from datetime import datetime
 
         event = AuditEvent(
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             event_type="PAYMENT_ALLOWED",
             resource_url="https://api.example.com",
             amount_usd=0.02,
@@ -165,7 +165,7 @@ class TestFileAuditWriter:
         from datetime import datetime
 
         event = AuditEvent(
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             event_type="PAYMENT_ALLOWED",
             resource_url="https://api.example.com",
             amount_usd=0.03,

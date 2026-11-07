@@ -97,7 +97,7 @@ substitute their own implementations:
 
 ## Language and safety properties
 
-The library is pure Python (3.10+), which is memory-safe — there is no manual
+The library is pure Python (3.11+), which is memory-safe — there is no manual
 memory management, so the memory-safety class of vulnerabilities does not apply.
 Robustness of the canonicalisation and digest layer is checked with Atheris
 fuzzing in CI, and the security-relevant control paths are covered by the test

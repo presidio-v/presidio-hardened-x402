@@ -602,7 +602,7 @@ class MPAEngine:
                 for resp in responses:
                     if resp.approved:
                         approved_ids.add(resp.approver_id)
-            except asyncio.TimeoutError as exc:
+            except TimeoutError as exc:
                 logger.warning(
                     "MPA webhook timeout after %.1fs; collected %d/%d approvals",
                     self.config.timeout_seconds,
