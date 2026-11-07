@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-11-07
+
 ### Changed
 
 - **Python 3.11 is now the minimum** (`requires-python = ">=3.11"`). Python 3.10

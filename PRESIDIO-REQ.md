@@ -739,6 +739,17 @@ decision 2026-10-18) and the weekly review's provenance finding (#141).
 
 ---
 
+## v0.14.0 Requirements (support policy: Python 3.11+) — **delivered 2026-11-07**
+
+Minor release because the supported-interpreter range narrows; there is no API change.
+
+### Delivered
+- [x] `requires-python = ">=3.11"`; the 3.10 classifier and CI leg are removed; ruff targets py311.
+- [x] `uv.lock` resolves `filelock` once (4.2.4), which closes GHSA-v4x8-3wr5-3wq8 (#156).
+- [x] TOML policy files load through stdlib `tomllib`; the 3.10-only `tomli` dependency is gone.
+- [x] Lock refreshes from [Unreleased]: certifi 2026.10.19 (PYSEC-2026-4320), opentelemetry 1.45.1
+  (CVE-2026-114603); the CI dependency audit also covers the `nlp` extra.
+
 ## Security Model
 
 The threat model for presidio-hardened-x402 addresses the following adversaries:
