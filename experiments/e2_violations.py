@@ -32,7 +32,7 @@ import asyncio
 import json
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 _ROOT = Path(__file__).parent.parent
@@ -60,9 +60,9 @@ _CLASSES = ("over_budget", "out_of_prefix", "expired", "broadened_child", "repla
 
 # A grant window already expired relative to "now" so the per-call check_payment
 # (which exercises at wall-clock now) rejects an otherwise-valid chain.
-_PAST_FROM = datetime(2026, 6, 1, tzinfo=timezone.utc)
-_PAST_UNTIL = datetime(2026, 6, 15, tzinfo=timezone.utc)
-_PAST_VERIFY = datetime(2026, 6, 5, tzinfo=timezone.utc)
+_PAST_FROM = datetime(2026, 6, 1, tzinfo=UTC)
+_PAST_UNTIL = datetime(2026, 6, 15, tzinfo=UTC)
+_PAST_VERIFY = datetime(2026, 6, 5, tzinfo=UTC)
 
 
 def generate_cases() -> list[dict]:

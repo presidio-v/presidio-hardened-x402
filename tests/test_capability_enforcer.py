@@ -9,7 +9,7 @@ stage is **default-off** and byte-identical when unconfigured.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -27,10 +27,10 @@ from presidio_x402.replay_guard import ReplayGuard
 
 _PREFIX = "https://api.example.com/v1"
 _URL = "https://api.example.com/v1/inference/run"
-_WINDOW_FROM = datetime(2026, 1, 1, tzinfo=timezone.utc)
-_WINDOW_UNTIL = datetime(2027, 1, 1, tzinfo=timezone.utc)
-_INSIDE = datetime(2026, 6, 1, tzinfo=timezone.utc)
-_AFTER = datetime(2027, 6, 1, tzinfo=timezone.utc)
+_WINDOW_FROM = datetime(2026, 1, 1, tzinfo=UTC)
+_WINDOW_UNTIL = datetime(2027, 1, 1, tzinfo=UTC)
+_INSIDE = datetime(2026, 6, 1, tzinfo=UTC)
+_AFTER = datetime(2027, 6, 1, tzinfo=UTC)
 
 
 def _kp() -> tuple[str, str]:

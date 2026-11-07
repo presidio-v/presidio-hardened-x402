@@ -9,7 +9,7 @@ interoperable with every other action-ref-v1 implementation.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
 
@@ -87,12 +87,12 @@ def test_nonconformant_timestamp_rejected(vid, ts):
 
 
 def test_format_timestamp_three_ms_digits_and_z():
-    dt = datetime(2026, 6, 20, 14, 0, 0, 123456, tzinfo=timezone.utc)
+    dt = datetime(2026, 6, 20, 14, 0, 0, 123456, tzinfo=UTC)
     assert format_action_ref_timestamp(dt) == "2026-06-20T14:00:00.123Z"
 
 
 def test_format_timestamp_zero_subsecond_keeps_three_zeros():
-    dt = datetime.fromtimestamp(1747568431, tz=timezone.utc)  # NEXUS example epoch
+    dt = datetime.fromtimestamp(1747568431, tz=UTC)  # NEXUS example epoch
     assert format_action_ref_timestamp(dt) == "2025-05-18T11:40:31.000Z"
 
 
@@ -110,7 +110,7 @@ def test_format_timestamp_rejects_naive():
 
 
 def test_format_then_compute_roundtrip():
-    ts = format_action_ref_timestamp(datetime.fromtimestamp(1747568431, tz=timezone.utc))
+    ts = format_action_ref_timestamp(datetime.fromtimestamp(1747568431, tz=UTC))
     assert (
         compute_action_ref("nexus-agent-xa12.onrender.com", "oracle.signal", "BTC", ts)
         == "fdd7f810499f06be24355ca8e2bfb8c4b965cc80c838f41fa074683443d89f5a"

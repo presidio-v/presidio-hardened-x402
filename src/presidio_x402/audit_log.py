@@ -51,7 +51,7 @@ import secrets
 import sys
 import threading
 import weakref
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import IO
 
 from ._types import AuditEvent, AuditWriter
@@ -253,7 +253,7 @@ class AuditLog:
         """
         with self._lock:
             event = AuditEvent(
-                timestamp=datetime.now(tz=timezone.utc),
+                timestamp=datetime.now(tz=UTC),
                 event_type=event_type,
                 resource_url=resource_url,
                 amount_usd=amount_usd,

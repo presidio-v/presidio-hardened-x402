@@ -21,7 +21,7 @@ import contextlib
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .._types import PaymentDetails, SettlementReceipt
 from ..exceptions import X402PaymentError
@@ -241,9 +241,7 @@ def parse_settlement_receipt(raw: str | bytes) -> SettlementReceipt | None:
         log_index=log_index,
         payer=payer,
         success=data.get("success") is True,
-        observed_at=datetime.now(tz=timezone.utc)
-        .isoformat(timespec="milliseconds")
-        .replace("+00:00", "Z"),
+        observed_at=datetime.now(tz=UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         receipt_hash="sha256:" + hashlib.sha256(raw_bytes).hexdigest(),
     )
 

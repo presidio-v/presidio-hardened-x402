@@ -46,7 +46,7 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from .exceptions import X402Error
@@ -531,7 +531,7 @@ _SECURITY_EVENTS = frozenset({"REPLAY_BLOCKED", "POLICY_BLOCKED", "PII_BLOCKED",
 
 
 def _utcnow_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _audit_summary(report: ComplianceReport) -> dict[str, object]:

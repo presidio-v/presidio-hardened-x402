@@ -4,9 +4,11 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.12.x  | ✓ (latest release) |
-| 0.11.x  | ✓ |
-| 0.10.x  | ✓ |
+| 0.14.x  | ✓ (latest release; Python 3.11+) |
+| 0.13.x  | ✓ (last line supporting Python 3.10) |
+| 0.12.x  | ✓ |
+| 0.11.x  | security fixes only |
+| 0.10.x  | security fixes only |
 | 0.9.x   | security fixes only |
 | 0.8.x   | security fixes only |
 | 0.7.x and older | security fixes only |

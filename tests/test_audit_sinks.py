@@ -8,7 +8,7 @@ never propagates into the payment path), bounded-buffer drop, and fan-out.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -23,7 +23,7 @@ from presidio_x402.audit_sinks import (
 
 def _event(i: int = 0) -> AuditEvent:
     return AuditEvent(
-        timestamp=datetime.now(tz=timezone.utc),
+        timestamp=datetime.now(tz=UTC),
         event_type="PAYMENT_ALLOWED",
         resource_url=f"https://api.example.com/v1/data/{i}",
         amount_usd=0.01,

@@ -70,7 +70,7 @@ Formatting and linting are enforced by [ruff](https://docs.astral.sh/ruff/) and 
 matter of taste — CI rejects anything that does not conform. The configuration lives in
 `pyproject.toml`; the settings that most often surprise people:
 
-- line length 99, target Python 3.10
+- line length 99, target Python 3.11
 - lint rule sets `E, F, W, I, N, UP, S, B, A, C4, SIM, TCH` (`S` is bandit's security rules)
 
 Each module uses a single consistent import style. Do not mix `import x` and `from x import y`
@@ -124,7 +124,7 @@ python -m venv .venv && .venv/bin/pip install -e ".[dev]"
   && .venv/bin/python -m pytest tests/ -x -q --tb=short
 ```
 
-CI runs the test suite against Python 3.10, 3.11, 3.12, and 3.13. A change must pass on all
+CI runs the test suite against Python 3.11, 3.12, and 3.13. A change must pass on all
 four.
 
 ## Commit messages

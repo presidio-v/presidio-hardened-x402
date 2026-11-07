@@ -56,7 +56,6 @@ Example TOML policy file::
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -154,23 +153,12 @@ def load_policy_file(path: str | Path) -> PolicyConfig:
     ValueError
         If the file extension is not ``.toml`` or ``.json``.
     ImportError
-        If ``jsonschema`` or (for TOML) ``tomllib``/``tomli`` is not installed.
+        If ``jsonschema`` is not installed.
     """
     path = Path(path)
     if path.suffix == ".toml":
-        if sys.version_info >= (3, 11):
-            import tomllib
-        else:
-            try:
-                import tomllib  # type: ignore[no-redef]
-            except ImportError:
-                try:
-                    import tomli as tomllib  # type: ignore[no-redef]
-                except ImportError as exc:
-                    raise ImportError(
-                        "tomllib (Python 3.11+) or tomli is required for TOML policy files. "
-                        "Install with: pip install tomli"
-                    ) from exc
+        import tomllib
+
         with path.open("rb") as f:
             data: dict[str, Any] = tomllib.load(f)
     elif path.suffix == ".json":

@@ -61,24 +61,6 @@ def test_packaging_is_a_core_dependency():
     )
 
 
-def test_tomli_is_declared_for_pre_311():
-    """``tomli`` backs TOML policy files on the lowest supported Python.
-
-    stdlib ``tomllib`` is 3.11+ while ``requires-python`` is >=3.10, so
-    ``load_policy_file`` on a ``.toml`` path needs ``tomli`` there. It must carry a
-    ``python_version < "3.11"`` marker so 3.11+ installs do not take a needless
-    dependency.
-    """
-    matches = _named(_core_requirements(), "tomli")
-    assert matches, (
-        "tomli must be declared — load_policy_file() imports it for TOML policy "
-        "files, which the README documents, and stdlib tomllib is 3.11+"
-    )
-    assert any("python_version" in req and "3.11" in req for req in matches), (
-        f"tomli must be marked for Python < 3.11, got: {matches}"
-    )
-
-
 def test_no_extra_only_dependency_backs_a_core_import():
     """Guard the general shape: core imports must not rest on extras.
 
@@ -90,5 +72,5 @@ def test_no_extra_only_dependency_backs_a_core_import():
         req.split(";")[0].strip().split("[")[0].split(">")[0].split("<")[0].split("=")[0].strip()
         for req in _core_requirements()
     }
-    for name in ("httpx", "packaging", "tomli"):
+    for name in ("httpx", "packaging"):
         assert name in core, f"{name} is imported directly and must stay a core requirement"

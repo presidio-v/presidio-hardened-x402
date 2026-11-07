@@ -49,7 +49,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
 from .mica import (
@@ -155,16 +155,16 @@ def _parse_rfc3339_utc(value: object, field_name: str) -> datetime:
         raise CapabilityError(f"{field_name} is not a valid RFC3339 timestamp: {value!r}") from exc
     if dt.tzinfo is None:
         raise CapabilityError(f"{field_name} must be timezone-aware (UTC); got naive {value!r}")
-    return dt.astimezone(timezone.utc)
+    return dt.astimezone(UTC)
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _rfc3339(dt: datetime) -> str:
     """Emit an RFC3339 UTC string with a trailing ``Z`` (second precision)."""
-    return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return dt.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 # ---------------------------------------------------------------------------
