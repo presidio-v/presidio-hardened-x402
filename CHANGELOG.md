@@ -6,6 +6,14 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- The `EMAIL_ADDRESS` pattern in `PIIFilter` was quadratic on a long run of
+  local-part characters with no `@` (32 KB: 2.5 s; 1 MB: hours), so untrusted text of
+  unbounded length could burn CPU (GHSA-g42v-7x68-5c4x, CWE-1333). A lookbehind now
+  starts a match only at the start of a run. Matches are unchanged. The hosted
+  screening API was bounded by its 4,096-character field limit.
+
 ## [0.14.0] — 2026-11-07
 
 ### Changed

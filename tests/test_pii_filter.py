@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 import types
 
 import pytest
@@ -31,6 +32,29 @@ class TestPIIFilterRegexMode:
         assert "alice@example.com" not in redacted
         assert "<REDACTED>" in redacted
         assert any(e.entity_type == "EMAIL_ADDRESS" for e in entities)
+
+    def test_email_pattern_is_linear_on_long_runs(self):
+        # GHSA-g42v-7x68-5c4x: a long run of local-part characters with no "@" was
+        # quadratic (32 KB: 2.5 s). 256 KB would take minutes; now milliseconds.
+        long_run = "a" * (1 << 18)
+        start = time.perf_counter()
+        redacted, entities = self.filt.scan_and_redact(long_run)
+        assert time.perf_counter() - start < 2.0
+        assert redacted == long_run and not entities
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("mail x.y+tag@example.co.uk now", ["x.y+tag@example.co.uk"]),
+            ("a@b.cc,d@e.ff", ["a@b.cc", "d@e.ff"]),
+            ("<bob_1@mail.example.org>", ["bob_1@mail.example.org"]),
+            ("x" * 5000 + "@example.com", ["x" * 5000 + "@example.com"]),
+        ],
+    )
+    def test_email_matches_are_unchanged_by_the_anchor(self, text, expected):
+        _, entities = self.filt.scan_and_redact(text)
+        found = [e.original_text for e in entities if e.entity_type == "EMAIL_ADDRESS"]
+        assert found == expected
 
     def test_email_original_text_preserved_in_entity_result(self):
         _, entities = self.filt.scan_and_redact("user@test.org")
