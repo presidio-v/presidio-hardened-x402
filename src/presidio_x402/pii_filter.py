@@ -292,16 +292,75 @@ def _cc_tail(n: int) -> str:
     return rf"(?:{_CC_SEP}[0-9]){{{n}}}"
 
 
-_REGEX_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    # Structural: emails. The lookbehind starts a match only at the start of a run of
-    # local-part characters. Without it the engine retries the pattern at every position
-    # of a long run that holds no "@", which is quadratic (32 KB took 2.5 s).
+# The email pattern. Run as a regex, it retries at every position of a long run of
+# local-part characters without "@", which is quadratic (GHSA-g42v-7x68-5c4x: 32 KB took
+# 2.5 s). The 0.14.1 fix anchored it with a lookbehind; that was linear but missed an address
+# that directly follows another one through a local-part character
+# ("a@b.cc+victim@example.com", GHSA-9pcv-26m2-4ch8). The scanner below
+# finds exactly the matches of this regex, left to right, in linear time.
+EMAIL_PATTERN = r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"
+# What the local-part class matches under IGNORECASE, including the four non-ASCII characters
+# that case-fold into [a-zA-Z]: U+0130, U+0131, U+017F and U+212A.
+_LOCAL = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-\u0130\u0131\u017f\u212a"
+)
+_DOMAIN = re.compile(r"[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", re.IGNORECASE)
+
+
+class _EmailMatch:
+    __slots__ = ("_end", "_start", "string")
+
+    def __init__(self, string: str, start: int, end: int):
+        self.string, self._start, self._end = string, start, end
+
+    def start(self) -> int:
+        return self._start
+
+    def end(self) -> int:
+        return self._end
+
+    def span(self) -> tuple[int, int]:
+        return self._start, self._end
+
+    def group(self) -> str:
+        return self.string[self._start : self._end]
+
+
+class _EmailScanner:
+    """``finditer`` with the matches of ``EMAIL_PATTERN`` (IGNORECASE), in linear time.
+
+    A match of the regex starting at s needs the run of local-part characters containing s to
+    end right before an "@" and a domain to follow it. So the leftmost match uses the first "@"
+    whose domain matches, and starts at the beginning of its run, but not before the end of the
+    previous match. Runs between two "@" are disjoint and a domain contains no "@", so every
+    character is looked at a bounded number of times.
+    """
+
+    pattern = EMAIL_PATTERN
+    flags = re.IGNORECASE
+
+    def finditer(self, text: str):
+        pos = 0
+        at = text.find("@")
+        while at != -1:
+            start = at
+            while start > pos and text[start - 1] in _LOCAL:
+                start -= 1
+            domain = _DOMAIN.match(text, at + 1) if start < at else None
+            if domain is not None:
+                yield _EmailMatch(text, start, domain.end())
+                pos = domain.end()
+                at = text.find("@", pos)
+            else:
+                at = text.find("@", at + 1)
+
+
+_REGEX_PATTERNS: list[tuple[str, re.Pattern[str] | _EmailScanner]] = [
+    # Structural: emails. Same matches as EMAIL_PATTERN, found in linear time (see
+    # _EmailScanner).
     (
         "EMAIL_ADDRESS",
-        re.compile(
-            r"(?<![a-zA-Z0-9._%+\-])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",
-            re.IGNORECASE,
-        ),
+        _EmailScanner(),
     ),
     # Structural: US SSNs (with or without dashes)
     (

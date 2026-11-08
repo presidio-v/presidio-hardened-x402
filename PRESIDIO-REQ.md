@@ -750,6 +750,13 @@ Minor release because the supported-interpreter range narrows; there is no API c
 - [x] Lock refreshes from [Unreleased]: certifi 2026.10.19 (PYSEC-2026-4320), opentelemetry 1.45.1
   (CVE-2026-114603); the CI dependency audit also covers the `nlp` extra.
 
+## v0.14.2 Requirements (security patch: adjacent-address bypass) — **delivered 2026-11-08**
+
+### Delivered
+- [x] `EMAIL_ADDRESS` is found by `_EmailScanner`, which returns exactly the matches of
+  `EMAIL_PATTERN` in linear time; the 0.14.1 lookbehind missed an address directly following
+  another (GHSA-9pcv-26m2-4ch8). A differential test against the regex guards it.
+
 ## v0.14.1 Requirements (security patch: linear email matching) — **delivered 2026-11-08**
 
 ### Delivered

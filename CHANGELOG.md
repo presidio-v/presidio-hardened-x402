@@ -6,6 +6,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.2] — 2026-11-08
+
+### Security
+
+- **Email redaction bypass for adjacent addresses (GHSA-9pcv-26m2-4ch8, regression in 0.14.1).**
+  The 0.14.1 fix anchored the `EMAIL_ADDRESS` pattern with a lookbehind. That kept it linear but
+  stopped a match from starting right after a previous one joined by a local-part character, so
+  in `a@b.cc+victim@example.com` the second address passed `PIIFilter` unredacted. An explicit
+  scanner now returns exactly the matches of the original pattern in linear time; a
+  differential test checks it against the regex on random input.
+
 ## [0.14.1] — 2026-11-08
 
 ### Security
@@ -13,7 +24,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The `EMAIL_ADDRESS` pattern in `PIIFilter` was quadratic on a long run of
   local-part characters with no `@` (32 KB: 2.5 s; 1 MB: hours), so untrusted text of
   unbounded length could burn CPU (GHSA-g42v-7x68-5c4x, CWE-1333). A lookbehind now
-  starts a match only at the start of a run. Matches are unchanged. The hosted
+  starts a match only at the start of a run. (Correction: this changed the matches for
+  adjacent addresses and opened a redaction bypass; see 0.14.2 and GHSA-9pcv-26m2-4ch8.) The hosted
   screening API was bounded by its 4,096-character field limit.
 
 ## [0.14.0] — 2026-11-07
