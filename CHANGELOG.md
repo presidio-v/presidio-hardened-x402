@@ -6,6 +6,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **Email redaction bypass for adjacent addresses (GHSA-9pcv-26m2-4ch8, regression in 0.14.1).**
+  The 0.14.1 fix anchored the `EMAIL_ADDRESS` pattern with a lookbehind. That kept it linear but
+  stopped a match from starting right after a previous one joined by a local-part character, so
+  in `a@b.cc+victim@example.com` the second address passed `PIIFilter` unredacted. An explicit
+  scanner now returns exactly the matches of the original pattern in linear time; a
+  differential test checks it against the regex on random input.
+
 ## [0.14.1] — 2026-11-08
 
 ### Security
