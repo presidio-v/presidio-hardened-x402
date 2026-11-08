@@ -293,10 +293,15 @@ def _cc_tail(n: int) -> str:
 
 
 _REGEX_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    # Structural: emails
+    # Structural: emails. The lookbehind starts a match only at the start of a run of
+    # local-part characters. Without it the engine retries the pattern at every position
+    # of a long run that holds no "@", which is quadratic (32 KB took 2.5 s).
     (
         "EMAIL_ADDRESS",
-        re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", re.IGNORECASE),
+        re.compile(
+            r"(?<![a-zA-Z0-9._%+\-])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",
+            re.IGNORECASE,
+        ),
     ),
     # Structural: US SSNs (with or without dashes)
     (
