@@ -8,7 +8,9 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/presidio-v/presidio-hardened-x402/badge)](https://securityscorecards.dev/viewer/?uri=github.com/presidio-v/presidio-hardened-x402)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13675/badge)](https://www.bestpractices.dev/projects/13675)
 
-> v0.14.1 — security patch: the `EMAIL_ADDRESS` pattern in `PIIFilter` is now linear on long runs without `@` (GHSA-g42v-7x68-5c4x, low). A 32 KB value took 2.5 s; matches are unchanged. **Upgrade if you pass untrusted text of unbounded length to `PIIFilter`.**
+> v0.14.2 — security patch: an email address that directly follows another through a local-part character (`a@b.cc+victim@example.com`) passed `PIIFilter` unredacted in 0.14.1 (GHSA-9pcv-26m2-4ch8, medium). An explicit scanner now returns exactly the original pattern's matches in linear time. **Upgrade from 0.14.1.**
+>
+> v0.14.1 — security patch: the `EMAIL_ADDRESS` pattern in `PIIFilter` is now linear on long runs without `@` (GHSA-g42v-7x68-5c4x, low). A 32 KB value took 2.5 s. The fix changed the matches for adjacent addresses; use 0.14.2. **Upgrade if you pass untrusted text of unbounded length to `PIIFilter`.**
 >
 > v0.14.0 — support policy: Python 3.11 is now the minimum (3.10 reached end of life in October 2026). This drops the 3.10-only `filelock` 4.1.0 resolution behind GHSA-v4x8-3wr5-3wq8. No API change; stay on 0.13.x if you still run 3.10.
 >
@@ -605,7 +607,8 @@ All exceptions are importable from `presidio_x402`.
 | v0.6.0 | **Production hardening + evidence substrate** — multi-tenant replay namespaces · enterprise audit sinks (S3 / Splunk / Datadog) · signed `evidence-ref@1` verification · SLSA/OIDC release provenance · digest-pinned Docker base + hash-pinned spaCy model · latency SLO and all-matrix coverage CI gates · OTel spans · policy hot-reload · startup key gates · human-pentest retest closure |
 | v0.7.0 | **SLO payment broker (library)** — x402 micropayments as runtime infrastructure bids: `SLOPaymentBroker` + `SLOPaymentPolicy` + evidence-anchored `ArchTranslucencyAdapter` + provisioning PII entities; cross-repo validated against `presidio-hardened-arch-translucency`. cs.DC preprint + empirical eval tracked separately |
 | v0.8.0 | PII completeness + supply-chain hardening (library) — `nlp` mode is now a structural superset of `regex` (no structured-identifier misses) · composed-envelope `screen_ref` leg · `action_ref` byte-determinism (NFC + non-empty entity sets) · URL-redacted log hygiene · OpenSSF Scorecard workflow/badge + SLSA Build L3 provenance · independent multi-round security audit cleared |
-| v0.14.1 | **Security patch** — `EMAIL_ADDRESS` in `PIIFilter` anchored with a lookbehind so long runs without `@` match in linear time (GHSA-g42v-7x68-5c4x, CWE-1333); matches unchanged |
+| v0.14.2 | **Security patch** — email addresses found by an explicit linear scanner with exactly the original pattern's matches; closes the adjacent-address redaction bypass of 0.14.1 (GHSA-9pcv-26m2-4ch8, CWE-185) |
+| v0.14.1 | **Security patch** — `EMAIL_ADDRESS` in `PIIFilter` anchored with a lookbehind so long runs without `@` match in linear time (GHSA-g42v-7x68-5c4x, CWE-1333); superseded by 0.14.2 |
 | v0.14.0 | **Support policy** — Python 3.11 minimum (3.10 is end of life); drops the 3.10-only `filelock` 4.1.0 (GHSA-v4x8-3wr5-3wq8); TOML policies load through stdlib `tomllib`; certifi 2026.10.19 (drops emSign ECC Root CA - G3); opentelemetry 1.45.1 |
 | v0.13.0 | **Decision-record contract** — `NOT_EVALUATED` control verdict so partial gates stop signing pass values for checks they never ran (verifiers < 0.13.0 reject such records); top-level hex `parents` in `payment-decision@1` (ADR-0002 DAG walks reach the payment node); per-call violation log names the host, not the URL |
 | v0.12.2 | **Security patch** — Unicode format characters (BiDi embeddings, overrides and isolates; tag characters) no longer split PII past `PIIFilter`: the normaliser strips every category `Cf` character |
