@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.1] — 2026-11-08
+
 ### Security
 
 - The `EMAIL_ADDRESS` pattern in `PIIFilter` was quadratic on a long run of
