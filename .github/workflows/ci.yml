@@ -191,4 +191,5 @@ jobs:
           --extra otel
           --extra schema
           --extra nlp
+          --extra gate
           pip-audit --progress-spinner=off --skip-editable

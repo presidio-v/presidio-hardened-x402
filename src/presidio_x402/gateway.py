@@ -86,6 +86,7 @@ if TYPE_CHECKING:
     from .capability import VerifiedGrantChain
     from .capability_enforcer import CapabilityEnforcer
     from .decision_ref import DecisionRefEmitter
+    from .gate import GateParents
     from .metrics import MetricsCollector
     from .mpa import MPAEngine
     from .screening_client import ScreeningClient
@@ -244,6 +245,14 @@ class HardenedX402Client:
         (default) skips capture entirely. Capture is strictly observational: it
         runs *after* the paid response is in hand, performs no network I/O, and
         can never change the payment outcome.
+    gate_parents:
+        Optional :class:`~presidio_x402.gate.GateParents` from
+        :func:`~presidio_x402.gate.load_gate_parents` (``[gate]`` extra): the
+        verified, OPEN ikigov ``gate-certificate@1`` identities this client pays
+        under. Every emitted decision-ref lists them in ``parents`` after any
+        capability-grant parent, also on the config-sourced policy path, until
+        the earliest certificate's ``not_after``. Requires
+        ``decision_ref_emitter``; ``None`` (default) leaves records unchanged.
     """
 
     def __init__(
@@ -270,6 +279,7 @@ class HardenedX402Client:
         capability_chain: VerifiedGrantChain | None = None,
         capability_enforcer: CapabilityEnforcer | None = None,
         settlement_writer: SettlementWriter | None = None,
+        gate_parents: GateParents | None = None,
     ) -> None:
         if remote_screening and screening_client is None:
             raise ValueError("remote_screening=True requires a screening_client instance")
@@ -327,6 +337,7 @@ class HardenedX402Client:
             capability_chain=capability_chain,
             capability_enforcer=capability_enforcer,
             agent_id=agent_id,
+            gate_parents=gate_parents,
         )
         logger.info("Presidio hardening applied — HardenedX402Client initialized")
 

@@ -18,8 +18,10 @@ existing gateway test suite is the conformance proof.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import replace
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Literal
 
@@ -45,6 +47,7 @@ if TYPE_CHECKING:
     from .capability import VerifiedGrantChain
     from .capability_enforcer import CapabilityEnforcer, StageTiming
     from .decision_ref import DecisionRefEmitter
+    from .gate import GateParents
     from .metrics import MetricsCollector
     from .mpa import MPAEngine
     from .pii_filter import EntityResult, PIIFilter
@@ -236,6 +239,7 @@ class ScreeningPipeline:
         capability_chain: VerifiedGrantChain | None = None,
         capability_enforcer: CapabilityEnforcer | None = None,
         agent_id: str | None = None,
+        gate_parents: GateParents | None = None,
         wallet_pin_store: WalletPinStore | None = None,
         wallet_pinning: Literal["warn", "block"] | None = None,
     ) -> None:
@@ -245,6 +249,13 @@ class ScreeningPipeline:
             raise ValueError("wallet_pinning must be 'warn', 'block' or None")
         if wallet_pinning is not None and wallet_pin_store is None:
             raise ValueError("wallet_pinning requires a wallet_pin_store instance")
+        if gate_parents is not None and decision_ref_emitter is None:
+            # A gate the operator named but no record would ever carry is a
+            # deployment defect, not a silent no-op (same posture as x402-mcp).
+            raise ValueError(
+                "gate_parents requires a decision_ref_emitter: without one no "
+                "payment-decision@1 record would name the gate"
+            )
         self._pii_filter = pii_filter
         self._pii_entities = pii_entities
         self._pii_action = pii_action
@@ -261,6 +272,11 @@ class ScreeningPipeline:
         # prior releases. See presidio_x402.decision_ref.
         self._decision_emitter = decision_ref_emitter
         self._capability_chain = capability_chain
+        # Gate-certificate parents (issue #160): operator-configured, verified at
+        # load time (presidio_x402.gate). Only read on the decision-ref path.
+        self._gate_parents = gate_parents
+        self._gate_expiry_logged = False
+        self._gate_lock = threading.Lock()
         # Capability enforcement is strictly opt-in: when the enforcer is None (the
         # default) NO capability code path runs and apply() is byte-identical to
         # prior releases. It slots in as an explicit stage between the trusted-wallet
@@ -756,6 +772,29 @@ class ScreeningPipeline:
             observed=observed,
         )
 
+    def _current_gate_parents(self) -> list[str]:
+        """Gate identities for the next record while every certificate is in force.
+
+        Once the earliest ``not_after`` has passed the record is still emitted,
+        without the gate, so it never claims a lapsed gate; that is logged once.
+        """
+        gate = self._gate_parents
+        if gate is None:
+            return []
+        parents = gate.current(datetime.now(UTC))
+        if parents:
+            return parents
+        with self._gate_lock:
+            first = not self._gate_expiry_logged
+            self._gate_expiry_logged = True
+        if first:
+            logger.warning(
+                "The configured gate certificate expired at %s; payment-decision records "
+                "no longer name it as a parent. Load a new certificate and rebuild the client.",
+                gate.not_after.isoformat() if gate.not_after else "?",
+            )
+        return parents
+
     def _emit_decision_ref(
         self,
         details: PaymentDetails,
@@ -793,7 +832,7 @@ class ScreeningPipeline:
                 currency=details.currency,
                 resource_origin=origin,
                 controls=controls,  # type: ignore[arg-type]
-                parents=capability_parents(self._capability_chain),
+                parents=capability_parents(self._capability_chain) + self._current_gate_parents(),
             )
             if on_decision_ref is not None:
                 on_decision_ref(envelope)
