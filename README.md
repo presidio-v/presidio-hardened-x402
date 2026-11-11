@@ -502,6 +502,33 @@ uncompromised or that the declared controls are the real controls (no TEE claim)
 format and `decision_ref` derivation are pinned by the conformance fixture under
 `tests/conformance/decision-ref/`.
 
+## Gate-certificate parents (`[gate]` extra)
+
+A decision-ref made under a config-sourced policy has no capability chain, so on
+its own it names no authority. When the payment runs under an ikigov-assess gate,
+load the operator's `gate-certificate@1` files once at startup and every record
+lists the gate in `parents`:
+
+```python
+from pathlib import Path
+from presidio_x402 import HardenedX402Client
+from presidio_x402.gate import load_gate_parents   # pip install 'presidio-hardened-x402[gate]'
+
+gate = load_gate_parents([Path("gate-certificate.json")], Path("gate-trust.json"))
+client = HardenedX402Client(
+    payment_signer=signer,
+    decision_ref_emitter=emitter,                       # required with gate_parents
+    gate_parents=gate,
+)
+```
+
+Each certificate is verified with ikigov-assess's own verifier and must record
+`OPEN`; any refusal raises `GateCertificateError`, so a broken gate never yields a
+client. The identity is the certificate's ADR-0006 content hash, written after any
+capability-grant parent and identical to what presidio-hardened-x402-mcp writes.
+Once the earliest `not_after` passes, records are still emitted but without the
+gate, and a warning is logged once.
+
 ## Treasury binding (`settlement-ref@1`) — v0.10.0
 
 A decision-ref says *why* a payment was allowed. Reconciling it into a ledger's

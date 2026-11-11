@@ -103,6 +103,12 @@ crewai = [
     # adapter importable, but require integrators to install and audit CrewAI in
     # their own environment until that transitive graph is fixed.
 ]
+gate = [
+    # gate_parents / presidio_x402.gate: ikigov-assess's own verifier and
+    # certificate_content_hash (the ADR-0006 identity) from 0.29.0. [crypto]
+    # because certificates are Ed25519-signed. Same floor as x402-mcp's [gate].
+    "presidio-hardened-ikigov-assess[crypto]>=0.29.0,<1",
+]
 prometheus = [
     "prometheus-client>=0.20.0",
 ]
@@ -126,6 +132,8 @@ dev = [
     "prometheus-client>=0.20.0",
     "opentelemetry-sdk>=1.28.0",
     "jsonschema>=4.21.0",
+    # Runs the gate-certificate tests against the real verifier (tests/test_gate_parents.py).
+    "presidio-hardened-ikigov-assess[crypto]>=0.29.0,<1",
 ]
 
 [project.urls]
