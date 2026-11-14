@@ -22,6 +22,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   emitted, without the gate. The behaviour and identity match presidio-hardened-x402-mcp's
   `PRESIDIO_X402_MCP_GATE_CERTIFICATE`. Without `gate_parents`, records are unchanged.
 
+### Security
+
+- Locked opentelemetry-api/sdk 1.45.2 (semantic-conventions 0.66b2): `traceparent` extraction
+  is length-bounded, closing a quadratic-time parsing DoS (GHSA-mf5v-w3w3-f6cg, medium).
+
 ## [0.14.2] — 2026-11-08
 
 ### Security

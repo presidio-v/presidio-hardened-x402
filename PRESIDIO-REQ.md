@@ -764,6 +764,7 @@ Minor release: new `gate_parents` parameter and `[gate]` extra; behaviour withou
   while records keep being emitted (warned once).
 - [x] Identity matches presidio-hardened-x402-mcp's `PRESIDIO_X402_MCP_GATE_CERTIFICATE`; the
   family vector pins it.
+- [x] Lock refresh: opentelemetry 1.45.2 (GHSA-mf5v-w3w3-f6cg, quadratic `traceparent` parsing).
 
 ## v0.14.2 Requirements (security patch: adjacent-address bypass) — **delivered 2026-11-08**
 
