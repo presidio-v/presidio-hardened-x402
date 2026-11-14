@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-11-14
+
 ### Added
 
 - **Gate-certificate parents on `payment-decision@1` records (#160).** `HardenedX402Client`

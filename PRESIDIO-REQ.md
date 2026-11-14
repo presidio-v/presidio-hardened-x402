@@ -750,6 +750,21 @@ Minor release because the supported-interpreter range narrows; there is no API c
 - [x] Lock refreshes from [Unreleased]: certifi 2026.10.19 (PYSEC-2026-4320), opentelemetry 1.45.1
   (CVE-2026-114603); the CI dependency audit also covers the `nlp` extra.
 
+## v0.15.0 Requirements (gate-certificate parents) — **delivered 2026-11-14**
+
+Minor release: new `gate_parents` parameter and `[gate]` extra; behaviour without them is unchanged.
+
+### Delivered
+- [x] `presidio_x402.gate.load_gate_parents` verifies operator-configured ikigov-assess
+  `gate-certificate@1` files with ikigov-assess's own verifier (OPEN only, earliest `not_after`,
+  bounded file reads); a refusal raises `GateCertificateError` (#160).
+- [x] `HardenedX402Client` and `ScreeningPipeline` take `gate_parents`; every `payment-decision@1`
+  record lists the gate's ADR-0006 identity after any capability-grant parent. `gate_parents`
+  without a `decision_ref_emitter` raises `ValueError`; an expired gate drops out of `parents`
+  while records keep being emitted (warned once).
+- [x] Identity matches presidio-hardened-x402-mcp's `PRESIDIO_X402_MCP_GATE_CERTIFICATE`; the
+  family vector pins it.
+
 ## v0.14.2 Requirements (security patch: adjacent-address bypass) — **delivered 2026-11-08**
 
 ### Delivered

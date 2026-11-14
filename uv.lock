@@ -1448,7 +1448,7 @@ crypto = [
 
 [[package]]
 name = "presidio-hardened-x402"
-version = "0.14.2"
+version = "0.15.0"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
