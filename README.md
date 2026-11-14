@@ -8,6 +8,8 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/presidio-v/presidio-hardened-x402/badge)](https://securityscorecards.dev/viewer/?uri=github.com/presidio-v/presidio-hardened-x402)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13675/badge)](https://www.bestpractices.dev/projects/13675)
 
+> v0.15.0 — gate-certificate parents: `payment-decision@1` records can name a verified ikigov-assess gate certificate in `parents` (`gate_parents`, new `[gate]` extra), so the config-policy path carries the classification -> gate -> payment edge. Opt-in; without `gate_parents` records are unchanged.
+>
 > v0.14.2 — security patch: an email address that directly follows another through a local-part character (`a@b.cc+victim@example.com`) passed `PIIFilter` unredacted in 0.14.1 (GHSA-9pcv-26m2-4ch8, medium). An explicit scanner now returns exactly the original pattern's matches in linear time. **Upgrade from 0.14.1.**
 >
 > v0.14.1 — security patch: the `EMAIL_ADDRESS` pattern in `PIIFilter` is now linear on long runs without `@` (GHSA-g42v-7x68-5c4x, low). A 32 KB value took 2.5 s. The fix changed the matches for adjacent addresses; use 0.14.2. **Upgrade if you pass untrusted text of unbounded length to `PIIFilter`.**
@@ -502,6 +504,33 @@ uncompromised or that the declared controls are the real controls (no TEE claim)
 format and `decision_ref` derivation are pinned by the conformance fixture under
 `tests/conformance/decision-ref/`.
 
+## Gate-certificate parents (`[gate]` extra)
+
+A decision-ref made under a config-sourced policy has no capability chain, so on
+its own it names no authority. When the payment runs under an ikigov-assess gate,
+load the operator's `gate-certificate@1` files once at startup and every record
+lists the gate in `parents`:
+
+```python
+from pathlib import Path
+from presidio_x402 import HardenedX402Client
+from presidio_x402.gate import load_gate_parents   # pip install 'presidio-hardened-x402[gate]'
+
+gate = load_gate_parents([Path("gate-certificate.json")], Path("gate-trust.json"))
+client = HardenedX402Client(
+    payment_signer=signer,
+    decision_ref_emitter=emitter,                       # required with gate_parents
+    gate_parents=gate,
+)
+```
+
+Each certificate is verified with ikigov-assess's own verifier and must record
+`OPEN`; any refusal raises `GateCertificateError`, so a broken gate never yields a
+client. The identity is the certificate's ADR-0006 content hash, written after any
+capability-grant parent and identical to what presidio-hardened-x402-mcp writes.
+Once the earliest `not_after` passes, records are still emitted but without the
+gate, and a warning is logged once.
+
 ## Treasury binding (`settlement-ref@1`) — v0.10.0
 
 A decision-ref says *why* a payment was allowed. Reconciling it into a ledger's
@@ -607,6 +636,7 @@ All exceptions are importable from `presidio_x402`.
 | v0.6.0 | **Production hardening + evidence substrate** — multi-tenant replay namespaces · enterprise audit sinks (S3 / Splunk / Datadog) · signed `evidence-ref@1` verification · SLSA/OIDC release provenance · digest-pinned Docker base + hash-pinned spaCy model · latency SLO and all-matrix coverage CI gates · OTel spans · policy hot-reload · startup key gates · human-pentest retest closure |
 | v0.7.0 | **SLO payment broker (library)** — x402 micropayments as runtime infrastructure bids: `SLOPaymentBroker` + `SLOPaymentPolicy` + evidence-anchored `ArchTranslucencyAdapter` + provisioning PII entities; cross-repo validated against `presidio-hardened-arch-translucency`. cs.DC preprint + empirical eval tracked separately |
 | v0.8.0 | PII completeness + supply-chain hardening (library) — `nlp` mode is now a structural superset of `regex` (no structured-identifier misses) · composed-envelope `screen_ref` leg · `action_ref` byte-determinism (NFC + non-empty entity sets) · URL-redacted log hygiene · OpenSSF Scorecard workflow/badge + SLSA Build L3 provenance · independent multi-round security audit cleared |
+| v0.15.0 | **Gate-certificate parents** — `presidio_x402.gate` (`[gate]` extra) verifies ikigov-assess `gate-certificate@1` files; `HardenedX402Client` / `ScreeningPipeline` take `gate_parents` and list the gate in every `payment-decision@1` record's `parents`; expired gates drop out, records keep flowing (#160); opentelemetry 1.45.2 (GHSA-mf5v-w3w3-f6cg) |
 | v0.14.2 | **Security patch** — email addresses found by an explicit linear scanner with exactly the original pattern's matches; closes the adjacent-address redaction bypass of 0.14.1 (GHSA-9pcv-26m2-4ch8, CWE-185) |
 | v0.14.1 | **Security patch** — `EMAIL_ADDRESS` in `PIIFilter` anchored with a lookbehind so long runs without `@` match in linear time (GHSA-g42v-7x68-5c4x, CWE-1333); superseded by 0.14.2 |
 | v0.14.0 | **Support policy** — Python 3.11 minimum (3.10 is end of life); drops the 3.10-only `filelock` 4.1.0 (GHSA-v4x8-3wr5-3wq8); TOML policies load through stdlib `tomllib`; certifi 2026.10.19 (drops emSign ECC Root CA - G3); opentelemetry 1.45.1 |

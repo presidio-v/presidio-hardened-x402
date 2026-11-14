@@ -6,6 +6,27 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-11-14
+
+### Added
+
+- **Gate-certificate parents on `payment-decision@1` records (#160).** `HardenedX402Client`
+  and `ScreeningPipeline` take `gate_parents`, built once with
+  `presidio_x402.gate.load_gate_parents` from operator-configured ikigov-assess
+  `gate-certificate@1` files and a trust store (new `[gate]` extra). Each certificate is verified
+  with ikigov-assess's own verifier and must record `OPEN`; a refusal raises
+  `GateCertificateError`, and `gate_parents` without a `decision_ref_emitter` raises
+  `ValueError`. Every record then lists the gate's ADR-0006 identity in `parents`, after any
+  capability-grant parent, so the config-sourced policy path now carries the
+  classification -> gate -> payment edge. After the earliest `not_after` the record is still
+  emitted, without the gate. The behaviour and identity match presidio-hardened-x402-mcp's
+  `PRESIDIO_X402_MCP_GATE_CERTIFICATE`. Without `gate_parents`, records are unchanged.
+
+### Security
+
+- Locked opentelemetry-api/sdk 1.45.2 (semantic-conventions 0.66b2): `traceparent` extraction
+  is length-bounded, closing a quadratic-time parsing DoS (GHSA-mf5v-w3w3-f6cg, medium).
+
 ## [0.14.2] — 2026-11-08
 
 ### Security
