@@ -79,6 +79,16 @@ def resource_origin(url: str) -> str:
     return str(parsed.copy_with(path="", query=None, fragment=None)).rstrip("/")
 
 
+def canonical_request_url(url: object) -> str:
+    """The URL a client requested, canonicalised for use as a control key.
+
+    Lower-case scheme and host, default port dropped, fragment removed (httpx
+    normalisation). Security controls key on this value, never on the
+    server-asserted offer ``resource``.
+    """
+    return str(httpx.URL(str(url)).copy_with(fragment=None))
+
+
 def amount_to_usd(amount: str, currency: str) -> float:
     """Convert a payment amount string to USD.
 
@@ -305,6 +315,56 @@ class ScreeningPipeline:
         self._policy.refund(resource_url=resource_url, amount_usd=amount_usd)
         self._replay.release(fingerprint)
 
+    def _enforce_request_cap(
+        self, details: PaymentDetails, amount_usd: float, max_amount_usd: float | None
+    ) -> None:
+        """Reject an offer above the caller's per-request ceiling, before anything is recorded."""
+        if max_amount_usd is None or amount_usd <= max_amount_usd:
+            return
+        safe_url, _ = self._pii_filter.scan_and_redact(details.resource_url)
+        self._audit.emit(
+            "POLICY_BLOCKED",
+            resource_url=safe_url,
+            amount_usd=amount_usd,
+            network=details.network,
+            outcome="blocked",
+            policy_limit_usd=max_amount_usd,
+        )
+        if self._metrics:
+            self._metrics.record_policy_violation("request_cap")
+            self._metrics.record_payment_blocked("policy", amount_usd)
+        raise PolicyViolationError(
+            f"Offer of ${amount_usd:.6f} exceeds this request's cap of ${max_amount_usd:.6f}",
+            amount_usd=amount_usd,
+            limit_usd=max_amount_usd,
+            reason="request_cap",
+        )
+
+    def _bind_offer(
+        self, details: PaymentDetails, amount_usd: float, requested_url: str | None
+    ) -> str:
+        """Return the URL to key controls on: the canonical requested URL, or the offer's
+        ``resource`` when the caller gave none. Raises when the offer names a different
+        origin than the request."""
+        if requested_url is None:
+            return details.resource_url
+        if resource_origin(details.resource_url) != resource_origin(requested_url):
+            safe_req, _ = self._pii_filter.scan_and_redact(canonical_request_url(requested_url))
+            self._audit.emit(
+                "PAYMENT_ERROR",
+                resource_url=safe_req,
+                amount_usd=amount_usd,
+                network=details.network,
+                outcome="blocked",
+                error_message="offer resource origin differs from the requested origin",
+            )
+            if self._metrics:
+                self._metrics.record_payment_blocked("error", amount_usd)
+            raise X402PaymentError(
+                "Payment offer names a different origin than the requested URL; refusing to pay"
+            )
+        return canonical_request_url(requested_url)
+
     async def _screen_pii(
         self, details: PaymentDetails, amount_usd: float
     ) -> tuple[PaymentDetails, str, list[EntityResult]]:
@@ -432,6 +492,8 @@ class ScreeningPipeline:
         on_decision_ref: Callable[[Mapping[str, object]], None] | None = None,
         stage_timings: StageTiming | None = None,
         presented_chain: list[dict[str, object]] | None = None,
+        requested_url: str | None = None,
+        max_amount_usd: float | None = None,
     ) -> tuple[PaymentDetails, str]:
         """Apply PIIFilter → PolicyEngine → ReplayGuard → MPAEngine → AuditLog.
 
@@ -450,11 +512,31 @@ class ScreeningPipeline:
         perform network I/O and must not raise; a raising callback is caught and
         logged with the emission.
 
+        ``requested_url`` is the URL the client actually sent the request to.
+        When given, an offer whose ``resource`` names a different origin is
+        rejected before any control runs, and every control key (wallet
+        allowlist and pin, capability prefix, per-endpoint ledger, quote
+        reference, replay fingerprint) uses the canonical requested URL instead
+        of the server-asserted offer field. :class:`HardenedX402Client` always
+        passes it; direct callers that omit it keep the earlier behaviour.
+
+        ``max_amount_usd`` is a per-request ceiling on the amount that may be
+        signed; an offer above it raises :class:`PolicyViolationError`
+        (reason ``"request_cap"``) before anything is recorded.
+
         Raises on policy violation, replay, PII block, or MPA denial/timeout.
         On MPA denial/timeout the spend + replay commit is rolled back before
         re-raising.
         """
         amount_usd = amount_to_usd(details.amount, details.currency)
+
+        self._enforce_request_cap(details, amount_usd, max_amount_usd)
+        # Bind the offer to the request: a paid server controls its 402 offer,
+        # including ``resource``. Keying controls on that field would let a server
+        # at an allowlisted, pinned or budgeted origin name another origin (or a
+        # variant path) and escape every control (2026-11-01 audit,
+        # offer-resource-not-bound-to-requested-url).
+        policy_url = self._bind_offer(details, amount_usd, requested_url)
 
         # Decision-ref emission is opt-in. When an emitter is configured we track
         # each control's verdict as it runs so a single payment-decision@1 record
@@ -471,7 +553,7 @@ class ScreeningPipeline:
         # /user/bob@.../pay both reduce to /user/<EMAIL_ADDRESS>/pay) and
         # produce false-positive ReplayDetectedError. Original URL is never
         # passed downstream to signer / MPA — only used for the local HMAC.
-        original_resource_url = details.resource_url
+        original_resource_url = policy_url
 
         # ------------------------------------------------------------------
         # 1. PII Filter (local regex/NLP or remote screening service)
@@ -551,7 +633,8 @@ class ScreeningPipeline:
         ) as policy_span:
             try:
                 self._policy.check_and_record(
-                    resource_url=details.resource_url, amount_usd=amount_usd
+                    resource_url=policy_url,
+                    amount_usd=amount_usd,
                 )
                 set_span_attribute(policy_span, "presidio_x402.outcome", "allowed")
                 recorder.record_policy(self._policy.config)
@@ -639,7 +722,7 @@ class ScreeningPipeline:
                     # charge the budget or burn the fingerprint (which would block the
                     # legitimate crypto-mode retry that carries the countersignatures).
                     self.rollback(
-                        resource_url=details.resource_url,
+                        resource_url=policy_url,
                         amount_usd=amount_usd,
                         fingerprint=fingerprint,
                     )

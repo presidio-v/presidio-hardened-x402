@@ -64,6 +64,7 @@ from .core import (
     SAFE_EXC_MESSAGE_MAX,
     ScreeningPipeline,
     amount_to_usd,
+    canonical_request_url,
     resource_origin,
     safe_exc_message,
 )
@@ -381,6 +382,9 @@ class HardenedX402Client:
         with the screening pipeline and the configured rail binding."""
         # Extract MPA crypto-mode countersignatures if provided (not passed to httpx)
         mpa_signatures: dict[str, str] | None = kwargs.pop("mpa_signatures", None)
+        # Per-request ceiling on the signed amount (not passed to httpx); used by
+        # callers that authorise a specific spend, e.g. X402CapacityProvider.
+        max_amount_usd: float | None = kwargs.pop("max_amount_usd", None)
 
         resp = await self._httpx.request(method, url, **kwargs)
 
@@ -425,6 +429,8 @@ class HardenedX402Client:
             details,
             mpa_signatures=mpa_signatures,
             raw_offer_hash=raw_offer_hash,
+            requested_url=str(url),
+            max_amount_usd=max_amount_usd,
             on_decision_ref=(
                 _decision_ref_collector(decision_refs)
                 if self._settlement_writer is not None
@@ -441,7 +447,8 @@ class HardenedX402Client:
             # otherwise a hostile server inducing repeated signer failures could
             # drain the accounting budget and block legitimate retries.
             self._pipeline.rollback(
-                resource_url=secure_details.resource_url,
+                # The policy ledger was keyed on the canonical requested URL.
+                resource_url=canonical_request_url(url),
                 amount_usd=amount_to_usd(secure_details.amount, secure_details.currency),
                 fingerprint=fingerprint,
             )
@@ -474,6 +481,9 @@ class HardenedX402Client:
             self._record_settlement(resp.headers, decision_refs[0] if decision_refs else None)
 
         paid_usd = amount_to_usd(secure_details.amount, secure_details.currency)
+        # Expose the amount actually signed, so a caller that authorised a spend
+        # can record what was paid rather than what it allowed.
+        resp.extensions["presidio_x402_paid_usd"] = paid_usd
         self._audit.emit(
             "PAYMENT_ALLOWED",
             resource_url=secure_details.resource_url,
