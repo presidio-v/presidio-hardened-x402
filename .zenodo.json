@@ -1,0 +1,36 @@
+{
+  "title": "presidio-hardened-x402: PII redaction, spending policy and replay detection for x402 agentic payments",
+  "upload_type": "software",
+  "description": "Security middleware for x402 agentic payments that intercepts payment requests before transmission to detect and redact personally identifiable information in payment metadata, enforce declarative spending policies and block duplicate replay attempts. Described in V. Stantchev, Hardening x402: PII-Safe Agentic Payments via Pre-Execution Metadata Filtering (arXiv:2604.11430).",
+  "creators": [
+    {
+      "name": "Stantchev, Vladimir",
+      "orcid": "0000-0002-1551-419X",
+      "affiliation": "SRH University Heidelberg"
+    }
+  ],
+  "license": "MIT",
+  "keywords": [
+    "x402",
+    "agentic payments",
+    "PII",
+    "privacy",
+    "AI agents",
+    "micropayments",
+    "GDPR"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "arXiv:2604.11430",
+      "relation": "isDescribedBy",
+      "resource_type": "publication-preprint",
+      "scheme": "arxiv"
+    },
+    {
+      "identifier": "10.21227/kpsz-nq73",
+      "relation": "isSupplementedBy",
+      "resource_type": "dataset",
+      "scheme": "doi"
+    }
+  ]
+}

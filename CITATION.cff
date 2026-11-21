@@ -1,0 +1,43 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper below."
+title: "presidio-hardened-x402: PII redaction, spending policy and replay detection for x402 agentic payments"
+abstract: >-
+  Security middleware for x402 agentic payments: PII redaction in payment
+  metadata, declarative spending policies and replay detection before
+  blockchain commit.
+type: software
+license: MIT
+repository-code: "https://github.com/presidio-v/presidio-hardened-x402"
+keywords:
+  - x402
+  - agentic payments
+  - PII
+  - privacy
+  - AI agents
+authors:
+  - family-names: Stantchev
+    given-names: Vladimir
+    orcid: "https://orcid.org/0000-0002-1551-419X"
+    affiliation: "SRH University Heidelberg"
+preferred-citation:
+  type: article
+  title: "Hardening x402: PII-Safe Agentic Payments via Pre-Execution Metadata Filtering"
+  authors:
+    - family-names: Stantchev
+      given-names: Vladimir
+      orcid: "https://orcid.org/0000-0002-1551-419X"
+  year: 2026
+  identifiers:
+    - type: other
+      value: "arXiv:2604.11430"
+  url: "https://arxiv.org/abs/2604.11430"
+references:
+  - type: data
+    title: "Hardening x402: PII Filter Corpus, Sweep Results, and Live Ecosystem Data"
+    authors:
+      - family-names: Stantchev
+        given-names: Vladimir
+    publisher:
+      name: IEEE DataPort
+    year: 2026
+    doi: "10.21227/kpsz-nq73"
