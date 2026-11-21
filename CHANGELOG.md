@@ -6,6 +6,37 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **Payment offers are bound to the requested URL.** The wallet allowlist, pay-to pinning,
+  capability prefix, per-endpoint ledger, quote-drift reference and replay fingerprint were
+  keyed on the offer's `resource`, which the paid server controls. A server at an allowlisted,
+  pinned or budgeted origin could name another origin, port or path in its 402 offer and have
+  its own `payTo` or price signed. `HardenedX402Client` now passes the requested URL to the
+  pipeline: an offer whose `resource` names a different origin is refused and audited
+  (`PAYMENT_ERROR`) before any control runs, and every control keys on the canonical requested
+  URL (lower-case scheme and host, default port dropped). Servers that report an internal or
+  different origin in `resource` are now refused. Found by the 2026-11-01 security audit
+  (medium).
+- **SLO caps bind the signed payment.** `X402CapacityProvider` sent the broker's per-event cap
+  to the capacity server only as JSON, so the signed amount was whatever the server offered,
+  and the SLO ledger recorded the cap instead of the payment. The cap now reaches the gateway
+  as a per-request ceiling (`max_amount_usd`), checked against the offer before signing
+  (`PolicyViolationError`, reason `"request_cap"`), and the receipt and ledger record the
+  amount actually signed. Found by the 2026-11-01 security audit (medium).
+
+### Added
+
+- `max_amount_usd=` on `HardenedX402Client` requests: a per-request ceiling on the signed
+  amount. The amount actually paid is exposed as `response.extensions["presidio_x402_paid_usd"]`.
+
+### Changed
+
+- `ScreeningPipeline.apply()` takes `requested_url=` and `max_amount_usd=`. The per-endpoint
+  policy now keys on the unredacted URL (the canonical requested URL, or the offer `resource`
+  for direct callers that omit `requested_url`), as the wallet, capability and replay controls
+  already did; it used the PII-redacted URL in `pii_action="redact"` mode.
+
 ## [0.15.0] — 2026-11-14
 
 ### Added

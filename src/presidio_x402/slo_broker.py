@@ -100,13 +100,16 @@ class X402CapacityProvider:
             "threshold": trigger.threshold,
             "max_usd": max_usd,
         }
-        resp = await self._client.post(self._endpoint, json=payload)
+        # The cap reaches the gateway as a per-request ceiling, checked against the
+        # offer before signing (2026-11-01 audit, slo-caps-not-bound-to-signed-payment);
+        # an offer above it raises PolicyViolationError, which the broker reports.
+        resp = await self._client.post(self._endpoint, json=payload, max_amount_usd=max_usd)
         ok = resp.status_code < 400
-        # The agent authorized at most max_usd; the gateway enforces the real cap.
+        paid = float(resp.extensions.get("presidio_x402_paid_usd", 0.0)) if ok else 0.0
         return UpgradeReceipt(
             provider=self.name,
             endpoint=self._endpoint,
-            amount_usd=max_usd if ok else 0.0,
+            amount_usd=paid,
             ok=ok,
             detail=f"HTTP {resp.status_code}",
         )
