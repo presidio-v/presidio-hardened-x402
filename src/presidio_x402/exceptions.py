@@ -48,7 +48,8 @@ class PolicyViolationError(X402Error):
     """Raised when a payment would violate the configured spending policy.
 
     ``reason`` names the limit that fired — ``"per_call"``, ``"daily_limit"``,
-    ``"per_endpoint"`` or ``"quote_drift"`` — and is what the metrics collector
+    ``"per_endpoint"``, ``"quote_drift"`` or ``"request_cap"`` (a caller-supplied
+    per-request ceiling, ``max_amount_usd``) — and is what the metrics collector
     labels the violation with. Defaults to ``"limit_exceeded"`` for callers that
     construct the error themselves.
     """
